@@ -1,0 +1,287 @@
+import { cn } from "@/lib/utils";
+import {
+  Home,
+  Users,
+  UserPlus,
+  UserCheck,
+  Activity,
+  Package,
+  Tractor,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  Shield,
+  Stethoscope,
+  Warehouse,
+  Sprout,
+  AlertTriangle,
+  Tag,
+  ArrowRightLeft,
+  Gavel,
+  LogOut,
+  UserX,
+  Lock,
+  Unlock,
+  FileText,
+  Brain,
+  Heart,
+  Pill,
+  ClipboardList,
+  Wrench,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Button } from "./ui/button";
+import { getDefaultRouteForRole, normalizeRole } from "@/lib/auth";
+
+interface SidebarProps {
+  userRole: string;
+}
+
+interface NavItem {
+  title: string;
+  href: string;
+  icon: React.ReactNode;
+}
+
+export const Sidebar = ({ userRole }: SidebarProps) => {
+  const location = useLocation();
+  const isMobile = useIsMobile();
+  const [isOpen, setIsOpen] = useState(!isMobile);
+  const normalizedRole = normalizeRole(userRole);
+
+  useEffect(() => {
+    setIsOpen(!isMobile);
+  }, [isMobile]);
+
+  const toggleSidebar = () => {
+    setIsOpen(!isOpen);
+  };
+
+  let navItems: NavItem[] = [];
+
+  switch (normalizedRole) {
+    case "SUPER_ADMIN":
+    case "ADMIN_OFFICER":
+      navItems = [
+        { title: "Dashboard", href: "/admin", icon: <Home size={18} /> },
+        { title: "Inmates", href: "/admin/inmates", icon: <Users size={18} /> },
+        {
+          title: "Officers",
+          href: "/admin/officers",
+          icon: <UserCheck size={18} />,
+        },
+        {
+          title: "Settings",
+          href: "/admin/settings",
+          icon: <Settings size={18} />,
+        },
+      ];
+      break;
+    case "RECEPTION_OFFICER":
+      navItems = [
+        { title: "Dashboard", href: "/reception", icon: <Home size={18} /> },
+        {
+          title: "New Admission",
+          href: "/reception/register",
+          icon: <UserPlus size={18} />,
+        },
+        {
+          title: "Inmate Details",
+          href: "/reception/inmates",
+          icon: <Users size={18} />,
+        },
+        {
+          title: "Inmate Categories",
+          href: "/reception/categories",
+          icon: <Tag size={18} />,
+        },
+        {
+          title: "Transfers",
+          href: "/reception/transfers",
+          icon: <ArrowRightLeft size={18} />,
+        },
+        {
+          title: "Courts",
+          href: "/reception/courts",
+          icon: <Gavel size={18} />,
+        },
+        {
+          title: "Discharges",
+          href: "/reception/discharges",
+          icon: <LogOut size={18} />,
+        },
+        {
+          title: "Escapes",
+          href: "/reception/escapes",
+          icon: <AlertTriangle size={18} />,
+        },
+        {
+          title: "Lock Up",
+          href: "/reception/lockup",
+          icon: <Lock size={18} />,
+        },
+        {
+          title: "Unlock",
+          href: "/reception/unlock",
+          icon: <Unlock size={18} />,
+        },
+      ];
+      break;
+    case "HEALTH_OFFICER":
+      navItems = [
+        { title: "Dashboard", href: "/health", icon: <Home size={18} /> },
+        {
+          title: "Inmate Health",
+          href: "/health/inmates",
+          icon: <Activity size={18} />,
+        },
+        {
+          title: "OPD Register",
+          href: "/health/opd",
+          icon: <Stethoscope size={18} />,
+        },
+        {
+          title: "Mental Health Register",
+          href: "/health/mental-health",
+          icon: <Brain size={18} />,
+        },
+        {
+          title: "Chronic Patients Register",
+          href: "/health/chronic",
+          icon: <Heart size={18} />,
+        },
+        {
+          title: "Medicine Inventory",
+          href: "/health/inventory",
+          icon: <Pill size={18} />,
+        },
+        {
+          title: "Stock Cards",
+          href: "/health/stock-cards",
+          icon: <ClipboardList size={18} />,
+        },
+        {
+          title: "Medical Equipment & Tools",
+          href: "/health/equipment",
+          icon: <Wrench size={18} />,
+        },
+      ];
+      break;
+    case "STORES_OFFICER":
+      navItems = [
+        { title: "Dashboard", href: "/stores", icon: <Home size={18} /> },
+        {
+          title: "Inventory",
+          href: "/stores/inventory",
+          icon: <Package size={18} />,
+        },
+        {
+          title: "Issues",
+          href: "/stores/issues",
+          icon: <Warehouse size={18} />,
+        },
+      ];
+      break;
+    case "FARMS_OFFICER":
+      navItems = [
+        { title: "Dashboard", href: "/farms", icon: <Home size={18} /> },
+        {
+          title: "Projects",
+          href: "/farms/projects",
+          icon: <Sprout size={18} />,
+        },
+        {
+          title: "Livestock",
+          href: "/farms/livestock",
+          icon: <Tractor size={18} />,
+        },
+      ];
+      break;
+    default:
+      navItems = [];
+  }
+
+  const sidebarClasses = cn(
+    "fixed h-full bg-white border-r border-gray-200 transition-all duration-300 z-20",
+    isOpen ? "w-64" : "w-16",
+  );
+
+  const sidebarContentClasses = cn(
+    "flex flex-col h-full",
+    !isOpen && "items-center",
+  );
+
+  const dashboardUrl = getDefaultRouteForRole(normalizedRole);
+
+  return (
+    <>
+      <div className={sidebarClasses}>
+        <div className={sidebarContentClasses}>
+          <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
+            {isOpen && (
+              <Link to={dashboardUrl} className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#0b4f2a] font-bold text-[#d7a928] ring-1 ring-[#d7a928]">
+                  <Shield size={16} />
+                </div>
+                <span className="font-semibold text-lg text-gray-900">
+                  PrisonMS
+                </span>
+              </Link>
+            )}
+            {!isOpen && (
+              <div className="w-full flex justify-center">
+                <Link to={dashboardUrl} className="flex items-center">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#0b4f2a] text-[#d7a928] ring-1 ring-[#d7a928]">
+                    <Shield size={16} />
+                  </div>
+                </Link>
+              </div>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleSidebar}
+              className="text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+            >
+              {isOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            </Button>
+          </div>
+          <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                to={item.href}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                  "text-gray-700 hover:text-gray-900 hover:bg-gray-100",
+                  location.pathname === item.href &&
+                    "border-r-2 border-[#d7a928] bg-[#0b4f2a]/10 text-[#0b4f2a]",
+                  !isOpen && "justify-center px-2",
+                )}
+              >
+                <span className="text-gray-500">{item.icon}</span>
+                {isOpen && <span>{item.title}</span>}
+              </Link>
+            ))}
+          </nav>
+        </div>
+      </div>
+      {/* Content spacer - always present */}
+      <div
+        className={cn(
+          isOpen ? "ml-64" : "ml-16",
+          "transition-all duration-300",
+        )}
+      />
+      {/* Mobile overlay */}
+      {isMobile && isOpen && (
+        <div
+          className="fixed inset-0 bg-black/20 z-10 md:hidden"
+          onClick={toggleSidebar}
+        />
+      )}
+    </>
+  );
+};

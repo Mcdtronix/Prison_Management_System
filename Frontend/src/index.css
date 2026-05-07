@@ -1,0 +1,120 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Microsoft-style color palette - clean, professional, accessible */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+
+    --primary: 148 75% 18%; /* ZPCS deep green */
+    --primary-foreground: 45 68% 88%;
+
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 44 68% 50%;
+
+    --radius: 0.375rem; /* Microsoft uses smaller border radius */
+
+    /* Sidebar colors - Microsoft-style grays and blues */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 9%;
+    --sidebar-primary: 148 75% 18%;
+    --sidebar-primary-foreground: 45 68% 88%;
+    --sidebar-accent: 0 0% 94%;
+    --sidebar-accent-foreground: 0 0% 9%;
+    --sidebar-border: 0 0% 89.8%;
+    --sidebar-ring: 44 68% 50%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 260 33% 60%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 260 15% 25%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 260 15% 25%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    
+    --sidebar-background: 260 25% 15%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 260 33% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 260 15% 25%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 260 15% 25%;
+    --sidebar-ring: 260 70% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .nav-link {
+    @apply flex items-center gap-2 py-2 px-3 rounded-md hover:bg-accent transition-colors;
+  }
+
+  .nav-link.active {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  .page-title {
+    @apply text-3xl font-bold mb-6 text-foreground/90;
+  }
+
+  .page-subtitle {
+    @apply text-xl font-semibold mb-4 text-foreground/80;
+  }
+
+  .dashboard-card {
+    @apply p-5 bg-card rounded-lg border shadow-sm hover:shadow-md transition-shadow;
+  }
+}
