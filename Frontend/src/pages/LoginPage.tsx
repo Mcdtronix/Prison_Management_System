@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Gavel, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import loginBackground from '@/assets/bckgrnd.jpg';
 
 const LoginPage = () => {
   const [serviceNumber, setServiceNumber] = useState('');
@@ -67,19 +68,23 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-md shadow-lg">
+    <div
+      className="relative min-h-screen flex items-center justify-center bg-gray-50 px-4 bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: `url(${loginBackground})` }}
+    >
+      <div className="absolute inset-0 bg-black/55" />
+      <Card className="relative z-10 w-full max-w-md border border-white/30 bg-white/15 shadow-2xl backdrop-blur-xl">
         <CardHeader className="space-y-1 flex flex-col items-center">
-          <div className="mb-4 rounded-md bg-[#0b4f2a] p-3 ring-2 ring-[#d7a928]">
+          <div className="mb-4 rounded-md bg-[#0b4f2a]/80 p-3 ring-2 ring-[#d7a928]">
             <Gavel className="h-8 w-8 text-[#d7a928]" />
           </div>
-          <CardTitle className="text-2xl font-semibold text-center text-gray-900">PrisonMS</CardTitle>
-          <CardDescription className="text-center text-gray-600">
+          <CardTitle className="text-2xl font-semibold text-center text-white">PrisonMS</CardTitle>
+          <CardDescription className="text-center text-white/85">
             Zimbabwe Prisons and Correctional Services
           </CardDescription>
-          <div className="w-full border-t border-gray-200 my-4"></div>
-          <div className="text-sm text-center text-gray-600 bg-gray-50 p-4 rounded-lg w-full border border-gray-200">
-            <p className="font-medium text-gray-900 mb-2">Login Instructions:</p>
+          <div className="w-full border-t border-white/25 my-4"></div>
+          <div className="w-full rounded-lg border border-white/25 bg-white/10 p-4 text-center text-sm text-white/85">
+            <p className="mb-2 font-medium text-white">Login Instructions:</p>
             <p className="text-xs">Enter your service number and password</p>
             <p className="text-xs mt-1">Format: 1234567A (7 digits + letter)</p>
           </div>
@@ -87,29 +92,29 @@ const LoginPage = () => {
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             {loginError && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
+              <Alert className="border-red-300/70 bg-red-500/20 text-red-50">
+                <AlertCircle className="h-4 w-4 text-red-100" />
                 <AlertDescription>{loginError}</AlertDescription>
               </Alert>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="serviceNumber">Service Number</Label>
+              <Label className="text-white/95" htmlFor="serviceNumber">Service Number</Label>
               <Input
                 id="serviceNumber"
                 placeholder="e.g., 2934823Z"
                 value={serviceNumber}
                 onChange={(e) => setServiceNumber(e.target.value.toUpperCase())}
                 disabled={isLoading}
-                className={loginError?.includes('service number') ? 'border-red-500' : ''}
+                className={`h-11 border-white/35 bg-white/15 text-white placeholder:text-white/60 focus-visible:ring-[#d7a928] ${loginError?.includes('service number') ? 'border-red-400' : ''}`}
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-white/70">
                 Your unique 8-character service identifier
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label className="text-white/95" htmlFor="password">Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -117,7 +122,7 @@ const LoginPage = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isLoading}
-                className={loginError?.includes('password') ? 'border-red-500' : ''}
+                className={`h-11 border-white/35 bg-white/15 text-white placeholder:text-white/60 focus-visible:ring-[#d7a928] ${loginError?.includes('password') ? 'border-red-400' : ''}`}
               />
             </div>
           </CardContent>
@@ -140,7 +145,7 @@ const LoginPage = () => {
         </form>
 
         <div className="px-6 pb-4">
-          <div className="text-xs text-center text-muted-foreground">
+          <div className="text-xs text-center text-white/70">
             <p>For technical support, contact your system administrator</p>
           </div>
         </div>

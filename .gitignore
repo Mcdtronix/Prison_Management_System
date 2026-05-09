@@ -43,6 +43,10 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+__pycache__/
+*.pyc
+venv/
+.venv/
 
 # Django
 *.log
@@ -66,6 +70,11 @@ ENV/
 # Environment variables
 .env
 .env.local
+Backend/.env
+
+# ── Safe to commit — no secrets ───────────────────
+!.env.development
+!.env.production
 
 # OS
 .DS_Store
@@ -76,6 +85,7 @@ node_modules/
 npm-debug.log
 yarn-debug.log
 yarn-error.log
+dist/
 
 # Coverage
 htmlcov/
