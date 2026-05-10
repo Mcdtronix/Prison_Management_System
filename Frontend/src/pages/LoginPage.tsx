@@ -80,7 +80,7 @@ const LoginPage = () => {
           </div>
           <CardTitle className="text-2xl font-semibold text-center text-white">PrisonMS</CardTitle>
           <CardDescription className="text-center text-white/85">
-            Zimbabwe Prisons and Correctional Services
+            PCorrectional Services
           </CardDescription>
           <div className="w-full border-t border-white/25 my-4"></div>
           <div className="w-full rounded-lg border border-white/25 bg-white/10 p-4 text-center text-sm text-white/85">

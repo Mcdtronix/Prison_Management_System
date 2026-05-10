@@ -1,0 +1,73 @@
+name: Deploy PMS to pms.mcdtronix.co.zw
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Build React frontend ────────────────────────────────
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Build React
+        working-directory: ./frontend
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: https://pms.mcdtronix.co.zw
+
+      # ── Copy React build to server ──────────────────────────
+      - name: Copy frontend build to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host:     ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key:      ${{ secrets.VPS_SSH_KEY }}
+          port:     ${{ secrets.VPS_PORT }}
+          source:   "frontend/dist/*"
+          target:   "/var/www/pms/frontend/dist"
+          strip_components: 2
+
+      # ── Deploy backend ──────────────────────────────────────
+      - name: Deploy backend via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key:      ${{ secrets.VPS_SSH_KEY }}
+          port:     ${{ secrets.VPS_PORT }}
+          script: |
+            cd /var/www/pms
+
+            # Pull latest code
+            git pull origin main
+
+            # Update Python dependencies
+            source venv/bin/activate
+            pip install -r requirements.txt --quiet
+
+            # Apply migrations
+            python manage.py migrate --noinput
+
+            # Collect static files
+            python manage.py collectstatic --noinput
+
+            # Restart Gunicorn — picks up all backend changes
+            sudo systemctl restart pms
+            sudo systemctl reload nginx
+
+            echo "✓ PMS deployed to pms.mcdtronix.co.zw"

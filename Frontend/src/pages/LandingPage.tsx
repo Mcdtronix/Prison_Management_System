@@ -26,19 +26,19 @@ const LandingPage = () => {
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f4dc8a]">
-                  Zimbabwe Prisons and Correctional Services
+                  Correctional Services
                 </p>
                 <h1 className="text-2xl font-semibold text-white">PrisonMS</h1>
               </div>
             </div>
 
-            <Button
+            {/* <Button
               onClick={() => navigate("/login")}
               className="border border-[#d7a928] bg-[#d7a928] font-semibold text-[#0b4f2a] hover:bg-[#efc84a]"
             >
               <LogIn className="mr-2 h-4 w-4" />
               Login
-            </Button>
+            </Button> */}
           </div>
         </header>
 
@@ -48,10 +48,10 @@ const LandingPage = () => {
               Secure correctional operations
             </p>
             <h2 className="text-5xl font-bold leading-tight text-white md:text-6xl">
-              Zimbabwe Prisons and Correctional Services
+              Correctional Services
             </h2>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-white/90 md:text-xl">
-              A green-and-gold digital workspace for inmate reception, officer
+              A green and gold digital workspace for inmate reception, officer
               administration, health services, stores, farms, and station-level
               accountability.
             </p>
@@ -111,7 +111,7 @@ const LandingPage = () => {
       <footer className="bg-[#0b4f2a] py-8 text-white">
         <div className="container mx-auto px-4 text-center">
           <p className="text-sm text-white/85">
-            © 2026 Prison Management System. Zimbabwe Prisons and Correctional Services.
+            © 2026 Prison Management System. Correctional Services.
           </p>
         </div>
       </footer>
