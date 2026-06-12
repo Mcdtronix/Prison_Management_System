@@ -1,0 +1,28 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+  <h1>Create admin user for {{ orgunit.name }} ({{ orgunit.code }})</h1>
+  <form method="post" onsubmit="return confirm('Create this admin user? This will create a system account and assign roles.');">
+    {% csrf_token %}
+    <table>
+      {{ form.as_table }}
+    </table>
+    <div style="margin-top:12px">
+      <strong>Role preview:</strong> <span id="rolePreview">(select a role)</span>
+    </div>
+    <button type="submit" class="default">Create Admin</button>
+    <a href="..">Cancel</a>
+  </form>
+  <script>
+    (function(){
+      const sel = document.querySelector('select[name="role"]');
+      const preview = document.getElementById('rolePreview');
+      if (!sel || !preview) return;
+      const update = () => {
+        const opt = sel.options[sel.selectedIndex];
+        preview.textContent = opt ? opt.text : '(none)';
+      };
+      sel.addEventListener('change', update);
+      update();
+    })();
+  </script>
+{% endblock %}

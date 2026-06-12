@@ -1,0 +1,12 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+  <h1>Create / configure department for {{ orgunit.name }} ({{ orgunit.code }})</h1>
+  <form method="post" onsubmit="return confirm('Create / configure department and optional account?');">
+    {% csrf_token %}
+    <table>
+      {{ form.as_table }}
+    </table>
+    <button type="submit" class="default">Create Department Account</button>
+    <a href="..">Cancel</a>
+  </form>
+{% endblock %}

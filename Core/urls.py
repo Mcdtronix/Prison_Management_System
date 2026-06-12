@@ -42,6 +42,8 @@ urlpatterns = [
     path('api/stores/', include('Stores.urls')),
     path('api/farms/', include('Farms.urls')),
     path('api/hr/', include('HumanResources.urls')),
+    path('api/cases/', include('Cases.urls')),
+    path('api/messaging/', include('Messaging.urls')),
 
     # Swagger / OpenAPI docs
     re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),

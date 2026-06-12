@@ -8,7 +8,7 @@
 import { getRoleDisplayName, normalizeRole } from "./auth";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+  (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000') + '/api';
 
 interface ApiResponse<T> {
   data?: T;
@@ -96,19 +96,37 @@ async function apiRequest<T>(
     const token = localStorage.getItem("auth_token");
 
     const headers: HeadersInit = {
-      "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     };
 
-    const url = endpoint.startsWith("http")
-      ? endpoint
-      : `${API_BASE_URL}${endpoint}`;
+    // Normalize endpoint: if caller passed a path starting with '/api',
+    // strip the leading '/api' so we don't end up with '/api/api/...'
+    let endpointNormalized = endpoint;
+    if (endpointNormalized.startsWith('/api/')) {
+      endpointNormalized = endpointNormalized.replace(/^\/api/, '');
+    }
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
+    let url = endpoint.startsWith("http")
+      ? endpoint
+      : `${API_BASE_URL}${endpointNormalized}`;
+
+    // Defensive: collapse accidental duplicate '/api/api/' inserted by config or caller
+    url = url.replace(/\/api\/api\//g, '/api/');
+
+    // If body is FormData, let the browser set Content-Type (multipart boundary).
+    const fetchOptions: RequestInit = { ...options };
+    if (options.body instanceof FormData) {
+      // Remove any Content-Type header so browser sets the correct multipart boundary
+      const safeHeaders = { ...(headers || {}) };
+      if (safeHeaders['Content-Type']) delete safeHeaders['Content-Type'];
+      fetchOptions.headers = safeHeaders;
+    } else {
+      // Ensure JSON content-type when body is not FormData and no explicit header provided
+      fetchOptions.headers = { 'Content-Type': 'application/json', ...(headers || {}) };
+    }
+
+    const response = await fetch(url, fetchOptions);
 
     // Handle different response types
     if (response.status === 204) {
@@ -249,21 +267,40 @@ export const authApi = {
       localStorage.setItem("auth_token", response.data.access);
       localStorage.setItem("refresh_token", response.data.refresh);
       localStorage.setItem("user_role", normalizedRole);
-      localStorage.setItem("station_id", response.data.station_id.toString());
-      localStorage.setItem("station_code", response.data.station_code);
-      localStorage.setItem("station_name", response.data.station_name);
 
-      // Store user info for UI
+      // Backend may return either station_* (legacy UserProfile) or org_unit_* (UserAssignment)
+      // Persist both shapes so frontend can use whichever is available.
+      if (response.data.station_id) {
+        localStorage.setItem("station_id", response.data.station_id.toString());
+        localStorage.setItem("station_code", response.data.station_code);
+        localStorage.setItem("station_name", response.data.station_name);
+      }
+      if ((response.data as any).org_unit_id) {
+        localStorage.setItem("org_unit_id", String((response.data as any).org_unit_id));
+        localStorage.setItem("org_unit_code", String((response.data as any).org_unit_code));
+        localStorage.setItem("org_unit_name", String((response.data as any).org_unit_name));
+      }
+
+      // Store user info for UI (prefer org_unit when present)
       const userInfo = {
         id: response.data.user_id,
         username: response.data.username,
         role: normalizedRole,
         roleName: response.data.role_name || getRoleDisplayName(normalizedRole),
-        station: {
-          id: response.data.station_id,
-          code: response.data.station_code,
-          name: response.data.station_name,
-        },
+        org_unit: (response.data as any).org_unit_id
+          ? {
+              id: (response.data as any).org_unit_id,
+              code: (response.data as any).org_unit_code,
+              name: (response.data as any).org_unit_name,
+            }
+          : undefined,
+        station: response.data.station_id
+          ? {
+              id: response.data.station_id,
+              code: response.data.station_code,
+              name: response.data.station_name,
+            }
+          : undefined,
       };
       localStorage.setItem("user_info", JSON.stringify(userInfo));
     }
@@ -374,6 +411,19 @@ export const authApi = {
   },
 };
 
+// Admin actions for NHQ/PHQ/Station workflows
+export const adminActionsApi = {
+  createPHQ: async (payload: { name: string; code: string; code_short: string }) => {
+    return apiRequest('/auth/admin-actions/phq/', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  createStation: async (payload: { name: string; code: string; code_short: string; parent?: number }) => {
+    return apiRequest('/auth/admin-actions/station/', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  createOrgAdmin: async (orgId: number, payload: { officer: number; role: number; password: string; email?: string }) => {
+    return apiRequest(`/auth/admin-actions/${orgId}/create_admin/`, { method: 'POST', body: JSON.stringify(payload) });
+  },
+};
+
 // Admin API endpoints
 export const adminApi = {
   // Officer management
@@ -431,6 +481,65 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ classification }),
     });
+  },
+};
+
+// Messaging API helpers
+export const messagingApi = {
+  listMailboxes: async () => {
+    return apiRequest('/messaging/mailboxes/');
+  },
+  listThreads: async () => {
+    return apiRequest('/messaging/threads/');
+  },
+  getThread: async (id: number) => {
+    return apiRequest(`/messaging/threads/${id}/`);
+  },
+  /**
+   * Get unread messages count.
+   * Tries a dedicated endpoint first, falls back to scanning threads responses.
+   */
+  getUnreadCount: async (): Promise<ApiResponse<number>> => {
+    try {
+      const res = await apiRequest('/messaging/unread_count/');
+      if (res.data && typeof res.data === 'object') {
+        const n = (res.data as any).count ?? (res.data as any).unread_count;
+        if (typeof n === 'number') return { data: n, status: res.status };
+      }
+
+      // Fallback: fetch threads and compute a heuristic unread count
+      const threadsRes = await apiRequest('/messaging/threads/');
+      if (threadsRes.data) {
+        const payload: any = threadsRes.data;
+        const items = Array.isArray(payload) ? payload : payload.results || [];
+        const unread = items.reduce((acc: number, t: any) => {
+          if (typeof t.unread_count === 'number') return acc + (t.unread_count || 0);
+          if (t.unread === true) return acc + 1;
+          return acc;
+        }, 0);
+        return { data: unread };
+      }
+    } catch (e) {
+      console.warn('Failed to fetch unread count', e);
+    }
+
+    return { data: 0 };
+  },
+    createThread: async (payload: any) => {
+      // Accept FormData (for attachments) or plain JSON payloads
+      if (payload instanceof FormData) {
+        return apiRequest('/messaging/threads/', { method: 'POST', body: payload });
+      }
+      return apiRequest('/messaging/threads/', { method: 'POST', body: JSON.stringify(payload) });
+    },
+    createMessage: async (payload: any) => {
+      if (payload instanceof FormData) {
+        return apiRequest('/messaging/messages/', { method: 'POST', body: payload });
+      }
+      return apiRequest('/messaging/messages/', { method: 'POST', body: JSON.stringify(payload) });
+    },
+  markThreadRead: async (id: number) => {
+    return apiRequest(`/messaging/threads/${id}/mark_read/`, { method: 'POST' });
   },
 };
 

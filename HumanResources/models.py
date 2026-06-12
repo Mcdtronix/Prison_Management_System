@@ -129,6 +129,15 @@ class OfficerStationHistory(models.Model):
     date_posted = models.DateField()
     date_transferred = models.DateField(blank=True, null=True)
     posted_by = models.CharField(max_length=100)
+    posting_org_unit = models.ForeignKey(
+        'Auth.OrgUnit',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='officer_postings',
+        db_index=True,
+        help_text="Organization unit where officer is posted (replaces Station FK)."
+    )
 
     class Meta:
         db_table = "officer_station_history"

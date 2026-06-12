@@ -43,26 +43,51 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         data = super().validate(attrs)
         
-        # Get user profile
-        try:
-            profile = self.user.userprofile
-        except UserProfile.DoesNotExist:
-            raise serializers.ValidationError({
-                "error": "User profile not found. Please contact administrator."
-            })
-        
-        # Check if profile is active
-        if not profile.is_active:
-            raise serializers.ValidationError({
-                "error": "User account is inactive. Please contact administrator."
-            })
-        
-        # Add role and station information to token response
-        data["role"] = normalize_role_code(profile.role.code)
-        data["role_name"] = profile.role.name
-        data["station_id"] = profile.station.id
-        data["station_code"] = profile.station.code
-        data["station_name"] = profile.station.name
+        # Prefer primary UserAssignment for auth context, fall back to legacy UserProfile
+        from .utils import get_primary_assignment
+        assignment = get_primary_assignment(self.user)
+        profile = None
+        if assignment:
+            role = assignment.role
+            org_unit = assignment.org_unit
+            department = assignment.department
+            role_code = normalize_role_code(role.code)
+            role_name = role.name
+            data["role"] = role_code
+            data["role_name"] = role_name
+            data["org_unit_id"] = org_unit.id if org_unit else None
+            data["org_unit_code"] = org_unit.code if org_unit else None
+            data["org_unit_name"] = org_unit.name if org_unit else None
+            data["org_unit_unit_type"] = org_unit.unit_type if org_unit else None
+            data["department_id"] = department.id if department else None
+            data["department_code"] = department.code if department else None
+            data["department_name"] = department.name if department else None
+        else:
+            try:
+                profile = self.user.userprofile
+                if not profile.is_active:
+                    raise serializers.ValidationError({
+                        "error": "User account is inactive. Please contact administrator."
+                    })
+
+                data["role"] = normalize_role_code(profile.role.code)
+                data["role_name"] = profile.role.name
+                data["station_id"] = profile.station.id
+                data["station_code"] = profile.station.code
+                data["station_name"] = profile.station.name
+                # Legacy UserProfile-based accounts map to a Station unit
+                data["org_unit_unit_type"] = "STATION"
+            except UserProfile.DoesNotExist:
+                if self.user.is_superuser:
+                    # Fallback for Django superusers created via CLI without a profile
+                    data["role"] = "SUPER_ADMIN"
+                    data["role_name"] = "Super Administrator"
+                    data["org_unit_unit_type"] = "NATIONAL_HQ"
+                else:
+                    raise serializers.ValidationError({
+                        "error": "User profile not found. Please contact administrator."
+                    })
+
         data["user_id"] = self.user.id
         data["username"] = self.user.username
         

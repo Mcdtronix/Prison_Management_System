@@ -54,6 +54,8 @@ INSTALLED_APPS = [
     'Health',
     'HumanResources',
     'Stores',
+    'Messaging',
+    'Cases',
 ]
 
 MIDDLEWARE = [
@@ -66,6 +68,17 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    
+    # ==================================================
+    # PHASE 1 MIDDLEWARE (Organizational hierarchy)
+    # ==================================================
+    # Order matters! OrgContext must run before AccessScope and AuditLogging
+    'Core.middleware.OrgContextMiddleware',      # Resolves user org-unit & assigns to request
+    'Core.middleware.AccessScopeMiddleware',     # Computes data visibility scope
+    'Core.middleware.MailboxContextMiddleware',  # For messaging endpoints
+    'Core.middleware.AuditLoggingMiddleware',    # Logs all mutations (should be last)
+    # Thread-local request helper for audit signals
+    'Auth.middleware.RequestMiddleware',
 ]
 
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
@@ -111,6 +124,11 @@ DATABASES = {
         'PASSWORD': config('DB_PASSWORD'),
         'HOST':     config('DB_HOST', default='localhost'),
         'PORT':     config('DB_PORT', default='5432'),
+        # Connection pooling
+        'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=600, cast=int),
+        'OPTIONS': {
+            'connect_timeout': 10,
+        }
     }
 }
 
@@ -140,7 +158,8 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+# Africa/Harare timezone (Zimbabwe prison system location)
+TIME_ZONE = config('TIMEZONE', default='Africa/Harare')
 
 USE_I18N = True
 
@@ -168,6 +187,9 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
+    ),
+    'DEFAULT_FILTER_BACKENDS': (
+        'Core.filters.OrgUnitAccessFilterBackend',
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,
@@ -241,39 +263,71 @@ CORS_ALLOW_HEADERS = [
 
 
 # ==================================================
-# SECURITY SETTINGS
+# SECURITY SETTINGS (Phase 0: Foundation)
 # ==================================================
 SECURE_BROWSER_XSS_FILTER = True
-SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
-CSRF_COOKIE_SECURE = False  # Set to True in production with HTTPS
+
+# Cookie security (HTTPS in production)
+SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=False, cast=bool)
+CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=False, cast=bool)
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Strict'
+CSRF_COOKIE_SAMESITE = 'Strict'
 
-# For production, add:
-# SECURE_SSL_REDIRECT = True
-# SECURE_HSTS_SECONDS = 31536000
-# SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-# SECURE_HSTS_PRELOAD = True
+# Session timeout (8 hours)
+SESSION_COOKIE_AGE = config('SESSION_COOKIE_AGE', default=28800, cast=int)
+
+# Production security headers (enable with HTTPS)
+if not DEBUG:
+    # Force HTTPS
+    SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=False, cast=bool)
+    SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=31536000, cast=int)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 
 # ==================================================
-# LOGGING CONFIGURATION
+# LOGGING CONFIGURATION (Phase 0: Audit Trail Foundation)
 # ==================================================
+# Ensure logs directory exists
+import logging.handlers
+LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR.mkdir(exist_ok=True)
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
-            'format': '{levelname} {asctime} {module} {message}',
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
             'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+        'audit': {
+            'format': '{asctime} | {user} | {org_unit} | {action} | {resource} | {status} | {ip}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
         },
     },
     'handlers': {
-        'file': {
+        'django_file': {
             'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / 'django.log',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOGS_DIR / 'django.log',
+            'maxBytes': 10485760,  # 10 MB
+            'backupCount': 10,
             'formatter': 'verbose',
+        },
+        'audit_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOGS_DIR / 'audit.log',
+            'maxBytes': 10485760,  # 10 MB
+            'backupCount': 30,  # ~30 days of logs
+            'formatter': 'audit',
         },
         'console': {
             'level': 'DEBUG',
@@ -282,19 +336,97 @@ LOGGING = {
         },
     },
     'root': {
-        'handlers': ['console', 'file'],
+        'handlers': ['console', 'django_file'],
         'level': 'INFO',
     },
     'loggers': {
         'django': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'django_file'],
             'level': 'INFO',
             'propagate': False,
         },
+        'django.db.backends': {
+            'handlers': ['django_file'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
         'Auth': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'django_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'audit': {
+            'handlers': ['audit_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'Reception': {
+            'handlers': ['console', 'django_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'Health': {
+            'handlers': ['console', 'django_file'],
             'level': 'INFO',
             'propagate': False,
         },
     },
 }
+
+
+# ==================================================
+# ORGANIZATION HIERARCHY CONFIGURATION (Phase 1+)
+# ==================================================
+# These settings guide the setup wizard for building the national → provincial → station hierarchy
+
+# National HQ initialization (Phase 1 setup wizard will use these defaults)
+INITIAL_ORG_NAME = config('INITIAL_ORG_NAME', default='National Headquarters')
+INITIAL_ORG_CODE = config('INITIAL_ORG_CODE', default='NAT_HQ_001')
+INITIAL_ORG_TYPE = 'NATIONAL_HQ'
+
+# System setup state configuration
+SYSTEM_SETUP_TIMEOUT_HOURS = config('SYSTEM_SETUP_TIMEOUT_HOURS', default=72, cast=int)
+
+# Org unit capacity targets
+ORG_CAPACITY = {
+    'national_hq': {'users': 50, 'departments': 8},
+    'provincial_hq': {'users': 30, 'departments': 8, 'count': 10},
+    'station': {'users': 25, 'departments': 8, 'count': 120},
+}
+
+# Fixed departments (seeded during setup)
+FIXED_DEPARTMENTS = [
+    {'code': 'RECEPTION', 'name': 'Reception / Admissions'},
+    {'code': 'HEALTH', 'name': 'Health / Medical Services'},
+    {'code': 'HUMAN_RESOURCES', 'name': 'Human Resources / Personnel'},
+    {'code': 'STORES', 'name': 'Stores / Logistics'},
+    {'code': 'FARMS', 'name': 'Farms / Production'},
+    {'code': 'FINANCE', 'name': 'Finance / Administration'},
+    {'code': 'SECURITY', 'name': 'Security / Disciplinary'},
+    {'code': 'ADMIN', 'name': 'General Administration'},
+]
+
+# Data exposure policy configuration
+DATA_EXPOSURE_CONFIG = {
+    'default_visibility_level': 'SUMMARY',  # SUMMARY, DETAIL_READ_ONLY, CUSTOM
+    'policy_approval_required': True,
+    'auto_expire_days': None,  # Policies never auto-expire unless explicitly set
+}
+
+
+# ==================================================
+# COMPLIANCE & AUDIT CONFIGURATION
+# ==================================================
+# Audit trail retention (7 years = ~2555 days)
+AUDIT_RETENTION_DAYS = config('AUDIT_RETENTION_DAYS', default=2555, cast=int)
+
+# Message retention (1 year)
+MESSAGE_RETENTION_DAYS = config('MESSAGE_RETENTION_DAYS', default=365, cast=int)
+
+# Maximum thread participants for messaging
+MAX_THREAD_RECIPIENTS = config('MAX_THREAD_RECIPIENTS', default=50, cast=int)
+
+# File upload configuration
+FILE_UPLOAD_MAX_MEMORY_SIZE = config('FILE_UPLOAD_MAX_MEMORY_SIZE', default=104857600, cast=int)  # 100MB
+ALLOWED_UPLOAD_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx', 'xls', 'xlsx']
+

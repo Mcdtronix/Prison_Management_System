@@ -6,6 +6,7 @@ import LandingPage from "@/pages/LandingPage";
 import LoginPage from "@/pages/LoginPage";
 import NotFound from "@/pages/NotFound";
 import AdminDashboard from "@/pages/admin/AdminDashboard";
+import AdminWizard from "@/pages/admin/AdminWizard";
 import OfficerManagement from "@/pages/admin/OfficerManagement";
 import InmateOverview from "@/pages/admin/InmateOverview";
 import ReceptionDashboard from "@/pages/reception/ReceptionDashboard";
@@ -19,7 +20,12 @@ import OPDRecordsPage from "@/pages/health/OPDRecordsPage";
 import StoresDashboard from "@/pages/stores/StoresDashboard";
 import FarmsDashboard from "@/pages/farms/FarmsDashboard";
 import InmateDetails from "@/pages/shared/InmateDetails";
-import { getDefaultRouteForRole } from "@/lib/auth";
+import MessagingInbox from "@/pages/messaging/Inbox";
+import ThreadView from "@/pages/messaging/ThreadView";
+import Compose from "@/pages/messaging/Compose";
+import Outbox from "@/pages/messaging/Outbox";
+import Drafts from "@/pages/messaging/Drafts";
+import { getDefaultRouteForRole, getLandingRouteForUser } from "@/lib/auth";
 
 function AuthLoadingScreen() {
   return (
@@ -40,7 +46,8 @@ function RootRoute() {
   }
 
   if (user) {
-    return <Navigate to={getDefaultRouteForRole(user.role)} replace />;
+    const landing = getLandingRouteForUser(user.role, (user as any).orgUnitType || null, user.station?.id || null);
+    return <Navigate to={landing} replace />;
   }
 
   return <LandingPage />;
@@ -54,7 +61,8 @@ function LoginRoute() {
   }
 
   if (user) {
-    return <Navigate to={getDefaultRouteForRole(user.role)} replace />;
+    const landing = getLandingRouteForUser(user.role, (user as any).orgUnitType || null, user.station?.id || null);
+    return <Navigate to={landing} replace />;
   }
 
   return <LoginPage />;
@@ -83,6 +91,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
                 <OfficerManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/wizard"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
+                <AdminWizard />
               </ProtectedRoute>
             }
           />
@@ -201,6 +217,46 @@ function App() {
           />
 
           {/* 404 route */}
+          <Route
+            path="/messaging"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
+                <MessagingInbox />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/messaging/compose"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
+                <Compose />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/messaging/threads/:id"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
+                <ThreadView />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/messaging/outbox"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
+                <Outbox />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/messaging/drafts"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
+                <Drafts />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Router>

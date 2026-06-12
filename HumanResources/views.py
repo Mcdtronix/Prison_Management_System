@@ -1,4 +1,6 @@
 from rest_framework import viewsets
+from Core.mixins import OrgUnitContextMixin
+
 from rest_framework.permissions import IsAuthenticated
 
 from .models import (
@@ -37,91 +39,91 @@ from .serializers import (
 )
 
 
-class OfficerViewSet(viewsets.ModelViewSet):
+class OfficerViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Officer.objects.all()
     serializer_class = OfficerSerializer
     permission_classes = [IsAuthenticated]
 
 
-class MaritalStatusViewSet(viewsets.ModelViewSet):
+class MaritalStatusViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = MaritalStatus.objects.all()
     serializer_class = MaritalStatusSerializer
     permission_classes = [IsAuthenticated]
 
 
-class RankViewSet(viewsets.ModelViewSet):
+class RankViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Rank.objects.all()
     serializer_class = RankSerializer
     permission_classes = [IsAuthenticated]
 
 
-class QualificationTypeViewSet(viewsets.ModelViewSet):
+class QualificationTypeViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = QualificationType.objects.all()
     serializer_class = QualificationTypeSerializer
     permission_classes = [IsAuthenticated]
 
 
-class CourseViewSet(viewsets.ModelViewSet):
+class CourseViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Course.objects.all()
     serializer_class = CourseSerializer
     permission_classes = [IsAuthenticated]
 
 
-class OfficerStationHistoryViewSet(viewsets.ModelViewSet):
+class OfficerStationHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = OfficerStationHistory.objects.select_related("officer", "station")
     serializer_class = OfficerStationHistorySerializer
     permission_classes = [IsAuthenticated]
 
 
-class OfficerRankHistoryViewSet(viewsets.ModelViewSet):
+class OfficerRankHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = OfficerRankHistory.objects.select_related("officer", "rank")
     serializer_class = OfficerRankHistorySerializer
     permission_classes = [IsAuthenticated]
 
 
-class OfficerQualificationViewSet(viewsets.ModelViewSet):
+class OfficerQualificationViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = OfficerQualification.objects.select_related("officer", "qualification_type")
     serializer_class = OfficerQualificationSerializer
     permission_classes = [IsAuthenticated]
 
 
-class OfficerCourseHistoryViewSet(viewsets.ModelViewSet):
+class OfficerCourseHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = OfficerCourseHistory.objects.select_related("officer", "course")
     serializer_class = OfficerCourseHistorySerializer
     permission_classes = [IsAuthenticated]
 
 
-class OffenceTypeViewSet(viewsets.ModelViewSet):
+class OffenceTypeViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = OffenceType.objects.all()
     serializer_class = OffenceTypeSerializer
     permission_classes = [IsAuthenticated]
 
 
-class ChargeSheetViewSet(viewsets.ModelViewSet):
+class ChargeSheetViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = ChargeSheet.objects.select_related("officer", "offence_type")
     serializer_class = ChargeSheetSerializer
     permission_classes = [IsAuthenticated]
 
 
-class SentenceViewSet(viewsets.ModelViewSet):
+class SentenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Sentence.objects.select_related("charge_sheet")
     serializer_class = SentenceSerializer
     permission_classes = [IsAuthenticated]
 
 
-class DependantViewSet(viewsets.ModelViewSet):
+class DependantViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Dependant.objects.select_related("officer")
     serializer_class = DependantSerializer
     permission_classes = [IsAuthenticated]
 
 
-class OfficerDocumentViewSet(viewsets.ModelViewSet):
+class OfficerDocumentViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = OfficerDocument.objects.select_related("officer")
     serializer_class = OfficerDocumentSerializer
     permission_classes = [IsAuthenticated]
 
 
-class OfficerAuditTrailViewSet(viewsets.ModelViewSet):
+class OfficerAuditTrailViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = OfficerAuditTrail.objects.select_related("officer")
     serializer_class = OfficerAuditTrailSerializer
     permission_classes = [IsAuthenticated]

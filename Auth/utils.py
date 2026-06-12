@@ -1,3 +1,37 @@
+from .models import AuditLog
+from .middleware import get_current_request
+
+
+def create_audit_log(actor, action, module='AUTH', object_type=None, object_id=None, remarks=None, role=None, station=None):
+    """Convenience helper to create an AuditLog entry enriched with request metadata.
+
+    Use this helper from admin actions, role-assignment helpers, and view code paths.
+    """
+    req = get_current_request()
+    ip = None
+    ua = None
+    path = None
+    method = None
+    if req is not None:
+        ip = req.META.get('REMOTE_ADDR') or req.META.get('HTTP_X_FORWARDED_FOR')
+        ua = req.META.get('HTTP_USER_AGENT', '')
+        path = req.path
+        method = req.method
+
+    AuditLog.objects.create(
+        user=actor or None,
+        role=role or (getattr(actor, 'username', 'system') if actor else 'system'),
+        station=station,
+        action=action,
+        module=module,
+        object_type=object_type,
+        object_id=str(object_id) if object_id is not None else None,
+        ip_address=ip or '0.0.0.0',
+        user_agent=ua,
+        request_method=method,
+        request_path=path,
+        remarks=remarks,
+    )
 """
 Audit Logging Utility
 =====================
@@ -57,6 +91,55 @@ def normalize_role_code(role_code):
     return aliases.get(normalized, normalized)
 
 
+def get_primary_assignment(user):
+    """
+    Return the active primary UserAssignment for the user, if any.
+    """
+    try:
+        return user.org_assignments.select_related('org_unit', 'department', 'role').filter(
+            is_active=True,
+            is_primary=True
+        ).first()
+    except Exception:
+        return None
+
+
+def get_current_role_code(user):
+    """
+    Return the canonical role code for the user.
+    """
+    assignment = get_primary_assignment(user)
+    if assignment and assignment.role:
+        return normalize_role_code(assignment.role.code)
+
+    try:
+        profile = user.userprofile
+    except AttributeError:
+        return ""
+
+    return normalize_role_code(getattr(profile.role, 'code', ''))
+
+
+def get_current_org_unit(user):
+    """
+    Return the user's primary org unit, if assigned.
+    """
+    assignment = get_primary_assignment(user)
+    if assignment and assignment.org_unit:
+        return assignment.org_unit
+    return None
+
+
+def get_current_department(user):
+    """
+    Return the user's primary department, if assigned.
+    """
+    assignment = get_primary_assignment(user)
+    if assignment and assignment.department:
+        return assignment.department
+    return None
+
+
 def log_action(request, action, module, object_id=None, object_type=None, remarks=None):
     """
     Log an action to the audit trail.
@@ -74,30 +157,20 @@ def log_action(request, action, module, object_id=None, object_type=None, remark
     """
     if not request.user.is_authenticated:
         return None
-    
+
+    role_code = get_current_role_code(request.user)
+    station = None
+
     try:
         profile = request.user.userprofile
+        station = profile.station
     except AttributeError:
-        # User doesn't have a profile - log with minimal info
-        return AuditLog.objects.create(
-            user=request.user,
-            role="UNKNOWN",
-            station=None,
-            action=action,
-            module=module,
-            object_id=object_id,
-            object_type=object_type,
-            ip_address=_get_client_ip(request),
-            user_agent=request.META.get('HTTP_USER_AGENT', ''),
-            request_method=request.method,
-            request_path=request.path,
-            remarks=remarks
-        )
-    
+        pass
+
     return AuditLog.objects.create(
         user=request.user,
-        role=normalize_role_code(profile.role.code),
-        station=profile.station,
+        role=role_code or "UNKNOWN",
+        station=station,
         action=action,
         module=module,
         object_id=object_id,

@@ -69,6 +69,15 @@ class StockReceipt(models.Model):
     )
     received_date = models.DateField(default=timezone.now)
     remarks = models.TextField(blank=True)
+    receiving_org_unit = models.ForeignKey(
+        'Auth.OrgUnit',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='stock_receipts',
+        db_index=True,
+        help_text="Organization unit that receives this stock. Used for data isolation."
+    )
 
     class Meta:
         db_table = "stock_receipt"
@@ -154,6 +163,22 @@ class FeedingSession(models.Model):
     recorded_by = models.ForeignKey(
         'HumanResources.Officer',
         on_delete=models.PROTECT
+    )
+    providing_org_unit = models.ForeignKey(
+        'Auth.OrgUnit',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='feeding_sessions_provided',
+        help_text="Organization unit providing the food/rations."
+    )
+    consuming_org_unit = models.ForeignKey(
+        'Auth.OrgUnit',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='feeding_sessions_consumed',
+        help_text="Organization unit consuming the food/rations."
     )
 
     class Meta:

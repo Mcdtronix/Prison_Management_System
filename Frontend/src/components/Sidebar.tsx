@@ -28,8 +28,11 @@ import {
   Pill,
   ClipboardList,
   Wrench,
+  MessageSquare,
+  ChevronDown,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { messagingApi } from '@/lib/api'
 import { Link, useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "./ui/button";
@@ -65,6 +68,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
     case "SUPER_ADMIN":
     case "ADMIN_OFFICER":
       navItems = [
+        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         { title: "Dashboard", href: "/admin", icon: <Home size={18} /> },
         { title: "Inmates", href: "/admin/inmates", icon: <Users size={18} /> },
         {
@@ -72,6 +76,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           href: "/admin/officers",
           icon: <UserCheck size={18} />,
         },
+        { title: "Admin Wizard", href: "/admin/wizard", icon: <UserPlus size={18} /> },
         {
           title: "Settings",
           href: "/admin/settings",
@@ -87,6 +92,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           href: "/reception/register",
           icon: <UserPlus size={18} />,
         },
+        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         {
           title: "Inmate Details",
           href: "/reception/inmates",
@@ -131,6 +137,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
       break;
     case "HEALTH_OFFICER":
       navItems = [
+        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         { title: "Dashboard", href: "/health", icon: <Home size={18} /> },
         {
           title: "Inmate Health",
@@ -171,6 +178,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
       break;
     case "STORES_OFFICER":
       navItems = [
+        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         { title: "Dashboard", href: "/stores", icon: <Home size={18} /> },
         {
           title: "Inventory",
@@ -186,6 +194,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
       break;
     case "FARMS_OFFICER":
       navItems = [
+        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         { title: "Dashboard", href: "/farms", icon: <Home size={18} /> },
         {
           title: "Projects",
@@ -214,6 +223,34 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
   );
 
   const dashboardUrl = getDefaultRouteForRole(normalizedRole);
+  const [messagesOpen, setMessagesOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  const toggleMessages = () => setMessagesOpen(v => !v);
+
+  // Keep messages submenu open when navigating inside /messaging,
+  // close it when navigating away. Also initialize to open if already inside messaging.
+  useEffect(() => {
+    if (location.pathname.startsWith('/messaging')) {
+      setMessagesOpen(true);
+    } else {
+      setMessagesOpen(false);
+    }
+  }, [location.pathname]);
+
+  // Poll unread count periodically and update badge
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      const res = await messagingApi.getUnreadCount();
+      if (!mounted) return;
+      if (res && typeof res.data === 'number') setUnreadCount(res.data);
+    };
+
+    load();
+    const id = setInterval(load, 10000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
 
   return (
     <>
@@ -249,22 +286,63 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
             </Button>
           </div>
           <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                to={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                  "text-gray-700 hover:text-gray-900 hover:bg-gray-100",
-                  location.pathname === item.href &&
-                    "border-r-2 border-[#d7a928] bg-[#0b4f2a]/10 text-[#0b4f2a]",
-                  !isOpen && "justify-center px-2",
-                )}
-              >
-                <span className="text-gray-500">{item.icon}</span>
-                {isOpen && <span>{item.title}</span>}
-              </Link>
-            ))}
+            {navItems.map((item) => {
+              if (item.href === '/messaging') {
+                return (
+                  <div key="messaging-root">
+                    <button
+                      onClick={toggleMessages}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                        "text-gray-700 hover:text-gray-900 hover:bg-gray-100",
+                        location.pathname.startsWith('/messaging') &&
+                          "border-r-2 border-[#d7a928] bg-[#0b4f2a]/10 text-[#0b4f2a]",
+                        !isOpen && "justify-center px-2",
+                      )}
+                    >
+                      <span className="text-gray-500 relative">{item.icon}
+                        {unreadCount > 0 && (
+                          <span className="absolute -top-2 -right-2 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-semibold leading-none text-white bg-red-600 rounded-full">{unreadCount}</span>
+                        )}
+                      </span>
+                      {isOpen && <span className="flex-1 text-left">{item.title}</span>}
+                      {isOpen && <ChevronDown size={14} className={cn(messagesOpen ? 'transform rotate-180' : '')} />}
+                      {unreadCount > 0 && isOpen && (
+                        <span className="ml-2 text-xs text-red-600 animate-pulse">●</span>
+                      )}
+                    </button>
+
+                    {messagesOpen && isOpen && (
+                      <div className="ml-8 mt-1 space-y-1">
+                        <Link to="/messaging" className="flex items-center justify-between block px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 rounded">
+                          <span>Inbox</span>
+                          {unreadCount > 0 && <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold leading-none text-white bg-red-600 rounded-full">{unreadCount}</span>}
+                        </Link>
+                        <Link to="/messaging/outbox" className="block px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 rounded">Outbox</Link>
+                        <Link to="/messaging/drafts" className="block px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 rounded">Drafts</Link>
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+
+              return (
+                <Link
+                  key={item.href}
+                  to={item.href}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                    "text-gray-700 hover:text-gray-900 hover:bg-gray-100",
+                    location.pathname === item.href &&
+                      "border-r-2 border-[#d7a928] bg-[#0b4f2a]/10 text-[#0b4f2a]",
+                    !isOpen && "justify-center px-2",
+                  )}
+                >
+                  <span className="text-gray-500">{item.icon}</span>
+                  {isOpen && <span>{item.title}</span>}
+                </Link>
+              )
+            })}
           </nav>
         </div>
       </div>

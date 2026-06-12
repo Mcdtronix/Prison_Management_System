@@ -60,6 +60,15 @@ class Inmate(models.Model):
         ],
         default="IN_CUSTODY",
     )
+    owner_org_unit = models.ForeignKey(
+        'Auth.OrgUnit',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='inmates',
+        db_index=True,
+        help_text="Organization unit that owns/admits this inmate. Used for data isolation."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

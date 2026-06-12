@@ -442,11 +442,15 @@ class BasicInmateRegistrationSerializer(serializers.Serializer):
         logger.info(f"Inmate data: {inmate_data}")
         logger.info(f"Next of kin data: {next_of_kin_data}")
 
-        # Get current user's station
+        # Get current user's station and org unit (Phase 1)
         request = self.context.get('request')
         if request and hasattr(request, 'user'):
             station = get_current_station(request.user)
             logger.info(f"User station: {station} (ID: {station.id if station else None})")
+            org_unit = getattr(request, 'org_unit', None)
+            if not org_unit:
+                from Auth.utils import get_current_org_unit
+                org_unit = get_current_org_unit(request.user)
         else:
             # Fallback - this should not happen in production
             logger.warning("No request context, using fallback station")
@@ -456,8 +460,15 @@ class BasicInmateRegistrationSerializer(serializers.Serializer):
                 raise serializers.ValidationError("No active station found")
 
         logger.info("Creating inmate record...")
-        # Create inmate
-        inmate = Inmate.objects.create(**inmate_data)
+        # Create inmate with owner org unit
+        create_kwargs = inmate_data.copy()
+        if 'org_unit' not in create_kwargs:
+            try:
+                create_kwargs['owner_org_unit'] = org_unit
+            except UnboundLocalError:
+                create_kwargs['owner_org_unit'] = None
+
+        inmate = Inmate.objects.create(**create_kwargs)
         logger.info(f"Inmate created with ID: {inmate.id}, Prison Number: {inmate.prison_number}")
 
         # Create next of kin only when the optional section has content.

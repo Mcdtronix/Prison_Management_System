@@ -1,0 +1,13 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block content %}
+  <h1>Create child organizational unit under {{ parent.name }} ({{ parent.code }})</h1>
+  <form method="post" novalidate onsubmit="return confirm('Create this organizational unit?');">
+    {% csrf_token %}
+    <table>
+      {{ form.as_table }}
+    </table>
+    <button type="submit" class="default">Create</button>
+    <a href="..">Cancel</a>
+  </form>
+{% endblock %}

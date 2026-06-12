@@ -6,6 +6,8 @@ Implements station-level data isolation and RBAC permissions.
 """
 
 from rest_framework import viewsets, status
+from Core.mixins import OrgUnitContextMixin
+
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -42,7 +44,7 @@ from .serializers import (
 # ==================================================
 # PATIENT VIEWS
 # ==================================================
-class PatientViewSet(viewsets.ModelViewSet):
+class PatientViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for patient management with station isolation"""
     serializer_class = PatientSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer]
@@ -81,7 +83,7 @@ class PatientViewSet(viewsets.ModelViewSet):
 # ==================================================
 # MEDICAL REGISTER VIEWS
 # ==================================================
-class AdmissionHealthAssessmentViewSet(viewsets.ModelViewSet):
+class AdmissionHealthAssessmentViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for inmate admission health assessments"""
     serializer_class = AdmissionHealthAssessmentSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer]
@@ -94,7 +96,7 @@ class AdmissionHealthAssessmentViewSet(viewsets.ModelViewSet):
         ).select_related('inmate', 'station')
 
 
-class OutPatientVisitViewSet(viewsets.ModelViewSet):
+class OutPatientVisitViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for OPD consultations"""
     serializer_class = OutPatientVisitSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer]
@@ -107,7 +109,7 @@ class OutPatientVisitViewSet(viewsets.ModelViewSet):
         ).select_related('patient', 'station')
 
 
-class MentalHealthVisitViewSet(viewsets.ModelViewSet):
+class MentalHealthVisitViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for mental health consultations"""
     serializer_class = MentalHealthVisitSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer]
@@ -120,7 +122,7 @@ class MentalHealthVisitViewSet(viewsets.ModelViewSet):
         ).select_related('patient', 'station')
 
 
-class ChronicPatientViewSet(viewsets.ModelViewSet):
+class ChronicPatientViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for chronic patient management"""
     serializer_class = ChronicPatientSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer]
@@ -136,7 +138,7 @@ class ChronicPatientViewSet(viewsets.ModelViewSet):
 # ==================================================
 # PHARMACY VIEWS
 # ==================================================
-class MedicineViewSet(viewsets.ModelViewSet):
+class MedicineViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for medicine inventory management"""
     queryset = Medicine.objects.all()
     serializer_class = MedicineSerializer
@@ -155,7 +157,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class StockCardEntryViewSet(viewsets.ModelViewSet):
+class StockCardEntryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for stock card register"""
     serializer_class = StockCardEntrySerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer]
@@ -169,13 +171,17 @@ class StockCardEntryViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Ensure station isolation on create"""
-        serializer.save(station=self.request.user.userprofile.station)
+        org_unit = getattr(self.request, 'org_unit', None)
+        if not org_unit:
+            from Auth.utils import get_current_org_unit
+            org_unit = get_current_org_unit(self.request.user)
+        serializer.save(station=self.request.user.userprofile.station, owner_org_unit=org_unit)
 
 
 # ==================================================
 # EQUIPMENT VIEWS
 # ==================================================
-class MedicalEquipmentViewSet(viewsets.ModelViewSet):
+class MedicalEquipmentViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for medical equipment management"""
     serializer_class = MedicalEquipmentSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer]
@@ -189,10 +195,14 @@ class MedicalEquipmentViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Ensure station isolation on create"""
-        serializer.save(station=self.request.user.userprofile.station)
+        org_unit = getattr(self.request, 'org_unit', None)
+        if not org_unit:
+            from Auth.utils import get_current_org_unit
+            org_unit = get_current_org_unit(self.request.user)
+        serializer.save(station=self.request.user.userprofile.station, owner_org_unit=org_unit)
 
 
-class EquipmentUsageLogViewSet(viewsets.ModelViewSet):
+class EquipmentUsageLogViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for equipment usage tracking"""
     serializer_class = EquipmentUsageLogSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer]

@@ -128,6 +128,7 @@ class AuditTrailInline(admin.TabularInline):
 class InmateAdmin(admin.ModelAdmin):
     list_display = (
         "prison_number",
+        "owner_org_unit",
         "admission_type",
         "surname",
         "first_name",
@@ -138,6 +139,7 @@ class InmateAdmin(admin.ModelAdmin):
         "admission_date",
     )
     list_filter = (
+        "owner_org_unit",
         "gender",
         "current_status",
         "nationality",
@@ -152,6 +154,9 @@ class InmateAdmin(admin.ModelAdmin):
     )
     ordering = ("-admission_date",)
     date_hierarchy = "admission_date"
+
+    list_select_related = ("owner_org_unit",)
+    autocomplete_fields = ("owner_org_unit",)
 
     readonly_fields = (
         "created_at",
@@ -182,6 +187,7 @@ class InmateAdmin(admin.ModelAdmin):
             "fields": (
                 "admission_date",
                 "current_status",
+                "owner_org_unit",
             )
         }),
         ("Audit Metadata", {

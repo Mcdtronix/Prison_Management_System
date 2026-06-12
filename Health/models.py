@@ -102,6 +102,15 @@ class Patient(models.Model):
         on_delete=models.PROTECT,
         help_text="Station for data isolation"
     )
+    owner_org_unit = models.ForeignKey(
+        'Auth.OrgUnit',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='patients',
+        db_index=True,
+        help_text="Organization unit that owns this patient record. Used for data isolation."
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -236,6 +245,15 @@ class AdmissionHealthAssessment(models.Model):
         'Auth.Station',
         on_delete=models.PROTECT,
         help_text="Station where assessment was conducted"
+    )
+    owner_org_unit = models.ForeignKey(
+        'Auth.OrgUnit',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='admission_assessments',
+        db_index=True,
+        help_text="Organization unit where this assessment was conducted."
     )
 
     class Meta:

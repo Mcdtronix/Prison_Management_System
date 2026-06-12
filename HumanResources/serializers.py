@@ -61,6 +61,18 @@ class OfficerStationHistorySerializer(serializers.ModelSerializer):
         model = OfficerStationHistory
         fields = "__all__"
 
+    def create(self, validated_data):
+        request = self.context.get('request')
+        org_unit = getattr(request, 'org_unit', None) if request else None
+        if not org_unit and request and hasattr(request.user, 'id'):
+            from Auth.utils import get_current_org_unit
+            org_unit = get_current_org_unit(request.user)
+
+        if 'posting_org_unit' not in validated_data:
+            validated_data['posting_org_unit'] = org_unit
+
+        return super().create(validated_data)
+
 
 class OfficerRankHistorySerializer(serializers.ModelSerializer):
     class Meta:

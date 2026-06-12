@@ -77,3 +77,17 @@ export const getDefaultRouteForRole = (role?: string | null): string => {
       return "/";
   }
 };
+
+export const getLandingRouteForUser = (role?: string | null, orgUnitType?: string | null, orgUnitId?: number | null): string => {
+  const normalized = normalizeRole(role);
+
+  // Only apply org-specific admin routing for admin roles
+  if (normalized === 'SUPER_ADMIN' || normalized === 'ADMIN_OFFICER') {
+    if (orgUnitType === 'NATIONAL_HQ') return '/admin/nhq';
+    if (orgUnitType === 'PROVINCIAL_HQ') return orgUnitId ? `/admin/phq/${orgUnitId}` : '/admin/phq';
+    if (orgUnitType === 'STATION') return orgUnitId ? `/admin/station/${orgUnitId}` : '/admin/station';
+    return '/admin';
+  }
+
+  return getDefaultRouteForRole(normalized);
+};

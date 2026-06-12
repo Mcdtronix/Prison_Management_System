@@ -1,4 +1,6 @@
 from rest_framework import viewsets, status
+from Core.mixins import OrgUnitContextMixin
+
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -48,7 +50,7 @@ from .serializers import (
 )
 
 
-class InmateViewSet(viewsets.ModelViewSet):
+class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Inmate.objects.all()
     serializer_class = InmateSerializer
     permission_classes = [IsAuthenticated]
@@ -71,97 +73,97 @@ class InmateViewSet(viewsets.ModelViewSet):
         return Inmate.objects.all()
 
 
-class NextOfKinViewSet(viewsets.ModelViewSet):
+class NextOfKinViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = NextOfKin.objects.all()
     serializer_class = NextOfKinSerializer
     permission_classes = [IsAuthenticated]
 
 
-class InmateStationHistoryViewSet(viewsets.ModelViewSet):
+class InmateStationHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = InmateStationHistory.objects.select_related("station", "inmate")
     serializer_class = InmateStationHistorySerializer
     permission_classes = [IsAuthenticated]
 
 
-class InmateClassificationHistoryViewSet(viewsets.ModelViewSet):
+class InmateClassificationHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = InmateClassificationHistory.objects.select_related("inmate")
     serializer_class = InmateClassificationHistorySerializer
     permission_classes = [IsAuthenticated]
 
 
-class OffenceViewSet(viewsets.ModelViewSet):
+class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Offence.objects.select_related("inmate")
     serializer_class = OffenceSerializer
     permission_classes = [IsAuthenticated]
 
 
-class ConvictedViewSet(viewsets.ModelViewSet):
+class ConvictedViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Convicted.objects.select_related("offence")
     serializer_class = ConvictedSerializer
     permission_classes = [IsAuthenticated]
 
 
-class UnconvictedViewSet(viewsets.ModelViewSet):
+class UnconvictedViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Unconvicted.objects.select_related("inmate", "offence")
     serializer_class = UnconvictedSerializer
     permission_classes = [IsAuthenticated]
 
 
-class RestitutionViewSet(viewsets.ModelViewSet):
+class RestitutionViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Restitution.objects.select_related("inmate", "offence")
     serializer_class = RestitutionSerializer
     permission_classes = [IsAuthenticated]
 
 
-class CourtSessionViewSet(viewsets.ModelViewSet):
+class CourtSessionViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = CourtSession.objects.select_related("offence")
     serializer_class = CourtSessionSerializer
     permission_classes = [IsAuthenticated]
 
 
-class RestitutionExtensionViewSet(viewsets.ModelViewSet):
+class RestitutionExtensionViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = RestitutionExtension.objects.select_related("restitution")
     serializer_class = RestitutionExtensionSerializer
     permission_classes = [IsAuthenticated]
 
 
-# class ReleaseHistoryViewSet(viewsets.ModelViewSet):
+# class ReleaseHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 #     queryset = ReleaseHistory.objects.select_related("inmate")
 #     serializer_class = ReleaseHistorySerializer
 #     permission_classes = [IsAuthenticated]
 
 
-class InmatePropertyHistoryViewSet(viewsets.ModelViewSet):
+class InmatePropertyHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = InmatePropertyHistory.objects.select_related("inmate")
     serializer_class = InmatePropertyHistorySerializer
     permission_classes = [IsAuthenticated]
 
 
-class EscapeHistoryViewSet(viewsets.ModelViewSet):
+class EscapeHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = EscapeHistory.objects.select_related("inmate")
     serializer_class = EscapeHistorySerializer
     permission_classes = [IsAuthenticated]
 
 
-class InmateDisciplinaryHistoryViewSet(viewsets.ModelViewSet):
+class InmateDisciplinaryHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = InmateDisciplinaryHistory.objects.select_related("inmate")
     serializer_class = InmateDisciplinaryHistorySerializer
     permission_classes = [IsAuthenticated]
 
 
-# class InmateMedicalHistoryViewSet(viewsets.ModelViewSet):
+# class InmateMedicalHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 #     queryset = InmateMedicalHistory.objects.select_related("inmate")
 #     serializer_class = InmateMedicalHistorySerializer
 #     permission_classes = [IsAuthenticated]
 
 
-class InmateDocumentViewSet(viewsets.ModelViewSet):
+class InmateDocumentViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = InmateDocument.objects.select_related("inmate")
     serializer_class = InmateDocumentSerializer
     permission_classes = [IsAuthenticated]
 
 
-class InmateAuditTrailViewSet(viewsets.ModelViewSet):
+class InmateAuditTrailViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = InmateAuditTrail.objects.select_related("inmate")
     serializer_class = InmateAuditTrailSerializer
     permission_classes = [IsAuthenticated]
@@ -243,10 +245,17 @@ class PendingAdminApprovalView(APIView):
 
     def get(self, request):
         """Get inmates pending admin approval."""
+        visible_org_units = getattr(request, 'visible_org_units', None)
+        
         # Get inmates who have offences registered (pending final approval)
         inmates_with_offences = Inmate.objects.exclude(
             offences__isnull=True
-        ).order_by('-admission_date').distinct()
+        )
+        
+        if visible_org_units is not None:
+            inmates_with_offences = inmates_with_offences.filter(owner_org_unit__in=visible_org_units)
+            
+        inmates_with_offences = inmates_with_offences.order_by('-admission_date').distinct()
 
         data = []
         for inmate in inmates_with_offences:
@@ -270,8 +279,15 @@ class PendingOffenceRegistrationView(APIView):
 
     def get(self, request):
         """Get inmates pending offence registration."""
+        visible_org_units = getattr(request, 'visible_org_units', None)
+        
         # Get inmates who have no offences registered
-        inmates_without_offences = Inmate.objects.filter(offences__isnull=True).order_by('-admission_date')
+        inmates_without_offences = Inmate.objects.filter(offences__isnull=True)
+        
+        if visible_org_units is not None:
+            inmates_without_offences = inmates_without_offences.filter(owner_org_unit__in=visible_org_units)
+            
+        inmates_without_offences = inmates_without_offences.order_by('-admission_date')
 
         data = []
         for inmate in inmates_without_offences:
@@ -366,9 +382,14 @@ class InmateListView(APIView):
         """
         from django.db.models import Q
 
+        visible_org_units = getattr(request, 'visible_org_units', None)
+        
         queryset = Inmate.objects.prefetch_related(
             'offences', 'classification_history'
-        ).all()
+        )
+        
+        if visible_org_units is not None:
+            queryset = queryset.filter(owner_org_unit__in=visible_org_units)
 
         # Search functionality
         search_query = request.query_params.get('search', None)

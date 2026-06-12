@@ -84,7 +84,18 @@ class StockReceiptSerializer(serializers.ModelSerializer):
         items_data = validated_data.pop("items")
 
         with transaction.atomic():
-            receipt = StockReceipt.objects.create(**validated_data)
+            # Determine receiving org unit from request (Phase 1)
+            request = self.context.get('request')
+            org_unit = getattr(request, 'org_unit', None) if request else None
+            if not org_unit and request and hasattr(request.user, 'id'):
+                from Auth.utils import get_current_org_unit
+                org_unit = get_current_org_unit(request.user)
+
+            create_kwargs = validated_data.copy()
+            if 'receiving_org_unit' not in create_kwargs:
+                create_kwargs['receiving_org_unit'] = org_unit
+
+            receipt = StockReceipt.objects.create(**create_kwargs)
 
             for item in items_data:
                 StockReceiptItem.objects.create(receipt=receipt, **item)
@@ -154,7 +165,20 @@ class FeedingSessionSerializer(serializers.ModelSerializer):
         items_data = validated_data.pop("items")
 
         with transaction.atomic():
-            session = FeedingSession.objects.create(**validated_data)
+            # Attach org unit context to feeding session
+            request = self.context.get('request')
+            org_unit = getattr(request, 'org_unit', None) if request else None
+            if not org_unit and request and hasattr(request.user, 'id'):
+                from Auth.utils import get_current_org_unit
+                org_unit = get_current_org_unit(request.user)
+
+            create_kwargs = validated_data.copy()
+            if 'providing_org_unit' not in create_kwargs:
+                create_kwargs['providing_org_unit'] = org_unit
+            if 'consuming_org_unit' not in create_kwargs:
+                create_kwargs['consuming_org_unit'] = org_unit
+
+            session = FeedingSession.objects.create(**create_kwargs)
 
             for item in items_data:
                 FeedingItem.objects.create(feeding_session=session, **item)
@@ -192,7 +216,16 @@ class OfficerIssueSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         with transaction.atomic():
-            issue = OfficerIssue.objects.create(**validated_data)
+            # Ensure org unit context for officer issues if model supports it
+            request = self.context.get('request')
+            org_unit = getattr(request, 'org_unit', None) if request else None
+            if not org_unit and request and hasattr(request.user, 'id'):
+                from Auth.utils import get_current_org_unit
+                org_unit = get_current_org_unit(request.user)
+
+            create_kwargs = validated_data.copy()
+            # Some models may not have receiving/providing fields; safe to pass only known keys
+            issue = OfficerIssue.objects.create(**create_kwargs)
 
             StockLedger.objects.create(
                 item=issue.item,

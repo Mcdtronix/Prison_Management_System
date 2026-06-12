@@ -19,6 +19,15 @@ class FarmProject(models.Model):
     expected_end_date = models.DateField(null=True, blank=True)
     supervising_officer = models.ForeignKey('HumanResources.Officer', on_delete=models.PROTECT)
     status = models.CharField(max_length=50)
+    owner_org_unit = models.ForeignKey(
+        'Auth.OrgUnit',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='farm_projects',
+        db_index=True,
+        help_text="Organization unit that owns this farm project."
+    )
 
     class Meta:
         db_table = "farm_project"

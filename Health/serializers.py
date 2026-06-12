@@ -41,6 +41,12 @@ class PatientSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and hasattr(request.user, 'userprofile'):
             data['station'] = request.user.userprofile.station
+            # Phase 1: set owner_org_unit from request context (middleware) or user assignment
+            org_unit = getattr(request, 'org_unit', None)
+            if not org_unit:
+                from Auth.utils import get_current_org_unit
+                org_unit = get_current_org_unit(request.user)
+            data['owner_org_unit'] = org_unit
         return data
 
 
@@ -73,6 +79,11 @@ class AdmissionHealthAssessmentSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and hasattr(request.user, 'userprofile'):
             data['station'] = request.user.userprofile.station
+            org_unit = getattr(request, 'org_unit', None)
+            if not org_unit:
+                from Auth.utils import get_current_org_unit
+                org_unit = get_current_org_unit(request.user)
+            data['owner_org_unit'] = org_unit
         return data
 
 
@@ -99,6 +110,11 @@ class OutPatientVisitSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and hasattr(request.user, 'userprofile'):
             data['station'] = request.user.userprofile.station
+            org_unit = getattr(request, 'org_unit', None)
+            if not org_unit:
+                from Auth.utils import get_current_org_unit
+                org_unit = get_current_org_unit(request.user)
+            data['owner_org_unit'] = org_unit
         return data
 
 
@@ -118,6 +134,12 @@ class MentalHealthVisitSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and hasattr(request.user, 'userprofile'):
             data['station'] = request.user.userprofile.station
+            org_unit = getattr(request, 'org_unit', None)
+            if not org_unit:
+                from Auth.utils import get_current_org_unit
+                org_unit = get_current_org_unit(request.user)
+            # Chronic patient linked via Patient; ensure owner org is propagated on patient creation
+            data['owner_org_unit'] = org_unit
         return data
 
 
@@ -190,6 +212,12 @@ class StockCardEntrySerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and hasattr(request.user, 'userprofile'):
             data['station'] = request.user.userprofile.station
+            org_unit = getattr(request, 'org_unit', None)
+            if not org_unit:
+                from Auth.utils import get_current_org_unit
+                org_unit = get_current_org_unit(request.user)
+            # Stock card entries belong to station/org unit
+            data['owner_org_unit'] = org_unit
 
         return data
 
@@ -209,6 +237,11 @@ class MedicalEquipmentSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and hasattr(request.user, 'userprofile'):
             data['station'] = request.user.userprofile.station
+            org_unit = getattr(request, 'org_unit', None)
+            if not org_unit:
+                from Auth.utils import get_current_org_unit
+                org_unit = get_current_org_unit(request.user)
+            data['owner_org_unit'] = org_unit
         return data
 
 

@@ -13,6 +13,7 @@ interface User {
     code: string;
     name: string;
   };
+  orgUnitType?: string | null;
 }
 
 interface AuthContextType {
@@ -40,17 +41,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Try to get current user profile
         const response = await authApi.getCurrentUser();
         if (response.data) {
-          const normalizedRole = normalizeRole(response.data.role_code);
+          // Backend may return either UserProfile fields (role_code + station_*)
+          // or UserAssignment fields (role + org_unit_*). Normalize both shapes.
+          const roleCode = response.data.role_code || response.data.role;
+          const normalizedRole = normalizeRole(roleCode);
+
+          const orgUnit = response.data.org_unit_id
+            ? {
+                id: response.data.org_unit_id,
+                code: response.data.org_unit_code,
+                name: response.data.org_unit_name,
+              }
+            : undefined;
+
+          const station = response.data.station || response.data.station_id
+            ? {
+                id: response.data.station || response.data.station_id,
+                code: response.data.station_code,
+                name: response.data.station_name,
+              }
+            : undefined;
+
           const userData: User = {
-            id: response.data.id,
+            id: response.data.id || response.data.user_id,
             username: response.data.username,
             role: normalizedRole,
             roleName: response.data.role_name || getRoleDisplayName(normalizedRole),
             station: {
-              id: response.data.station,
-              code: response.data.station_code,
-              name: response.data.station_name,
-            }
+              id: station?.id || orgUnit?.id || null,
+              code: station?.code || orgUnit?.code || '',
+              name: station?.name || orgUnit?.name || '',
+            },
+            orgUnitType: (response.data as any).org_unit_unit_type || undefined,
           };
           setUser(userData);
           localStorage.setItem('user_role', normalizedRole);
