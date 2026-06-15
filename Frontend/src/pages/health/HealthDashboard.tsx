@@ -240,8 +240,13 @@ const HealthDashboard = () => {
                       </TableRow>
                     ) : (
                       recentPatients.map((patient) => (
-                        <TableRow key={patient.id}>
-                          <TableCell className="font-medium">{patient.prison_number}</TableCell>
+                      <TableRow key={patient.id}>
+                        <TableCell 
+                          className="font-medium text-blue-600 hover:underline cursor-pointer"
+                          onClick={() => navigate(`/inmates/${patient.id}`)}
+                        >
+                          {patient.prison_number}
+                        </TableCell>
                           <TableCell>{patient.name}</TableCell>
                           <TableCell>{patient.complaint}</TableCell>
                           <TableCell>{getStatusBadge(patient.status)}</TableCell>
@@ -295,7 +300,12 @@ const HealthDashboard = () => {
                   <TableBody>
                     {searchResults.map((inmate) => (
                       <TableRow key={inmate.id}>
-                        <TableCell className="font-medium">{inmate.prison_number}</TableCell>
+                        <TableCell 
+                          className="font-medium text-blue-600 hover:underline cursor-pointer"
+                          onClick={() => navigate(`/inmates/${inmate.id}`)}
+                        >
+                          {inmate.prison_number}
+                        </TableCell>
                         <TableCell>{inmate.name}</TableCell>
                         <TableCell className="text-right">
                           <Button 

@@ -331,7 +331,7 @@ const InmateDetails = () => {
     },
   ];
 
-  if (isLoading || !inmate) {
+  if (isLoading) {
     return (
       <PrisonLayout
         title="Inmate Details"
@@ -346,6 +346,23 @@ const InmateDetails = () => {
       </PrisonLayout>
     );
   }
+
+  if (!inmate) {
+    return (
+      <PrisonLayout
+        title="Inmate Details"
+        description="Inmate not found"
+      >
+        <div className="flex flex-col justify-center items-center h-64 space-y-4">
+          <AlertCircle className="h-16 w-16 text-red-500" />
+          <h2 className="text-2xl font-bold">Inmate Not Found</h2>
+          <p className="text-gray-500">The requested inmate could not be found or you do not have permission to view them.</p>
+          <Button variant="outline" onClick={() => navigate(-1)}>Go Back</Button>
+        </div>
+      </PrisonLayout>
+    );
+  }
+
 
   return (
     <PrisonLayout

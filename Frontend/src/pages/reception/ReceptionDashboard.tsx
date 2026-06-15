@@ -220,7 +220,10 @@ const ReceptionDashboard = () => {
                     ) : (
                       filteredApprovalInmates.map((inmate) => (
                         <TableRow key={inmate.id}>
-                          <TableCell className="font-medium">
+                          <TableCell 
+                            className="font-medium text-blue-600 hover:underline cursor-pointer"
+                            onClick={() => navigate(`/inmates/${inmate.id}`)}
+                          >
                             {inmate.prison_number}
                           </TableCell>
                           <TableCell>{inmate.name}</TableCell>
@@ -300,7 +303,10 @@ const ReceptionDashboard = () => {
                     ) : (
                       filteredOffenceInmates.map((inmate) => (
                         <TableRow key={inmate.id}>
-                          <TableCell className="font-medium">
+                          <TableCell 
+                            className="font-medium text-blue-600 hover:underline cursor-pointer"
+                            onClick={() => navigate(`/inmates/${inmate.id}`)}
+                          >
                             {inmate.prison_number}
                           </TableCell>
                           <TableCell>{inmate.name}</TableCell>

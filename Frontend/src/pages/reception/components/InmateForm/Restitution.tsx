@@ -157,7 +157,7 @@ const Restitution: React.FC<RestitutionProps> = ({
                           value={actualIndex.toString()}
                           disabled={alreadyHasRestitution}
                         >
-                          {offence.offence} {alreadyHasRestitution ? '(Already has restitution)' : ''}
+                          {offence.offence || 'Draft Offence (Unsaved)'} {alreadyHasRestitution ? '(Already has restitution)' : ''}
                         </SelectItem>
                       );
                     })}

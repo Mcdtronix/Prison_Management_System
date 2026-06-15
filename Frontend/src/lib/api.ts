@@ -611,7 +611,7 @@ export const receptionApi = {
   },
 
   getInmate: async (id: string) => {
-    return fetchApi(`/reception/inmates/${id}`);
+    return fetchApi(`/reception/inmates/${id}/`);
   },
 
   registerValuables: async (id: string, valuablesData: any) => {
@@ -622,7 +622,7 @@ export const receptionApi = {
   },
 
   updateInmate: async (id: string, inmateData: any) => {
-    return fetchApi(`/reception/inmates/${id}`, {
+    return fetchApi(`/reception/inmates/${id}/`, {
       method: "PUT",
       body: JSON.stringify(inmateData),
     });
@@ -647,32 +647,32 @@ export const receptionApi = {
 // Health API endpoints
 export const healthApi = {
   getInmateHealthRecord: async (id: string) => {
-    return fetchApi(`/health/inmates/${id}`);
+    return fetchApi(`/health/inmates/${id}/`);
   },
 
   createHealthRecord: async (id: string, healthData: any) => {
-    return fetchApi(`/health/inmates/${id}`, {
+    return fetchApi(`/health/inmates/${id}/`, {
       method: "POST",
       body: JSON.stringify(healthData),
     });
   },
 
   updateHealthRecord: async (id: string, healthData: any) => {
-    return fetchApi(`/health/inmates/${id}`, {
+    return fetchApi(`/health/inmates/${id}/`, {
       method: "PUT",
       body: JSON.stringify(healthData),
     });
   },
 
   registerOPDVisit: async (id: string, visitData: any) => {
-    return fetchApi(`/health/inmates/${id}/opd`, {
+    return fetchApi(`/health/inmates/${id}/opd/`, {
       method: "POST",
       body: JSON.stringify(visitData),
     });
   },
 
   getOPDRecords: async (id: string) => {
-    return fetchApi(`/health/inmates/${id}/opd`);
+    return fetchApi(`/health/inmates/${id}/opd/`);
   },
 
   getHealthStatistics: async () => {
@@ -687,14 +687,14 @@ export const inmateApi = {
   },
 
   getInmateDetails: async (id: string) => {
-    return fetchApi(`/reception/inmates/${id}`);
+    return fetchApi(`/reception/inmates/${id}/`);
   },
 
   getInmateOffenses: async (id: string) => {
-    return fetchApi(`/reception/inmates/${id}/offenses`);
+    return fetchApi(`/reception/inmates/${id}/offenses/`);
   },
 
   getInmateTimeline: async (id: string) => {
-    return fetchApi(`/reception/inmates/${id}/timeline`);
+    return fetchApi(`/reception/inmates/${id}/timeline/`);
   },
 };

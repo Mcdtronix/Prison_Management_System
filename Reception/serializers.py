@@ -7,6 +7,7 @@ Professional DRF serializers for the inmate reception domain.
 from rest_framework import serializers
 from django.db import transaction
 from django.utils import timezone
+from datetime import datetime, date
 from Auth.models import Station
 from Auth.utils import get_current_station
 
@@ -302,11 +303,8 @@ class OffenceDataSerializer(serializers.Serializer):
         conviction_status = data.get('convictionStatus')
 
         if conviction_status == 'convicted':
-            # For convicted offences, require sentence fields
-            if not data.get('sentence') or data.get('sentence') == '':
-                raise serializers.ValidationError({'sentence': 'This field is required for convicted offences.'})
-            if not data.get('sentenceDate'):
-                raise serializers.ValidationError({'sentenceDate': 'This field is required for convicted offences.'})
+            # Note: For convicted offences, sentence and sentenceDate are now conditionally 
+            # required based on whether they are grouped. The frontend handles this validation.
             
             # Clear unconvicted fields
             data['nextCourtDate'] = None
@@ -588,6 +586,9 @@ class OffenceRegistrationSerializer(serializers.Serializer):
     # Using DictField without child to allow mixed types (strings/dates)
     releaseDates = serializers.DictField(required=False, default=dict)
 
+    # Sentence Grouping (optional)
+    sentenceGroup = serializers.DictField(required=False, default=dict)
+
     # Restitutions (array, optional, only for convicted offences)
     restitutions = serializers.ListField(
         child=RestitutionRegistrationSerializer(),
@@ -692,6 +693,20 @@ class OffenceRegistrationSerializer(serializers.Serializer):
     @transaction.atomic
     def create(self, validated_data):
         """Create offence records and related data for existing inmate."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        print("DEBUG: ====== STARTING OFFENCE CREATION IN SERIALIZER ======")
+        print(f"DEBUG: validated_data keys: {validated_data.keys()}")
+        print(f"DEBUG: offences_data count: {len(validated_data.get('offences', []))}")
+        print(f"DEBUG: raw validated_data: {validated_data}")
+        logger.info("=== STARTING OFFENCE CREATION ===")
+        logger.info(f"Validated data: {validated_data}")
+
+        inmate_id = validated_data.get('inmate_id')
+        offences_data = validated_data.get('offences', [])
+        restitutions_data = validated_data.get('restitutions', [])
+        release_dates_data = validated_data.get('releaseDates', {})
 
         # Get the inmate
         try:
@@ -719,12 +734,39 @@ class OffenceRegistrationSerializer(serializers.Serializer):
 
         processed_offences = []
 
+        sentence_group_data = validated_data.get('sentenceGroup', {})
+        sentence_group_instance = None
+        is_grouped = sentence_group_data.get('isGrouped', False)
+        
+        print("DEBUG: ====== STARTING OFFENCE CREATION ======")
+        print(f"DEBUG: Inmate ID: {inmate_id}")
+        print(f"DEBUG: Number of offences to process: {len(offences_data)}")
+        print(f"DEBUG: Is Grouped Sentence? {is_grouped}")
+
+        if is_grouped and any(o['convictionStatus'] == 'convicted' for o in offences_data):
+            sg_duration_str = str(sentence_group_data.get('duration', '0'))
+            try:
+                sg_duration = int(sg_duration_str.split()[0])
+            except (ValueError, IndexError):
+                sg_duration = 0
+            
+            sg_date = parse_date(sentence_group_data.get('date')) or timezone.now().date()
+            
+            print(f"DEBUG: Creating SentenceGroup (Duration: {sg_duration} months, Date: {sg_date})")
+            sentence_group_instance = SentenceGroup.objects.create(
+                inmate=inmate,
+                date_of_sentence=sg_date,
+                duration_months=sg_duration,
+                is_concurrent=True
+            )
+            print(f"DEBUG: Created SentenceGroup ID: {sentence_group_instance.id}")
+
         # Process offences and related records (Create or Update)
         logger.info("Processing offences...")
         for i, offence_data in enumerate(offences_data):
             offence_id = offence_data.get('id')
             is_update = bool(offence_id)
-            logger.info(f"{'Updating' if is_update else 'Creating'} offence {i+1}: {offence_data}")
+            print(f"DEBUG: Processing Offence #{i+1} (Update? {is_update}): {offence_data['offence']}")
 
             # Use sentenceDate for date_charged if available, else today for new offences
             date_charged = offence_data.get('sentenceDate') or timezone.now().date()
@@ -737,8 +779,9 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                     offence.date_charged = date_charged # Update date_charged as well
                     offence.Offence_status = 'CONVICTED' if offence_data['convictionStatus'] == 'convicted' else 'UNCONVICTED'
                     offence.save()
-                    logger.info(f"Offence updated with ID: {offence.id}, Status: {offence.Offence_status}")
+                    print(f"DEBUG: Successfully UPDATED Offence ID: {offence.id} in database")
                 except Offence.DoesNotExist:
+                    print(f"DEBUG: ERROR - Offence with id {offence_id} not found!")
                     raise serializers.ValidationError(f"Offence with id {offence_id} not found for this inmate.")
             else:
                 offence = Offence.objects.create(
@@ -748,7 +791,7 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                     date_charged=date_charged,
                     Offence_status='CONVICTED' if offence_data['convictionStatus'] == 'convicted' else 'UNCONVICTED'
                 )
-                logger.info(f"Offence created with ID: {offence.id}, Status: {offence.Offence_status}")
+                print(f"DEBUG: Successfully CREATED Offence ID: {offence.id} in database")
             
             processed_offences.append(offence)
 
@@ -756,20 +799,24 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                 # Create or update convicted record
                 logger.info(f"Processing convicted record for offence {offence.id}")
                 try:
-                    # Extract sentence months safely
-                    sentence_str = offence_data.get('sentence', '0')
-                    try:
-                        sentence_months = int(sentence_str.split()[0])
-                    except (ValueError, IndexError):
-                        sentence_months = 0
-                        logger.warning(f"Could not parse sentence duration from '{sentence_str}', defaulting to 0")
+                    if sentence_group_instance:
+                        sentence_months = None
+                        sentence_date = sentence_group_instance.date_of_sentence
+                    else:
+                        sentence_str = offence_data.get('sentence', '0')
+                        sentence_date = parse_date(offence_data.get('sentenceDate'))
+                        try:
+                            sentence_months = int(str(sentence_str).split()[0])
+                        except (ValueError, IndexError):
+                            sentence_months = 0
 
                     convicted, created = Convicted.objects.update_or_create(
                         offence=offence,
                         defaults={
                             'prison_number': inmate,
-                            'date_of_sentence': offence_data['sentenceDate'],
+                            'date_of_sentence': sentence_date,
                             'sentence': sentence_months,
+                            'sentence_group': sentence_group_instance,
                         }
                     )
                     action = "created" if created else "updated"
@@ -789,8 +836,8 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                         offence=offence,
                         defaults={
                             'prison_number': inmate,
-                            'next_court_date': offence_data['nextCourtDate'],
-                            'remand_start_date': offence_data.get('remandStartDate') or date_charged
+                            'next_court_date': parse_date(offence_data['nextCourtDate']),
+                            'remand_start_date': parse_date(offence_data.get('remandStartDate')) or date_charged
                         }
                     )
                     action = "created" if created else "updated"
@@ -821,7 +868,7 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                     # Map frontend camelCase keys to backend snake_case keys
                     mapped_data = {
                         'restitution_amount': restitution_data.get('restitutionAmount'),
-                        'restitution_date': restitution_data.get('restitutionDate'),
+                        'restitution_date': parse_date(restitution_data.get('restitutionDate')),
                         'alternative_restitution_sentence': restitution_data.get('restitutionSentence'),
                         'status': restitution_data.get('restitutionStatus'),
                         'receipt': restitution_data.get('restitutionReceipt')
@@ -855,8 +902,8 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                     ReleaseHistory.objects.update_or_create(
                         inmate=inmate,
                         defaults={
-                            'total_effective_sentence': int(total_sentence.split()[0]) if total_sentence else 0,
-                            'remission': float(remission.split()[0]) if remission else 0,
+                            'total_effective_sentence': int(str(total_sentence).split()[0]) if total_sentence else 0,
+                            'remission': float(str(remission).split()[0]) if remission else 0,
                             'earliest_date_of_release': earliest_release
                         }
                     )
@@ -872,9 +919,6 @@ class OffenceRegistrationSerializer(serializers.Serializer):
         # Return the inmate instance so the view can serialize and respond
         return inmate
 
-    # For compatibility with DRF's create view, we can alias create to save
-    def create(self, validated_data):
-        return self.save(validated_data)
 
 
 # ==================================================

@@ -37,7 +37,7 @@ const optionalText = z.string().optional();
 
 export const basicInmateDetailsSchema = z.object({
   admission_type: z.enum(["NEW_ADMISSION", "TRANSFER"]),
-  prison_number: z.string().min(1, "Prison number is required"),
+  prison_number: z.string().regex(/^\d{4}\/\d{2}$/, "Prison number must be in the format 0001/25 (4 digits, slash, 2 digits)"),
   crb_number: optionalText,
   first_name: z.string().min(1, "Name is required"),
   surname: z.string().min(1, "Surname is required"),
@@ -45,7 +45,7 @@ export const basicInmateDetailsSchema = z.object({
   gender: z.enum(["Male", "Female"]),
   date_of_birth: z.string().min(1, "Date of birth is required"),
   nationality: z.string().min(1, "Nationality is required"),
-  national_id: optionalText,
+  national_id: z.string().regex(/^[0-9]{2}-[0-9]{6,7}\s?[A-Za-z]\s?[0-9]{2}$/, "Invalid National ID format. Example: 12-345678 A 90").optional().or(z.literal('')),
   address: z.string().min(1, "Address is required"),
   marital_status: z.enum(["Single", "Married", "Divorced", "Widowed"]),
   educational_level: z.string().min(1, "Educational level is required"),
@@ -308,6 +308,7 @@ const BasicInmateForm = () => {
 
   const form = useForm<BasicFormValues>({
     resolver: zodResolver(basicFormSchema),
+    mode: "all",
     defaultValues: {
       inmateDetails: {
         admission_type: "NEW_ADMISSION",

@@ -196,7 +196,12 @@ const InmateOverview = () => {
                 ) : (
                   filteredInmates.map((inmate) => (
                     <TableRow key={inmate.id}>
-                      <TableCell className="font-medium">{inmate.prison_number}</TableCell>
+                      <TableCell 
+                        className="font-medium text-blue-600 hover:underline cursor-pointer"
+                        onClick={() => handleViewInmate(inmate.id)}
+                      >
+                        {inmate.prison_number}
+                      </TableCell>
                       <TableCell>{inmate.name}</TableCell>
                       <TableCell>{new Date(inmate.admission_date).toLocaleDateString()}</TableCell>
                       <TableCell>{inmate.offense}</TableCell>

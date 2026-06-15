@@ -253,7 +253,10 @@ class PendingAdminApprovalView(APIView):
         )
         
         if visible_org_units is not None:
-            inmates_with_offences = inmates_with_offences.filter(owner_org_unit__in=visible_org_units)
+            from django.db.models import Q
+            inmates_with_offences = inmates_with_offences.filter(
+                Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True)
+            )
             
         inmates_with_offences = inmates_with_offences.order_by('-admission_date').distinct()
 
@@ -285,7 +288,10 @@ class PendingOffenceRegistrationView(APIView):
         inmates_without_offences = Inmate.objects.filter(offences__isnull=True)
         
         if visible_org_units is not None:
-            inmates_without_offences = inmates_without_offences.filter(owner_org_unit__in=visible_org_units)
+            from django.db.models import Q
+            inmates_without_offences = inmates_without_offences.filter(
+                Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True)
+            )
             
         inmates_without_offences = inmates_without_offences.order_by('-admission_date')
 
@@ -318,6 +324,8 @@ class OffenceRegistrationView(APIView):
         import logging
         logger = logging.getLogger(__name__)
 
+        print("DEBUG VIEW: ====== OFFENCE REGISTRATION REQUEST RECEIVED ======")
+        print(f"DEBUG VIEW: request.data = {request.data}")
         logger.info("=== OFFENCE REGISTRATION REQUEST RECEIVED ===")
         logger.info(f"User: {request.user.username if request.user else 'Anonymous'}")
         logger.info(f"Request data keys: {list(request.data.keys()) if request.data else 'None'}")
@@ -334,10 +342,13 @@ class OffenceRegistrationView(APIView):
         logger.info("Running serializer validation...")
         if serializer.is_valid():
             logger.info("Serializer validation passed")
+            print("DEBUG VIEW: Serializer validation passed")
             try:
                 logger.info("Calling serializer.save()...")
+                print("DEBUG VIEW: Calling serializer.save()...")
                 inmate = serializer.save()
                 logger.info(f"Serializer.save() completed. Inmate ID: {inmate.id}")
+                print(f"DEBUG VIEW: Serializer.save() completed. Inmate ID: {inmate.id}")
 
                 response_serializer = InmateSerializer(inmate)
                 logger.info("Offence registration completed successfully")
@@ -349,6 +360,7 @@ class OffenceRegistrationView(APIView):
             except Exception as e:
                 logger.error(f"Registration failed with exception: {str(e)}")
                 logger.error(f"Exception type: {type(e).__name__}")
+                print(f"DEBUG VIEW: Exception in serializer.save(): {str(e)}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
                 return Response({
@@ -358,6 +370,7 @@ class OffenceRegistrationView(APIView):
 
         logger.warning("Serializer validation failed")
         logger.warning(f"Validation errors: {serializer.errors}")
+        print(f"DEBUG VIEW: Serializer validation failed! Errors: {serializer.errors}")
 
         return Response({
             'success': False,
@@ -389,7 +402,9 @@ class InmateListView(APIView):
         )
         
         if visible_org_units is not None:
-            queryset = queryset.filter(owner_org_unit__in=visible_org_units)
+            queryset = queryset.filter(
+                Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True)
+            )
 
         # Search functionality
         search_query = request.query_params.get('search', None)

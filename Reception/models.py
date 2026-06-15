@@ -224,6 +224,21 @@ class RestitutionExtension(models.Model):
             raise ValidationError("New restitution date must be after the previous date.")
 
 
+class SentenceGroup(models.Model):
+    """
+    Groups multiple offences into a single sentence block (e.g. concurrent sentencing).
+    """
+    inmate = models.ForeignKey(Inmate, on_delete=models.CASCADE, related_name="sentence_groups")
+    date_of_sentence = models.DateField()
+    duration_months = models.PositiveIntegerField(help_text="Sentence duration in months")
+    is_concurrent = models.BooleanField(default=True)
+    remarks = models.TextField(blank=True, null=True)
+
+    class Meta:
+        db_table = "sentence_group"
+        ordering = ["-date_of_sentence"]
+
+
 class Convicted(models.Model):
     convicted_id = models.AutoField(primary_key=True)
 
@@ -239,8 +254,16 @@ class Convicted(models.Model):
         related_name="conviction"
     )
 
-    date_of_sentence = models.DateField()
-    sentence = models.PositiveIntegerField(help_text="Sentence duration in months")
+    sentence_group = models.ForeignKey(
+        SentenceGroup,
+        on_delete=models.CASCADE,
+        related_name="convictions",
+        null=True,
+        blank=True
+    )
+
+    date_of_sentence = models.DateField(null=True, blank=True)
+    sentence = models.PositiveIntegerField(help_text="Sentence duration in months", null=True, blank=True)
     sentence_start_date = models.DateField(null=True, blank=True)
     sentence_end_date = models.DateField(null=True, blank=True)
 

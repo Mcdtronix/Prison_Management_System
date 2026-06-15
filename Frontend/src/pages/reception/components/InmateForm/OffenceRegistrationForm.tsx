@@ -3,10 +3,13 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Card } from "@/components/ui/card";
-import { Form } from "@/components/ui/form";
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Plus, Trash2, Pencil } from "lucide-react";
+import { FileText, Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { receptionApi } from "@/lib/api";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 
@@ -27,23 +30,23 @@ const baseOffenceSchema = z.object({
 export const offenceDataSchema = z.discriminatedUnion("convictionStatus", [
   z.object({
     convictionStatus: z.literal("convicted"),
-    sentence: z.string().min(1, "Sentence is required for convicted status"),
-    sentenceDate: z.string().min(1, "Sentence date is required for convicted status"),
-    nextCourtDate: z.string().optional(), // Ensure it's optional here
+    sentence: z.string().optional(), // Validated via superRefine based on grouping strategy
+    sentenceDate: z.string().optional(), // Validated via superRefine
+    nextCourtDate: z.string().optional(),
   }).merge(baseOffenceSchema),
   z.object({
     convictionStatus: z.literal("unconvicted"),
     nextCourtDate: z.string().min(1, "Next court date is required for unconvicted status"),
     remandStartDate: z.string().optional(),
-    sentence: z.string().optional(), // Ensure it's optional here
-    sentenceDate: z.string().optional(), // Ensure it's optional here
+    sentence: z.string().optional(),
+    sentenceDate: z.string().optional(),
   }).merge(baseOffenceSchema),
 ]);
 
 export const releaseDatesSchema = z.object({
-  sentence: z.string().min(1, "Total sentence summary is required"),
-  earliestDateOfRelease: z.string().min(1, "Earliest date of release is required"),
-  remission: z.string().min(1, "Remission is required"),
+  sentence: z.string().optional(),
+  earliestDateOfRelease: z.string().optional(),
+  remission: z.string().optional(),
 });
 
 export const restitutionSchema = z.object({
@@ -65,6 +68,88 @@ const offenceFormSchema = z.object({
     .optional(), // Make offences optional for initial render
   releaseDates: releaseDatesSchema.optional(), // Also make releaseDates optional
   restitutions: z.array(restitutionSchema).optional(),
+  sentenceGroup: z.object({
+    isGrouped: z.boolean().default(false),
+    duration: z.string().optional(),
+    date: z.string().optional()
+  }).optional()
+}).superRefine((data, ctx) => {
+  const hasConvicted = data.offences?.some(o => o.convictionStatus === 'convicted');
+  
+  // Validate release dates if there's a convicted offence
+  if (hasConvicted) {
+    if (!data.releaseDates?.sentence) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Total sentence summary is required",
+        path: ["releaseDates", "sentence"]
+      });
+    }
+    if (!data.releaseDates?.earliestDateOfRelease) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Earliest date of release is required",
+        path: ["releaseDates", "earliestDateOfRelease"]
+      });
+    }
+    if (!data.releaseDates?.remission) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Remission is required",
+        path: ["releaseDates", "remission"]
+      });
+    }
+  }
+
+  if (data.sentenceGroup?.isGrouped && hasConvicted) {
+    if (!data.sentenceGroup.duration) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Grouped sentence duration is required",
+        path: ["sentenceGroup", "duration"]
+      });
+    }
+    if (!data.sentenceGroup.date) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Grouped sentence date is required",
+        path: ["sentenceGroup", "date"]
+      });
+    }
+  } else if (!data.sentenceGroup?.isGrouped && hasConvicted) {
+    data.offences?.forEach((offence, index) => {
+      if (offence.convictionStatus === 'convicted') {
+        if (!offence.sentence) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Sentence duration is required",
+            path: ["offences", index, "sentence"]
+          });
+        }
+        if (!offence.sentenceDate) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Sentence date is required",
+            path: ["offences", index, "sentenceDate"]
+          });
+        }
+      }
+    });
+  }
+
+  // Enforce Restitution Records
+  data.offences?.forEach((offence, index) => {
+    if (offence.convictionStatus === 'convicted' && offence.hasRestitution) {
+      const hasMatchingRestitution = data.restitutions?.some(r => r.offenceIndex === index);
+      if (!hasMatchingRestitution) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Restitution details missing for Offence #${index + 1} (${offence.offence || 'Unnamed'}). Please fill out the Restitution section and click 'Add Restitution'.`,
+          path: ["restitutions"] // Attaches to the array root
+        });
+      }
+    }
+  });
 });
 
 export type OffenceFormValues = z.infer<typeof offenceFormSchema>;
@@ -236,7 +321,13 @@ const OffenceRegistrationForm = ({
         remission: "",
       },
       restitutions: [],
+      sentenceGroup: {
+        isGrouped: false,
+        duration: "",
+        date: ""
+      }
     },
+    mode: "all",
   });
 
   // Add offence to the list
@@ -327,11 +418,16 @@ const OffenceRegistrationForm = ({
         }),
       };
 
-      console.log("=== OFFENCE FORM SUBMISSION: Prepared data ===");
-      console.log("Raw form data:", data);
-      console.log("Formatted data:", formattedData);
+      console.log("=========================================");
+      console.log("DEBUG: FIRING MAIN SUBMIT BUTTON!");
+      console.log("DEBUG: Raw form data:", data);
+      console.log("DEBUG: Formatted data sent to API:", formattedData);
+      console.log("DEBUG: Hitting endpoint: /reception/register-offences/");
+      console.log("=========================================");
 
       const response = await receptionApi.registerOffences(formattedData);
+
+      console.log("DEBUG: Received response from API:", response);
 
       if (response.error) {
         throw new Error(response.error);
@@ -346,7 +442,7 @@ const OffenceRegistrationForm = ({
         navigate("/reception");
       }, 1500);
     } catch (error) {
-      console.error("Offence registration failed:", error);
+      console.error("DEBUG: Offence registration completely FAILED! Error:", error);
       toast({
         title: "Registration Failed",
         description:
@@ -378,7 +474,43 @@ const OffenceRegistrationForm = ({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+      <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
+        console.error("DEBUG: Main form validation failed. Errors:", errors);
+        
+        const extractErrors = (obj: any): string[] => {
+          if (!obj) return [];
+          if (typeof obj.message === 'string') return [obj.message];
+          
+          let messages: string[] = [];
+          if (Array.isArray(obj)) {
+            obj.forEach(item => {
+              messages = [...messages, ...extractErrors(item)];
+            });
+          } else if (typeof obj === 'object') {
+            Object.values(obj).forEach(val => {
+              messages = [...messages, ...extractErrors(val)];
+            });
+          }
+          return messages;
+        };
+
+        const errorMessages = Array.from(new Set(extractErrors(errors)));
+
+        toast({
+          title: "Form Validation Failed",
+          description: (
+            <div className="mt-2 text-sm">
+              <p className="mb-2 font-medium">Please fix the following errors:</p>
+              <ul className="list-disc pl-4 space-y-1">
+                {errorMessages.map((msg, i) => (
+                  <li key={i}>{msg}</li>
+                ))}
+              </ul>
+            </div>
+          ),
+          variant: "destructive",
+        });
+      })} className="space-y-8">
         {/* Inmate Info Display */}
         <Card className="p-4">
           <h3 className="text-lg font-medium mb-2">
@@ -462,6 +594,124 @@ const OffenceRegistrationForm = ({
           </Card>
         )}
 
+        {/* Sentencing Strategy Toggle */}
+        {(offences.some((o) => o.convictionStatus === "convicted") || draftConvictionStatus === "convicted") && (
+          <Card className="p-4 border-blue-200 bg-blue-50">
+            <h4 className="text-md font-medium text-blue-800 mb-4">Sentencing Strategy</h4>
+            <FormField
+              control={form.control}
+              name="sentenceGroup.isGrouped"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-blue-200 bg-white p-4 shadow-sm mb-4">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel className="text-blue-900 font-semibold">
+                      Apply Grouped / Concurrent Sentence
+                    </FormLabel>
+                    <p className="text-sm text-blue-700">
+                      Check this if the magistrate imposed a single combined sentence for all convicted offences.
+                    </p>
+                  </div>
+                </FormItem>
+              )}
+            />
+
+            {form.watch("sentenceGroup.isGrouped") && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-4 p-4 bg-white rounded border border-blue-100">
+                <FormField
+                  control={form.control}
+                  name="sentenceGroup.duration"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Grouped Sentence Duration (Months)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g. 24" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="sentenceGroup.date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date of Grouped Sentence</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
+          </Card>
+        )}
+
+        {offences.length > 0 && (
+          <Card className="p-4 border-emerald-200 bg-emerald-50/30 shadow-sm">
+            <h4 className="text-md font-medium text-emerald-800 mb-3 flex items-center">
+              <Check className="w-5 h-5 mr-2 text-emerald-600" />
+              Added Offences (Ready to Register)
+            </h4>
+            <div className="overflow-x-auto rounded-md border border-emerald-100 bg-white">
+              <Table>
+                <TableHeader className="bg-emerald-50/50">
+                  <TableRow>
+                    <TableHead>Offence</TableHead>
+                    <TableHead>Court</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Sentence / Next Court</TableHead>
+                    <TableHead>Restitution</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {offences.map((o, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-medium max-w-[200px] truncate" title={o.offence}>{o.offence}</TableCell>
+                      <TableCell>{o.court || "-"}</TableCell>
+                      <TableCell>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          o.convictionStatus === 'convicted' ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'
+                        }`}>
+                          {o.convictionStatus === 'convicted' ? 'Convicted' : 'Unconvicted'}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {o.convictionStatus === 'convicted' 
+                          ? (o.sentence ? `${o.sentence} (from ${o.sentenceDate})` : '-')
+                          : (o.nextCourtDate ? `Next Court: ${o.nextCourtDate}` : '-')
+                        }
+                      </TableCell>
+                      <TableCell>
+                        {o.hasRestitution ? <span className="text-emerald-600 font-semibold">Yes</span> : <span className="text-gray-400">No</span>}
+                      </TableCell>
+                      <TableCell className="text-right space-x-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => editOffence(i)}>
+                          <Pencil className="h-4 w-4 mr-1" /> Edit
+                        </Button>
+                        <Button type="button" variant="destructive" size="sm" onClick={() => removeOffence(i)}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-xs text-emerald-600 mt-3 text-right">
+              * Please verify these details before clicking "Register Offences" below.
+            </p>
+          </Card>
+        )}
+
         <Offences
           form={form}
           offences={offences}
@@ -474,18 +724,37 @@ const OffenceRegistrationForm = ({
           }}
           draftOffence={draftOffence}
           onDraftOffenceChange={setDraftOffence}
+          isGrouped={form.watch("sentenceGroup.isGrouped")}
         />
 
         {/* Show Restitution if any offence (or current draft) is convicted AND has restitution */}
         {(offences.some((o) => o.convictionStatus === "convicted" && o.hasRestitution) ||
           (draftConvictionStatus === "convicted" && draftHasRestitution)) && (
-            <Restitution
-              form={form}
-              restitutions={restitutions}
-              offences={offences}
-              addRestitution={addRestitution}
-              removeRestitution={removeRestitution}
-            />
+            <div className="space-y-2">
+              <Restitution
+                form={form}
+                restitutions={restitutions}
+                offences={[
+                  ...offences,
+                  ...(draftConvictionStatus === "convicted" && draftHasRestitution
+                    ? [draftOffence]
+                    : [])
+                ]}
+                addRestitution={addRestitution}
+                removeRestitution={removeRestitution}
+              />
+              {/* Display real-time validation errors for missing restitution records */}
+              {form.formState.errors.restitutions?.root?.message && (
+                <p className="text-sm font-medium text-destructive px-2">
+                  {form.formState.errors.restitutions.root.message}
+                </p>
+              )}
+              {form.formState.errors.restitutions?.message && typeof form.formState.errors.restitutions.message === "string" && (
+                <p className="text-sm font-medium text-destructive px-2">
+                  {form.formState.errors.restitutions.message}
+                </p>
+              )}
+            </div>
         )}
 
         {/* Show ReleaseDates if any offence (or current draft) is convicted */}

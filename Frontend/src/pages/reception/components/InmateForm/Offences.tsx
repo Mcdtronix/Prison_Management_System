@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useForm, UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,7 @@ interface OffencesProps {
   // Props for controlling the local form from the parent
   draftOffence: z.infer<typeof offenceDataSchema>;
   onDraftOffenceChange: (offence: z.infer<typeof offenceDataSchema>) => void;
+  isGrouped?: boolean;
 }
 
 const Offences: React.FC<OffencesProps> = ({ 
@@ -40,10 +41,33 @@ const Offences: React.FC<OffencesProps> = ({
   onDraftChange,
   draftOffence,
   onDraftOffenceChange,
+  isGrouped = false,
 }) => {
+  const localSchema = useMemo(() => {
+    return offenceDataSchema.superRefine((data, ctx) => {
+      if (data.convictionStatus === 'convicted' && !isGrouped) {
+        if (!data.sentence) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Sentence duration is required for a convicted offence",
+            path: ["sentence"]
+          });
+        }
+        if (!data.sentenceDate) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Sentence date is required for a convicted offence",
+            path: ["sentenceDate"]
+          });
+        }
+      }
+    });
+  }, [isGrouped]);
+
   const localForm = useForm<z.infer<typeof offenceDataSchema>>({
-    resolver: zodResolver(offenceDataSchema),
+    resolver: zodResolver(localSchema),
     defaultValues: draftOffence, // Initialize with draft from parent
+    mode: "all",
   });
 
   // Keep local form in sync with draftOffence from parent
@@ -61,13 +85,7 @@ const Offences: React.FC<OffencesProps> = ({
     }
   }, [convictionStatus, hasRestitution, onDraftChange]);
 
-  // Also emit all changes to parent to keep it in sync
-  useEffect(() => {
-    const subscription = localForm.watch((value) => {
-      onDraftOffenceChange(value as z.infer<typeof offenceDataSchema>);
-    });
-    return () => subscription.unsubscribe();
-  }, [localForm, onDraftOffenceChange]);
+
 
   const handleAddOffence = async () => {
     const isValid = await localForm.trigger();
@@ -180,34 +198,36 @@ const Offences: React.FC<OffencesProps> = ({
 
               {convictionStatus === 'convicted' ? (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <FormField
-                      control={localForm.control}
-                      name="sentence"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Sentence</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., 5 years" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={localForm.control}
-                      name="sentenceDate"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Sentence Date</FormLabel>
-                          <FormControl>
-                            <Input type="date" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                  {!isGrouped && (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <FormField
+                        control={localForm.control}
+                        name="sentence"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Sentence</FormLabel>
+                            <FormControl>
+                              <Input placeholder="e.g., 5 years" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={localForm.control}
+                        name="sentenceDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Sentence Date</FormLabel>
+                            <FormControl>
+                              <Input type="date" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
                   <FormField
                     control={localForm.control}
                     name="hasRestitution"

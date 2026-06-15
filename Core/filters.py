@@ -28,11 +28,6 @@ class OrgUnitAccessFilterBackend(BaseFilterBackend):
         if visible_org_units is None:
             return queryset
 
-        if not visible_org_units.exists():
-            # Restrictive default for models with org ownership fields.
-            if self._has_org_fields(queryset.model):
-                return queryset.none()
-            return queryset
 
         org_fields = self._get_applicable_org_fields(queryset.model)
         if not org_fields:
@@ -40,7 +35,7 @@ class OrgUnitAccessFilterBackend(BaseFilterBackend):
 
         query = Q()
         for field in org_fields:
-            query |= Q(**{f"{field}__in": visible_org_units})
+            query |= Q(**{f"{field}__in": visible_org_units}) | Q(**{f"{field}__isnull": True})
 
         return queryset.filter(query).distinct()
 
