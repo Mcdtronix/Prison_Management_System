@@ -2,7 +2,7 @@ from django.db import models
 from django.core.validators import RegexValidator, MinValueValidator
 from django.core.exceptions import ValidationError
 from django.utils import timezone
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 
 
@@ -198,6 +198,19 @@ class Restitution(models.Model):
     )
     receipt = models.FileField(upload_to='inmate/restitution_receipts/', blank=True, null=True)
 
+    restitution_sentence_years = models.PositiveIntegerField(default=0)
+    restitution_sentence_months = models.PositiveIntegerField(default=0)
+    restitution_sentence_days = models.PositiveIntegerField(default=0)
+
+    restitution_sentence_days_total = models.PositiveIntegerField(default=0)
+
+    def save(self, *args, **kwargs):
+        self.restitution_sentence_days_total = (self.restitution_sentence_years * 365) + (self.restitution_sentence_months * 30) + self.restitution_sentence_days
+        if not self.restitution_date and self.offence:
+            self.restitution_date = self.offence.date_charged
+        super().save(*args, **kwargs)
+
+
     class Meta:
         db_table = "restitution"
 
@@ -267,6 +280,19 @@ class Convicted(models.Model):
     sentence_start_date = models.DateField(null=True, blank=True)
     sentence_end_date = models.DateField(null=True, blank=True)
 
+    sentence_years = models.PositiveIntegerField(default=0)
+    sentence_months = models.PositiveIntegerField(default=0)
+    sentence_days = models.PositiveIntegerField(default=0)
+
+    effective_sentence_days = models.PositiveIntegerField(default=0)
+    remission_days = models.PositiveIntegerField(default=0)
+
+    def save(self, *args, **kwargs):
+        self.effective_sentence_days = (self.sentence_years * 365) + (self.sentence_months * 30) + self.sentence_days
+        self.remission_days = self.effective_sentence_days // 3
+        super().save(*args, **kwargs)
+
+
     class Meta:
         db_table = "convicted"
 
@@ -320,6 +346,16 @@ class ReleaseHistory(models.Model):
         help_text="Remission in months"
     )
     earliest_date_of_release = models.DateField()
+
+    total_sentences_days = models.PositiveIntegerField(default=0)
+    total_remission_days = models.PositiveIntegerField(default=0)
+    odr_standard = models.DateField(null=True, blank=True)
+    edr_standard = models.DateField(null=True, blank=True)
+    odr_restitution_paid = models.DateField(null=True, blank=True)
+    edr_restitution_paid = models.DateField(null=True, blank=True)
+    active_edr = models.DateField(null=True, blank=True)
+    active_odr = models.DateField(null=True, blank=True)
+
 
     class Meta:
         db_table = "release_history"
@@ -450,3 +486,115 @@ def close_remand_period(sender, instance, created, **kwargs):
         # Ensure offence status is updated to CONVICTED
         instance.offence.Offence_status = 'CONVICTED'
         instance.offence.save()
+
+
+from datetime import timedelta
+def calculate_inmate_release_dates(inmate):
+    convictions = Convicted.objects.filter(prison_number=inmate)
+    
+    total_sentences_days = 0
+    grouped_convictions = {}
+    independent_convictions = []
+
+    for c in convictions:
+        if c.sentence_group:
+            if c.sentence_group.is_concurrent:
+                if c.sentence_group.id not in grouped_convictions:
+                    grouped_convictions[c.sentence_group.id] = []
+                grouped_convictions[c.sentence_group.id].append(c)
+            else:
+                independent_convictions.append(c)
+        else:
+            independent_convictions.append(c)
+
+    date_of_sentence = None
+    
+    for sg_id, group in grouped_convictions.items():
+        if group:
+            max_days = max(c.effective_sentence_days for c in group)
+            total_sentences_days += max_days
+            for c in group:
+                if c.date_of_sentence and (date_of_sentence is None or c.date_of_sentence < date_of_sentence):
+                    date_of_sentence = c.date_of_sentence
+
+    for c in independent_convictions:
+        total_sentences_days += c.effective_sentence_days
+        if c.date_of_sentence and (date_of_sentence is None or c.date_of_sentence < date_of_sentence):
+            date_of_sentence = c.date_of_sentence
+
+    if not date_of_sentence:
+        date_of_sentence = inmate.admission_date
+
+    total_remission_days = total_sentences_days // 3
+
+    odr_standard = date_of_sentence + timedelta(days=total_sentences_days)
+    edr_standard = odr_standard - timedelta(days=total_remission_days)
+
+    offences = [c.offence for c in convictions]
+    restitutions = Restitution.objects.filter(offence__in=offences)
+    
+    total_restitution_days = sum(r.restitution_sentence_days_total for r in restitutions)
+
+    if total_restitution_days > 0:
+        net_sentences_days = total_sentences_days - total_restitution_days
+        if net_sentences_days < 0:
+            net_sentences_days = 0
+        net_remission_days = net_sentences_days // 3
+        odr_restitution_paid = date_of_sentence + timedelta(days=net_sentences_days)
+        edr_restitution_paid = odr_restitution_paid - timedelta(days=net_remission_days)
+    else:
+        odr_restitution_paid = None
+        edr_restitution_paid = None
+        net_sentences_days = 0
+        net_remission_days = 0
+
+    restitution_valid = False
+    if restitutions.exists():
+        restitution_valid = True
+        for r in restitutions:
+            if r.status != 'paid' or not r.receipt or timezone.now().date() <= r.restitution_date:
+                restitution_valid = False
+                break
+    
+    if restitution_valid:
+        active_edr = edr_restitution_paid
+        active_odr = odr_restitution_paid
+        active_total_days = net_sentences_days
+        active_remission_days = net_remission_days
+    else:
+        active_edr = edr_standard
+        active_odr = odr_standard
+        active_total_days = total_sentences_days
+        active_remission_days = total_remission_days
+
+    rh, created = ReleaseHistory.objects.get_or_create(inmate=inmate, defaults={'earliest_date_of_release': active_edr or timezone.now().date()})
+    rh.total_sentences_days = active_total_days
+    rh.total_remission_days = active_remission_days
+    rh.odr_standard = odr_standard
+    rh.edr_standard = edr_standard
+    rh.odr_restitution_paid = odr_restitution_paid
+    rh.edr_restitution_paid = edr_restitution_paid
+    rh.active_edr = active_edr
+    rh.active_odr = active_odr
+    rh.earliest_date_of_release = active_edr or timezone.now().date()
+    rh.total_effective_sentence = active_total_days // 30
+    rh.remission = active_remission_days / 30.0
+    rh.save()
+
+@receiver(post_save, sender=Convicted)
+def update_release_dates_on_conviction_save(sender, instance, **kwargs):
+    calculate_inmate_release_dates(instance.prison_number)
+
+@receiver(post_delete, sender=Convicted)
+def update_release_dates_on_conviction_delete(sender, instance, **kwargs):
+    calculate_inmate_release_dates(instance.prison_number)
+
+@receiver(post_save, sender=Restitution)
+def update_release_dates_on_restitution_save(sender, instance, **kwargs):
+    if instance.offence and hasattr(instance.offence, 'conviction'):
+        calculate_inmate_release_dates(instance.offence.conviction.prison_number)
+
+@receiver(post_delete, sender=Restitution)
+def update_release_dates_on_restitution_delete(sender, instance, **kwargs):
+    if instance.offence and hasattr(instance.offence, 'conviction'):
+        calculate_inmate_release_dates(instance.offence.conviction.prison_number)

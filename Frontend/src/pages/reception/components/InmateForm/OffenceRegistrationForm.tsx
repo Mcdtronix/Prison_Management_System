@@ -30,7 +30,9 @@ const baseOffenceSchema = z.object({
 export const offenceDataSchema = z.discriminatedUnion("convictionStatus", [
   z.object({
     convictionStatus: z.literal("convicted"),
-    sentence: z.string().optional(), // Validated via superRefine based on grouping strategy
+    sentenceYears: z.coerce.number().min(0).optional(),
+    sentenceMonths: z.coerce.number().min(0).optional(),
+    sentenceDays: z.coerce.number().min(0).optional(),
     sentenceDate: z.string().optional(), // Validated via superRefine
     nextCourtDate: z.string().optional(),
   }).merge(baseOffenceSchema),
@@ -38,7 +40,9 @@ export const offenceDataSchema = z.discriminatedUnion("convictionStatus", [
     convictionStatus: z.literal("unconvicted"),
     nextCourtDate: z.string().min(1, "Next court date is required for unconvicted status"),
     remandStartDate: z.string().optional(),
-    sentence: z.string().optional(),
+    sentenceYears: z.coerce.number().min(0).optional(),
+    sentenceMonths: z.coerce.number().min(0).optional(),
+    sentenceDays: z.coerce.number().min(0).optional(),
     sentenceDate: z.string().optional(),
   }).merge(baseOffenceSchema),
 ]);
@@ -54,6 +58,9 @@ export const restitutionSchema = z.object({
   restitutionAmount: z.string().min(1, "Restitution amount is required"),
   restitutionDate: z.string().min(1, "Restitution date is required"),
   restitutionSentence: z.string().optional(),
+  restitutionSentenceYears: z.coerce.number().min(0).optional(),
+  restitutionSentenceMonths: z.coerce.number().min(0).optional(),
+  restitutionSentenceDays: z.coerce.number().min(0).optional(),
   restitutionStatus: z
     .enum(["pending", "partial", "paid", "waived"])
     .default("pending"),
@@ -76,30 +83,8 @@ const offenceFormSchema = z.object({
 }).superRefine((data, ctx) => {
   const hasConvicted = data.offences?.some(o => o.convictionStatus === 'convicted');
   
-  // Validate release dates if there's a convicted offence
-  if (hasConvicted) {
-    if (!data.releaseDates?.sentence) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Total sentence summary is required",
-        path: ["releaseDates", "sentence"]
-      });
-    }
-    if (!data.releaseDates?.earliestDateOfRelease) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Earliest date of release is required",
-        path: ["releaseDates", "earliestDateOfRelease"]
-      });
-    }
-    if (!data.releaseDates?.remission) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Remission is required",
-        path: ["releaseDates", "remission"]
-      });
-    }
-  }
+  // Release dates are now automatically calculated by the backend upon save,
+  // so we no longer require the user to input them.
 
   if (data.sentenceGroup?.isGrouped && hasConvicted) {
     if (!data.sentenceGroup.duration) {
@@ -119,11 +104,11 @@ const offenceFormSchema = z.object({
   } else if (!data.sentenceGroup?.isGrouped && hasConvicted) {
     data.offences?.forEach((offence, index) => {
       if (offence.convictionStatus === 'convicted') {
-        if (!offence.sentence) {
+        if (!offence.sentenceYears && !offence.sentenceMonths && !offence.sentenceDays) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "Sentence duration is required",
-            path: ["offences", index, "sentence"]
+            path: ["offences", index, "sentenceYears"] // attaching to years as a general marker
           });
         }
         if (!offence.sentenceDate) {
@@ -192,7 +177,9 @@ const OffenceRegistrationForm = ({
     convictionStatus: 'unconvicted',
     furtherCharge: '',
     court: '',
-    sentence: '',
+    sentenceYears: 0,
+    sentenceMonths: 0,
+    sentenceDays: 0,
     sentenceDate: '',
     nextCourtDate: '',
     remandStartDate: '',
@@ -211,7 +198,9 @@ const OffenceRegistrationForm = ({
         convictionStatus: 'unconvicted',
         furtherCharge: '',
         court: '',
-        sentence: '',
+        sentenceYears: 0,
+        sentenceMonths: 0,
+        sentenceDays: 0,
         sentenceDate: '',
         nextCourtDate: '',
         remandStartDate: '',
@@ -230,7 +219,9 @@ const OffenceRegistrationForm = ({
     };
 
     if (convictionStatus === "convicted") {
-      mapped.sentence = o.sentence || "";
+      mapped.sentenceYears = o.sentence_years || 0;
+      mapped.sentenceMonths = o.sentence_months || 0;
+      mapped.sentenceDays = o.sentence_days || 0;
       mapped.sentenceDate = o.date_of_sentence
         ? new Date(o.date_of_sentence).toISOString().split('T')[0]
         : "";
@@ -242,7 +233,9 @@ const OffenceRegistrationForm = ({
       mapped.remandStartDate = o.remand_start_date
         ? new Date(o.remand_start_date).toISOString().split('T')[0]
         : "";
-      mapped.sentence = "";
+      mapped.sentenceYears = 0;
+      mapped.sentenceMonths = 0;
+      mapped.sentenceDays = 0;
       mapped.sentenceDate = "";
     }
     return mapped;
@@ -686,7 +679,7 @@ const OffenceRegistrationForm = ({
                       </TableCell>
                       <TableCell>
                         {o.convictionStatus === 'convicted' 
-                          ? (o.sentence ? `${o.sentence} (from ${o.sentenceDate})` : '-')
+                          ? (`${o.sentenceYears}Y ${o.sentenceMonths}M ${o.sentenceDays}D (from ${o.sentenceDate})`)
                           : (o.nextCourtDate ? `Next Court: ${o.nextCourtDate}` : '-')
                         }
                       </TableCell>

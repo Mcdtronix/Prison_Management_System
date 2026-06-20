@@ -229,8 +229,16 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
         if release_history:
             return {
                 'total_effective_sentence': release_history.total_effective_sentence,
+                'total_sentences_days': release_history.total_sentences_days,
                 'remission': release_history.remission,
+                'total_remission_days': release_history.total_remission_days,
                 'earliest_date_of_release': release_history.earliest_date_of_release,
+                'active_edr': release_history.active_edr,
+                'active_odr': release_history.active_odr,
+                'edr_standard': release_history.edr_standard,
+                'odr_standard': release_history.odr_standard,
+                'edr_restitution_paid': release_history.edr_restitution_paid,
+                'odr_restitution_paid': release_history.odr_restitution_paid,
             }
         return None
 
@@ -249,6 +257,11 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
                 convicted = offence.conviction
                 offence_data.update({
                     'sentence': convicted.sentence,
+                    'sentence_years': convicted.sentence_years,
+                    'sentence_months': convicted.sentence_months,
+                    'sentence_days': convicted.sentence_days,
+                    'effective_sentence_days': convicted.effective_sentence_days,
+                    'remission_days': convicted.remission_days,
                     'sentence_date': convicted.date_of_sentence,
                 })
                 # Add restitution if exists
@@ -257,6 +270,11 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
                     offence_data.update({
                         'restitution_amount': restitution.restitution_amount,
                         'restitution_date': restitution.restitution_date,
+                        'restitution_sentence_years': restitution.restitution_sentence_years,
+                        'restitution_sentence_months': restitution.restitution_sentence_months,
+                        'restitution_sentence_days': restitution.restitution_sentence_days,
+                        'restitution_sentence_days_total': restitution.restitution_sentence_days_total,
+                        'restitution_status': restitution.status,
                     })
             elif hasattr(offence, 'unconviction') and offence.unconviction:
                 unconvicted = offence.unconviction
@@ -293,6 +311,9 @@ class OffenceDataSerializer(serializers.Serializer):
     furtherCharge = serializers.CharField(max_length=500, required=False, allow_blank=True)
     court = serializers.CharField(max_length=100)
     sentence = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    sentenceYears = serializers.IntegerField(default=0, required=False)
+    sentenceMonths = serializers.IntegerField(default=0, required=False)
+    sentenceDays = serializers.IntegerField(default=0, required=False)
     sentenceDate = FlexibleDateField(required=False, allow_null=True, input_formats=["%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "iso-8601"])
     remission = serializers.CharField(max_length=50, required=False, allow_blank=True)
     nextCourtDate = FlexibleDateField(required=False, allow_null=True, input_formats=["%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "iso-8601"])
@@ -328,6 +349,9 @@ class RestitutionRegistrationSerializer(serializers.Serializer):
     restitutionAmount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
     restitutionDate = FlexibleDateField()
     restitutionSentence = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    restitutionSentenceYears = serializers.IntegerField(default=0, required=False)
+    restitutionSentenceMonths = serializers.IntegerField(default=0, required=False)
+    restitutionSentenceDays = serializers.IntegerField(default=0, required=False)
     restitutionStatus = serializers.ChoiceField(choices=['pending', 'partial', 'paid', 'waived'], default='pending')
     earliestDateOfReleaseWithRestitution = FlexibleDateField(required=False, allow_null=True)
     restitutionReceipt = serializers.FileField(required=False, allow_null=True)
@@ -799,23 +823,22 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                 # Create or update convicted record
                 logger.info(f"Processing convicted record for offence {offence.id}")
                 try:
+                    sentence_date = parse_date(offence_data.get('sentenceDate'))
                     if sentence_group_instance:
-                        sentence_months = None
                         sentence_date = sentence_group_instance.date_of_sentence
-                    else:
-                        sentence_str = offence_data.get('sentence', '0')
-                        sentence_date = parse_date(offence_data.get('sentenceDate'))
-                        try:
-                            sentence_months = int(str(sentence_str).split()[0])
-                        except (ValueError, IndexError):
-                            sentence_months = 0
+
+                    sentence_years = offence_data.get('sentenceYears', 0)
+                    sentence_months = offence_data.get('sentenceMonths', 0)
+                    sentence_days = offence_data.get('sentenceDays', 0)
 
                     convicted, created = Convicted.objects.update_or_create(
                         offence=offence,
                         defaults={
                             'prison_number': inmate,
                             'date_of_sentence': sentence_date,
-                            'sentence': sentence_months,
+                            'sentence_years': sentence_years,
+                            'sentence_months': sentence_months,
+                            'sentence_days': sentence_days,
                             'sentence_group': sentence_group_instance,
                         }
                     )
@@ -870,6 +893,9 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                         'restitution_amount': restitution_data.get('restitutionAmount'),
                         'restitution_date': parse_date(restitution_data.get('restitutionDate')),
                         'alternative_restitution_sentence': restitution_data.get('restitutionSentence'),
+                        'restitution_sentence_years': restitution_data.get('restitutionSentenceYears', 0),
+                        'restitution_sentence_months': restitution_data.get('restitutionSentenceMonths', 0),
+                        'restitution_sentence_days': restitution_data.get('restitutionSentenceDays', 0),
                         'status': restitution_data.get('restitutionStatus'),
                         'receipt': restitution_data.get('restitutionReceipt')
                     }
@@ -886,35 +912,7 @@ class OffenceRegistrationSerializer(serializers.Serializer):
             else:
                 logger.warning(f"Invalid offence index for restitution: {offence_index}. Skipping.")
 
-        # Create or Update Release History if there are convicted offences in the payload
-        # This is a simplified approach; a more robust one might aggregate all convictions.
-        if any(o['convictionStatus'] == 'convicted' for o in offences_data):
-            logger.info("Processing release history record...")
-            try:
-                total_sentence = release_dates_data.get('sentence', '0')
-                remission = release_dates_data.get('remission', '0')
-                edr_raw = release_dates_data.get('earliestDateOfRelease')
-                earliest_release = parse_date(edr_raw)
-
-                if earliest_release:
-                    # For simplicity, we update/create a single release history record for the inmate.
-                    # This assumes the form provides a summary for all active convictions.
-                    ReleaseHistory.objects.update_or_create(
-                        inmate=inmate,
-                        defaults={
-                            'total_effective_sentence': int(str(total_sentence).split()[0]) if total_sentence else 0,
-                            'remission': float(str(remission).split()[0]) if remission else 0,
-                            'earliest_date_of_release': earliest_release
-                        }
-                    )
-                    logger.info("Release history processed.")
-                else:
-                    logger.warning("Skipping release history processing due to invalid earliest release date.")
-
-            except Exception as e:
-                logger.error(f"Error processing release history: {e}")
-                # Decide if this should be a fatal error
-                # raise
+        # Note: Release History is automatically updated via post_save signals on Convicted and Restitution models.
 
         # Return the inmate instance so the view can serialize and respond
         return inmate

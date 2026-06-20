@@ -1,86 +1,176 @@
-
-import React from 'react';
+import React, { useMemo } from 'react';
 import { UseFormReturn } from 'react-hook-form';
-import { 
-  FormField, 
-  FormItem, 
-  FormLabel, 
-  FormControl, 
-  FormMessage,
-  FormDescription
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormValues } from './index';
-import { Calendar } from 'lucide-react';
+import { Calendar, AlertCircle, Info, Calculator } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface ReleaseDatesProps {
-  form: UseFormReturn<FormValues>;
+  form: UseFormReturn<any>;
 }
 
 const ReleaseDates: React.FC<ReleaseDatesProps> = ({ form }) => {
+  const offences = form.watch("offences") || [];
+  const restitutions = form.watch("restitutions") || [];
+  const sentenceGroup = form.watch("sentenceGroup");
+
+  const summary = useMemo(() => {
+    let totalDays = 0;
+    let sentenceDateStr: string | undefined;
+    
+    if (sentenceGroup?.isGrouped && sentenceGroup?.date) {
+      sentenceDateStr = sentenceGroup.date;
+    } else {
+      let earliestDate: Date | null = null;
+      offences.forEach((o: any) => {
+        if (o.convictionStatus === 'convicted' && o.sentenceDate) {
+          const d = new Date(o.sentenceDate);
+          if (!earliestDate || d < earliestDate) {
+            earliestDate = d;
+          }
+        }
+      });
+      if (earliestDate) {
+        sentenceDateStr = earliestDate.toISOString().split('T')[0];
+      }
+    }
+
+    // Simplistic frontend calculation just for summary purposes
+    if (sentenceGroup?.isGrouped && sentenceGroup?.duration) {
+      totalDays = parseInt(sentenceGroup.duration) * 30; // Assuming duration is in months
+    } else {
+      let consecutiveDays = 0;
+      offences.forEach((o: any) => {
+        if (o.convictionStatus === 'convicted') {
+           const days = (parseInt(o.sentenceYears) || 0) * 365 +
+                        (parseInt(o.sentenceMonths) || 0) * 30 +
+                        (parseInt(o.sentenceDays) || 0);
+           consecutiveDays += days;
+        }
+      });
+      totalDays = consecutiveDays;
+    }
+
+    const standardRemission = Math.floor(totalDays / 3);
+    const standardEffective = totalDays;
+    
+    let restitutionDays = 0;
+    restitutions.forEach((r: any) => {
+       const days = (parseInt(r.restitutionSentenceYears) || 0) * 365 +
+                    (parseInt(r.restitutionSentenceMonths) || 0) * 30 +
+                    (parseInt(r.restitutionSentenceDays) || 0);
+       restitutionDays += days;
+    });
+
+    const netDays = Math.max(0, totalDays - restitutionDays);
+    const restitutionRemission = Math.floor(netDays / 3);
+
+    // Calculate actual dates
+    const addDaysAndFormat = (dateStr: string | undefined, days: number) => {
+      if (!dateStr) return "N/A";
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return "N/A";
+      d.setDate(d.getDate() + days);
+      const day = d.getDate().toString().padStart(2, '0');
+      const month = (d.getMonth() + 1).toString().padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
+
+    const odrStandard = addDaysAndFormat(sentenceDateStr, totalDays);
+    const edrStandard = addDaysAndFormat(sentenceDateStr, totalDays - standardRemission);
+
+    const odrRestitution = addDaysAndFormat(sentenceDateStr, netDays);
+    const edrRestitution = addDaysAndFormat(sentenceDateStr, netDays - restitutionRemission);
+
+    return { 
+      totalDays, 
+      standardRemission, 
+      standardEffective,
+      odrStandard,
+      edrStandard,
+      restitutionDays,
+      netDays,
+      restitutionRemission,
+      odrRestitution,
+      edrRestitution,
+      hasRestitution: restitutions.length > 0
+    };
+  }, [offences, restitutions, sentenceGroup]);
+
   return (
-    <Card>
-      <CardHeader>
+    <Card className="border-indigo-200 bg-indigo-50/30">
+      <CardHeader className="pb-3">
         <div className="flex items-center">
-          <Calendar className="mr-2 h-5 w-5" />
-          <CardTitle>Release Dates</CardTitle>
+          <Calculator className="mr-2 h-5 w-5 text-indigo-700" />
+          <CardTitle className="text-indigo-900">Computed Release Dates Summary</CardTitle>
         </div>
-        <CardDescription>
-          Record sentence and earliest date of release
+        <CardDescription className="text-indigo-700 font-medium">
+          These values are automatically calculated based on the sentences and restitutions provided. Please verify them before registering.
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <FormField
-          control={form.control}
-          name="releaseDates.sentence"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Sentence Summary</FormLabel>
-              <FormControl>
-                <Input placeholder="Total effective sentence" {...field} />
-              </FormControl>
-              <FormDescription>
-                The total combined sentence for all offences
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        
-        <FormField
-          control={form.control}
-          name="releaseDates.earliestDateOfRelease"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Earliest Date of Release</FormLabel>
-              <FormControl>
-                <Input type="date" {...field} />
-              </FormControl>
-              <FormDescription>
-                The calculated earliest possible release date
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white p-4 rounded-md border border-indigo-100 shadow-sm">
+            <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Standard Computation</h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between border-b pb-1">
+                <span className="text-gray-600">Total Effective Sentence:</span>
+                <span className="font-semibold">{summary.totalDays} Days (~{Math.floor(summary.totalDays/30)} Months)</span>
+              </div>
+              <div className="flex justify-between border-b pb-1">
+                <span className="text-gray-600">Remission (1/3):</span>
+                <span className="font-semibold text-emerald-600">{summary.standardRemission} Days</span>
+              </div>
+              <div className="flex justify-between border-b pb-1">
+                <span className="text-gray-600">Earliest Date of Release (EDR):</span>
+                <span className="font-bold text-indigo-700">{summary.edrStandard}</span>
+              </div>
+              <div className="flex justify-between pt-1">
+                <span className="text-gray-600">Oldest Date of Release (ODR):</span>
+                <span className="font-bold text-gray-900">{summary.odrStandard}</span>
+              </div>
+            </div>
+          </div>
 
-        <FormField
-          control={form.control}
-          name="releaseDates.remission"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Remission</FormLabel>
-              <FormControl>
-                <Input placeholder="Remission in months" {...field} />
-              </FormControl>
-              <FormDescription>
-                The calculated remission amount (e.g., 1/3 of sentence)
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
+          {summary.hasRestitution && (
+            <div className="bg-white p-4 rounded-md border border-amber-200 shadow-sm">
+              <h4 className="text-sm font-semibold text-amber-600 uppercase tracking-wider mb-2">If Restitution is Paid</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between border-b border-amber-100 pb-1">
+                  <span className="text-gray-600">Sentence Reduction:</span>
+                  <span className="font-semibold text-amber-700">-{summary.restitutionDays} Days</span>
+                </div>
+                <div className="flex justify-between border-b border-amber-100 pb-1">
+                  <span className="text-gray-600">New Effective Sentence:</span>
+                  <span className="font-semibold">{summary.netDays} Days</span>
+                </div>
+                <div className="flex justify-between border-b border-amber-100 pb-1">
+                  <span className="text-gray-600">New Remission (1/3):</span>
+                  <span className="font-semibold text-emerald-600">{summary.restitutionRemission} Days</span>
+                </div>
+                <div className="flex justify-between border-b border-amber-100 pb-1">
+                  <span className="text-gray-600">Earliest Date of Release (EDR):</span>
+                  <span className="font-bold text-indigo-700">{summary.edrRestitution}</span>
+                </div>
+                <div className="flex justify-between pt-1 border-amber-100">
+                  <span className="text-gray-600">Oldest Date of Release (ODR):</span>
+                  <span className="font-bold text-gray-900">{summary.odrRestitution}</span>
+                </div>
+              </div>
+            </div>
           )}
-        />
+        </div>
+
+        {summary.hasRestitution && (
+          <Alert className="bg-blue-50 border-blue-200">
+            <Info className="h-4 w-4 text-blue-600" />
+            <AlertTitle className="text-blue-800">Restitution Conditions</AlertTitle>
+            <AlertDescription className="text-blue-700 text-xs mt-1">
+              The Alternative Computation will only become active if the restitution is fully paid and the official receipt is uploaded before the assigned deadline. Until then, the Standard Computation applies.
+            </AlertDescription>
+          </Alert>
+        )}
       </CardContent>
     </Card>
   );

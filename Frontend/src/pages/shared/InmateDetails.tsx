@@ -63,21 +63,51 @@ interface Inmate {
     items_description: string;
     date_logged: string;
   };
+  release_history?: {
+    total_effective_sentence: number;
+    total_sentences_days: number;
+    remission: number;
+    total_remission_days: number;
+    earliest_date_of_release: string;
+    active_edr: string;
+    active_odr: string;
+    edr_standard: string;
+    odr_standard: string;
+    edr_restitution_paid: string | null;
+    odr_restitution_paid: string | null;
+  };
   offences?: Array<{
     id: string;
     offence_description: string;
     court: string;
     conviction_status: string;
     sentence?: string;
+    sentence_years?: number;
+    sentence_months?: number;
+    sentence_days?: number;
+    effective_sentence_days?: number;
+    remission_days?: number;
     sentence_date?: string;
-    remission?: string;
-    edr_without_restitution?: string;
-    edr_with_restitution?: string;
     restitution_amount?: number;
     restitution_date?: string;
+    restitution_status?: string;
+    restitution_sentence_years?: number;
+    restitution_sentence_months?: number;
+    restitution_sentence_days?: number;
+    restitution_sentence_days_total?: number;
     next_court_date?: string;
   }>;
   station_history?: Array<any>;
+  name?: string; // Adding some fields used later
+  dob?: string;
+  address?: string;
+  emergency_contact?: string;
+  offense?: string;
+  sentence?: string;
+  expected_release_date?: string;
+  age?: number;
+  photo_url?: string;
+  status?: string;
 }
 
 interface Offense {
@@ -587,12 +617,25 @@ const InmateDetails = () => {
                         <div className="flex items-start">
                           <Clock className="h-4 w-4 mr-2 mt-0.5" />
                           <div>
-                            <p className="text-sm font-medium">Sentence</p>
+                            <p className="text-sm font-medium">Total Sentence</p>
                             <p className="text-sm">
-                              {inmate.sentence || "N/A"}
+                              {inmate.release_history 
+                                ? `${inmate.release_history.total_effective_sentence} months (${inmate.release_history.total_sentences_days} days)` 
+                                : inmate.sentence || "N/A"}
                             </p>
                           </div>
                         </div>
+                        {inmate.release_history && (
+                          <div className="flex items-start">
+                            <Clock className="h-4 w-4 mr-2 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-medium">Remission</p>
+                              <p className="text-sm">
+                                {inmate.release_history.total_remission_days} days
+                              </p>
+                            </div>
+                          </div>
+                        )}
                         <div className="flex items-start">
                           <Calendar className="h-4 w-4 mr-2 mt-0.5" />
                           <div>
@@ -606,16 +649,31 @@ const InmateDetails = () => {
                             </p>
                           </div>
                         </div>
-                        {inmate.expected_release_date && (
+                        {(inmate.release_history?.active_edr || inmate.expected_release_date) && (
                           <div className="flex items-start">
                             <Calendar className="h-4 w-4 mr-2 mt-0.5" />
                             <div>
                               <p className="text-sm font-medium">
-                                Expected Release Date
+                                Active Earliest Date of Release (EDR)
+                              </p>
+                              <p className="text-sm font-semibold text-blue-700">
+                                {new Date(
+                                  inmate.release_history?.active_edr || inmate.expected_release_date || "",
+                                ).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                        {inmate.release_history?.active_odr && (
+                          <div className="flex items-start">
+                            <Calendar className="h-4 w-4 mr-2 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-medium">
+                                Active Oldest Date of Release (ODR)
                               </p>
                               <p className="text-sm">
                                 {new Date(
-                                  inmate.expected_release_date,
+                                  inmate.release_history.active_odr,
                                 ).toLocaleDateString()}
                               </p>
                             </div>
@@ -761,44 +819,37 @@ const InmateDetails = () => {
                           {offense.conviction_status === "convicted" ? (
                             <div className="grid gap-3 md:grid-cols-2">
                               <div>
-                                <p className="text-sm font-medium mb-1">
-                                  Sentence:
-                                </p>
-                                <p className="text-sm">{offense.sentence}</p>
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium mb-1">
-                                  EDR without Restitution:
-                                </p>
-                                <p className="text-sm">
-                                  {offense.edr_without_restitution
-                                    ? new Date(
-                                        offense.edr_without_restitution,
-                                      ).toLocaleDateString()
-                                    : "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium mb-1">
-                                  Restitution Amount:
-                                </p>
-                                <p className="text-sm">
-                                  {offense.restitution_amount
-                                    ? `$${offense.restitution_amount.toLocaleString()}`
-                                    : "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium mb-1">
-                                  EDR with Restitution:
-                                </p>
-                                <p className="text-sm">
-                                  {offense.edr_with_restitution
-                                    ? new Date(
-                                        offense.edr_with_restitution,
-                                      ).toLocaleDateString()
-                                    : "N/A"}
-                                </p>
+                                <div>
+                                  <p className="text-sm font-medium mb-1">
+                                    Sentence:
+                                  </p>
+                                  <p className="text-sm">
+                                    {offense.sentence_years}Y {offense.sentence_months}M {offense.sentence_days}D
+                                    <br/><span className="text-xs text-gray-500">Effective: {offense.effective_sentence_days} days</span>
+                                  </p>
+                                </div>
+                                {offense.restitution_amount && (
+                                  <>
+                                    <div>
+                                      <p className="text-sm font-medium mb-1">
+                                        Restitution:
+                                      </p>
+                                      <p className="text-sm">
+                                        Amount: ${offense.restitution_amount}
+                                        <br/>Status: <Badge variant="outline">{offense.restitution_status}</Badge>
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-medium mb-1">
+                                        Alternative Sentence:
+                                      </p>
+                                      <p className="text-sm">
+                                        {offense.restitution_sentence_years}Y {offense.restitution_sentence_months}M {offense.restitution_sentence_days}D
+                                        <br/><span className="text-xs text-gray-500">Total: {offense.restitution_sentence_days_total} days</span>
+                                      </p>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             </div>
                           ) : (

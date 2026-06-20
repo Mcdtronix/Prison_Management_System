@@ -43,6 +43,9 @@ const Restitution: React.FC<RestitutionProps> = ({
     restitutionAmount: '',
     restitutionDate: '',
     restitutionSentence: '',
+    restitutionSentenceYears: 0,
+    restitutionSentenceMonths: 0,
+    restitutionSentenceDays: 0,
     restitutionStatus: 'pending',
     restitutionReceipt: null,
   });
@@ -80,6 +83,9 @@ const Restitution: React.FC<RestitutionProps> = ({
       restitutionAmount: '',
       restitutionDate: '',
       restitutionSentence: '',
+      restitutionSentenceYears: 0,
+      restitutionSentenceMonths: 0,
+      restitutionSentenceDays: 0,
       restitutionStatus: 'pending',
       restitutionReceipt: null,
     });
@@ -188,13 +194,39 @@ const Restitution: React.FC<RestitutionProps> = ({
               </div>
 
               <div>
-                <label className="text-sm font-medium">Restitution Sentence</label>
-                <Input
-                  name="restitutionSentence"
-                  placeholder="Sentence related to restitution"
-                  value={currentRestitution.restitutionSentence}
-                  onChange={handleInputChange}
-                />
+                <label className="text-sm font-medium">Restitution Alternative Sentence</label>
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  <div>
+                    <Input
+                      name="restitutionSentenceYears"
+                      type="number"
+                      min="0"
+                      placeholder="Years"
+                      value={currentRestitution.restitutionSentenceYears}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                  <div>
+                    <Input
+                      name="restitutionSentenceMonths"
+                      type="number"
+                      min="0"
+                      placeholder="Months"
+                      value={currentRestitution.restitutionSentenceMonths}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                  <div>
+                    <Input
+                      name="restitutionSentenceDays"
+                      type="number"
+                      min="0"
+                      placeholder="Days"
+                      value={currentRestitution.restitutionSentenceDays}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div>

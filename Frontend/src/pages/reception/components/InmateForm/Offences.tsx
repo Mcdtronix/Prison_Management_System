@@ -46,11 +46,11 @@ const Offences: React.FC<OffencesProps> = ({
   const localSchema = useMemo(() => {
     return offenceDataSchema.superRefine((data, ctx) => {
       if (data.convictionStatus === 'convicted' && !isGrouped) {
-        if (!data.sentence) {
+        if (!data.sentenceYears && !data.sentenceMonths && !data.sentenceDays) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "Sentence duration is required for a convicted offence",
-            path: ["sentence"]
+            path: ["sentenceYears"]
           });
         }
         if (!data.sentenceDate) {
@@ -102,7 +102,9 @@ const Offences: React.FC<OffencesProps> = ({
       convictionStatus: 'unconvicted',
       furtherCharge: '',
       court: '',
-      sentence: '',
+      sentenceYears: 0,
+      sentenceMonths: 0,
+      sentenceDays: 0,
       sentenceDate: '',
       nextCourtDate: '',
       hasRestitution: false,
@@ -200,19 +202,47 @@ const Offences: React.FC<OffencesProps> = ({
                 <div className="space-y-4">
                   {!isGrouped && (
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <FormField
-                        control={localForm.control}
-                        name="sentence"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Sentence</FormLabel>
-                            <FormControl>
-                              <Input placeholder="e.g., 5 years" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                      <div className="grid grid-cols-3 gap-2">
+                        <FormField
+                          control={localForm.control}
+                          name="sentenceYears"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Years</FormLabel>
+                              <FormControl>
+                                <Input type="number" min="0" placeholder="0" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={localForm.control}
+                          name="sentenceMonths"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Months</FormLabel>
+                              <FormControl>
+                                <Input type="number" min="0" placeholder="0" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={localForm.control}
+                          name="sentenceDays"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Days</FormLabel>
+                              <FormControl>
+                                <Input type="number" min="0" placeholder="0" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
                       <FormField
                         control={localForm.control}
                         name="sentenceDate"
