@@ -58,9 +58,6 @@ export const restitutionSchema = z.object({
   restitutionAmount: z.string().min(1, "Restitution amount is required"),
   restitutionDate: z.string().min(1, "Restitution date is required"),
   restitutionSentence: z.string().optional(),
-  restitutionSentenceYears: z.coerce.number().min(0).optional(),
-  restitutionSentenceMonths: z.coerce.number().min(0).optional(),
-  restitutionSentenceDays: z.coerce.number().min(0).optional(),
   restitutionStatus: z
     .enum(["pending", "partial", "paid", "waived"])
     .default("pending"),
@@ -82,7 +79,7 @@ const offenceFormSchema = z.object({
   }).optional()
 }).superRefine((data, ctx) => {
   const hasConvicted = data.offences?.some(o => o.convictionStatus === 'convicted');
-  
+
   // Release dates are now automatically calculated by the backend upon save,
   // so we no longer require the user to input them.
 
@@ -170,7 +167,7 @@ const OffenceRegistrationForm = ({
     "convicted" | "unconvicted"
   >("unconvicted");
   const [draftHasRestitution, setDraftHasRestitution] = useState<boolean>(false);
-  
+
   // State for the draft offence being edited in the form
   const [draftOffence, setDraftOffence] = useState<z.infer<typeof offenceDataSchema>>({
     offence: '',
@@ -400,12 +397,28 @@ const OffenceRegistrationForm = ({
       const formattedData = {
         ...data,
         offences: data.offences.map((offence, index) => {
-          // Find the corresponding original offence from the summary to get its ID
           const originalOffence = offencesSummary.find(
             (o: any) => String(o.id) === String(offenceToEditId)
           );
+
+          // ✅ Build sentence string for convicted offences
+          let sentenceString = "";
+          if (offence.convictionStatus === "convicted") {
+            const parts: string[] = [];
+            const years = Number(offence.sentenceYears) || 0;
+            const months = Number(offence.sentenceMonths) || 0;
+            const days = Number(offence.sentenceDays) || 0;
+
+            if (years > 0) parts.push(`${years} year${years !== 1 ? "s" : ""}`);
+            if (months > 0) parts.push(`${months} month${months !== 1 ? "s" : ""}`);
+            if (days > 0) parts.push(`${days} day${days !== 1 ? "s" : ""}`);
+            sentenceString = parts.length > 0 ? parts.join(", ") : "0 days";
+          }
+
           return {
             ...offence,
+            // ✅ Add computed sentence field
+            sentence: offence.convictionStatus === "convicted" ? sentenceString : undefined,
             id: editMode && originalOffence ? originalOffence.id : undefined,
           };
         }),
@@ -469,11 +482,11 @@ const OffenceRegistrationForm = ({
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
         console.error("DEBUG: Main form validation failed. Errors:", errors);
-        
+
         const extractErrors = (obj: any): string[] => {
           if (!obj) return [];
           if (typeof obj.message === 'string') return [obj.message];
-          
+
           let messages: string[] = [];
           if (Array.isArray(obj)) {
             obj.forEach(item => {
@@ -530,7 +543,7 @@ const OffenceRegistrationForm = ({
                     <span className="font-semibold">Offence #{i + 1}</span>
                     <div className="flex items-center gap-2">
                       <span className="px-2 py-0.5 rounded text-white text-xs"
-                        style={{backgroundColor: (o.conviction_status === "convicted" ? '#ef4444' : '#f97316')}}>
+                        style={{ backgroundColor: (o.conviction_status === "convicted" ? '#ef4444' : '#f97316') }}>
                         {o.conviction_status === "convicted" ? "Convicted" : "Unconvicted"}
                       </span>
                       <Button
@@ -558,7 +571,7 @@ const OffenceRegistrationForm = ({
                         )}
                       </>
                     )}
-                    
+
                     {/* History Display */}
                     {o.court_history && o.court_history.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-dashed">
@@ -671,14 +684,13 @@ const OffenceRegistrationForm = ({
                       <TableCell className="font-medium max-w-[200px] truncate" title={o.offence}>{o.offence}</TableCell>
                       <TableCell>{o.court || "-"}</TableCell>
                       <TableCell>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                          o.convictionStatus === 'convicted' ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'
-                        }`}>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${o.convictionStatus === 'convicted' ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'
+                          }`}>
                           {o.convictionStatus === 'convicted' ? 'Convicted' : 'Unconvicted'}
                         </span>
                       </TableCell>
                       <TableCell>
-                        {o.convictionStatus === 'convicted' 
+                        {o.convictionStatus === 'convicted'
                           ? (`${o.sentenceYears}Y ${o.sentenceMonths}M ${o.sentenceDays}D (from ${o.sentenceDate})`)
                           : (o.nextCourtDate ? `Next Court: ${o.nextCourtDate}` : '-')
                         }
@@ -748,13 +760,13 @@ const OffenceRegistrationForm = ({
                 </p>
               )}
             </div>
-        )}
+          )}
 
         {/* Show ReleaseDates if any offence (or current draft) is convicted */}
         {(offences.some((o) => o.convictionStatus === "convicted") ||
           draftConvictionStatus === "convicted") && (
             <ReleaseDates form={form} />
-        )}
+          )}
 
         <div className="flex justify-end gap-4">
           <Button
