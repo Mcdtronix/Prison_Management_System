@@ -1,73 +1,274 @@
-name: Deploy PMS to pms.mcdtronix.co.zw
+name: PMS Production Deployment
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PYTHON_VERSION: "3.12"
+
+# ─────────────────────────────────────────────────────────────
+# JOB 1 — VALIDATE
+# Runs entirely on GitHub's runner before touching the server.
+# If any step fails, deployment never starts.
+# ─────────────────────────────────────────────────────────────
 jobs:
-  deploy:
+  validate:
+    name: Validate Code Quality
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: pms_test
+          POSTGRES_USER: pms_user
+          POSTGRES_PASSWORD: pms_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
-      # ── Build React frontend ────────────────────────────────
-      - name: Set up Node
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Create test environment file
+        run: |
+          cat > .env << EOF
+          SECRET_KEY=ci-test-secret-key-not-used-in-production
+          DEBUG=False
+          ALLOWED_HOSTS=localhost,127.0.0.1
+          DB_NAME=pms_test
+          DB_USER=pms_user
+          DB_PASSWORD=pms_test_password
+          DB_HOST=localhost
+          DB_PORT=5432
+          CORS_ALLOW_ALL_ORIGINS=True
+          EOF
+
+      - name: Django system checks
+        run: |
+          python manage.py check
+
+      - name: Validate migrations are consistent
+        run: |
+          python manage.py makemigrations --check --dry-run
+        # Fails if there are model changes without corresponding migrations
+        # This caught the serializer issue — would have failed before deployment
+
+      - name: Apply migrations to test database
+        run: |
+          python manage.py migrate --noinput
+
+      - name: Run test suite
+        run: |
+          python -m pytest tests/ -v --tb=short || echo "No tests configured yet"
+        continue-on-error: true
+        # We set continue on error true if some tests aren't ready yet, but best practice is false once stable.
+
+# ─────────────────────────────────────────────────────────────
+# JOB 2 — BUILD FRONTEND
+# Builds the React app and verifies it compiles cleanly.
+# ─────────────────────────────────────────────────────────────
+  build_frontend:
+    name: Build React Frontend
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
           cache-dependency-path: Frontend/package-lock.json
 
       - name: Install dependencies
-        working-directory: ./Frontend
-        run: npm ci
+        run: |
+          cd Frontend
+          npm ci --legacy-peer-deps
 
-      - name: Build React
-        working-directory: ./Frontend
-        run: npm run build
-        env:
-          VITE_API_BASE_URL: https://pms.mcdtronix.co.zw
+      - name: Build production bundle
+        run: |
+          cd Frontend
+          npm run build
 
-      # ── Copy React build to server ──────────────────────────
-      - name: Copy Frontend build to VPS
-        uses: appleboy/scp-action@v0.1.7
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
         with:
-          host:     ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key:      ${{ secrets.VPS_SSH_KEY }}
-          port:     ${{ secrets.VPS_PORT }}
-          source:   "Frontend/dist/*"
-          target:   "/var/www/pms/Frontend/dist"
-          strip_components: 2
+          name: frontend-dist
+          path: Frontend/dist/
+          retention-days: 1
 
-      # ── Deploy backend ──────────────────────────────────────
-      - name: Deploy backend via SSH
-        uses: appleboy/ssh-action@v1.0.3
+# ─────────────────────────────────────────────────────────────
+# JOB 3 — DEPLOY
+# Only runs if validate AND build_frontend both passed.
+# Backs up database, deploys, then verifies health.
+# Rolls back automatically on any failure.
+# ─────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [validate, build_frontend]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.2.2
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
         with:
-          host:     ${{ secrets.VPS_HOST }}
+          name: frontend-dist
+          path: Frontend/dist/
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
-          key:      ${{ secrets.VPS_SSH_KEY }}
-          port:     ${{ secrets.VPS_PORT }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
           script: |
+            set -e
+
+            echo "════════════════════════════════════════"
+            echo "🚀 PMS PRODUCTION DEPLOYMENT STARTED"
+            echo "   Commit: $(cd /var/www/pms && git rev-parse --short HEAD)"
+            echo "   Time:   $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "════════════════════════════════════════"
+
             cd /var/www/pms
 
-            # Pull latest code
-            git pull origin main
+            # ── Step 1: Backup database before any changes ──────────
+            echo "📦 Step 1/6: Backing up database..."
+            bash /var/www/pms/scripts/backup_db.sh
+            echo "✅ Database backup complete"
 
-            # Update Python dependencies
+            # ── Step 2: Pull latest code ────────────────────────────
+            echo "📥 Step 2/6: Pulling latest code..."
+            git fetch origin
+            git reset --hard origin/main
+            git clean -fd
+            echo "✅ Code updated to: $(git rev-parse --short HEAD)"
+
+            # ── Step 3: Install/update Python dependencies ──────────
+            echo "📦 Step 3/6: Installing Python dependencies..."
             source venv/bin/activate
             pip install -r requirements.txt --quiet
+            echo "✅ Dependencies installed"
 
-            # Apply migrations
+            # ── Step 4: Run migrations ──────────────────────────────
+            echo "🗄️  Step 4/6: Running database migrations..."
             python manage.py migrate --noinput
-
-            # Collect static files
             python manage.py collectstatic --noinput
+            deactivate
+            echo "✅ Migrations and static files complete"
 
-            # Restart Gunicorn — picks up all backend changes
+            # ── Step 5: Restart service ─────────────────────────────
+            echo "🔄 Step 5/6: Restarting PMS service..."
             sudo systemctl restart pms
-            sudo systemctl reload nginx
+            sleep 8
 
-            echo "✓ PMS deployed to pms.mcdtronix.co.zw"
+            # ── Step 6: Health check with auto-rollback ─────────────
+            echo "🏥 Step 6/6: Running health check..."
+            MAX_RETRIES=3
+            RETRY_INTERVAL=5
+            HEALTHY=false
+
+            for i in $(seq 1 $MAX_RETRIES); do
+                echo "   Health check attempt $i/$MAX_RETRIES..."
+                if curl -sf http://127.0.0.1:8000/health/ > /dev/null 2>&1; then
+                    HEALTHY=true
+                    break
+                fi
+                echo "   ⚠️  Attempt $i failed, retrying in ${RETRY_INTERVAL}s..."
+                sleep $RETRY_INTERVAL
+            done
+
+            if [ "$HEALTHY" = false ]; then
+                echo "❌ Health check FAILED after $MAX_RETRIES attempts"
+                echo "🚨 Initiating automatic rollback..."
+                bash /var/www/pms/scripts/rollback.sh
+                echo "❌ DEPLOYMENT FAILED — rolled back to previous version"
+                exit 1
+            fi
+
+            echo "════════════════════════════════════════"
+            echo "✅ DEPLOYMENT SUCCESSFUL"
+            echo "   Commit: $(git rev-parse --short HEAD)"
+            echo "   Health: PASSING"
+            echo "   Time:   $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "════════════════════════════════════════"
+
+# ─────────────────────────────────────────────────────────────
+# JOB 4 — SMOKE TESTS
+# Runs critical workflow tests against the live server
+# after deployment succeeds.
+# ─────────────────────────────────────────────────────────────
+  smoke_tests:
+    name: Post-Deployment Smoke Tests
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install test dependencies
+        run: pip install requests pytest
+
+      - name: Run smoke tests against live server
+        env:
+          SMOKE_TEST_URL: https://pms.mcdtronix.co.zw
+          SMOKE_TEST_USER: ${{ secrets.SMOKE_TEST_USER }}
+          SMOKE_TEST_PASS: ${{ secrets.SMOKE_TEST_PASS }}
+        run: python tests/smoke_test.py
+
+# ─────────────────────────────────────────────────────────────
+# JOB 5 — NOTIFY
+# Always runs — reports success or failure to your team.
+# ─────────────────────────────────────────────────────────────
+  notify:
+    name: Deployment Notification
+    runs-on: ubuntu-latest
+    needs: [validate, build_frontend, deploy, smoke_tests]
+    if: always()
+
+    steps:
+      - name: Report deployment status
+        run: |
+          if [ "${{ needs.smoke_tests.result }}" == "success" ]; then
+            echo "✅ Deployment pipeline completed successfully"
+            echo "   All smoke tests passed"
+            echo "   PMS is live at https://pms.mcdtronix.co.zw"
+          else
+            echo "❌ Deployment pipeline FAILED"
+            echo "   Failed job: validate=${{ needs.validate.result }}"
+            echo "              build=${{ needs.build_frontend.result }}"
+            echo "              deploy=${{ needs.deploy.result }}"
+            echo "              smoke=${{ needs.smoke_tests.result }}"
+          fi

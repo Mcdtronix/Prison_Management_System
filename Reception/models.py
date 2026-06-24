@@ -567,7 +567,13 @@ def calculate_inmate_release_dates(inmate):
         active_total_days = total_sentences_days
         active_remission_days = total_remission_days
 
-    rh, created = ReleaseHistory.objects.get_or_create(inmate=inmate, defaults={'earliest_date_of_release': active_edr or timezone.now().date()})
+    rh, created = ReleaseHistory.objects.get_or_create(
+        inmate=inmate, 
+        defaults={
+            'earliest_date_of_release': active_edr or timezone.now().date(),
+            'total_effective_sentence': active_total_days // 30,
+        }
+    )
     rh.total_sentences_days = active_total_days
     rh.total_remission_days = active_remission_days
     rh.odr_standard = odr_standard

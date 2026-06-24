@@ -22,6 +22,33 @@ from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 
+from django.http import JsonResponse
+from django.db import connection
+from django.views.decorators.http import require_GET
+
+@require_GET
+def health_check(request):
+    """
+    Production health check endpoint.
+    Validates database connectivity and basic application state.
+    """
+    try:
+        # Verify database is reachable
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+
+        return JsonResponse({
+            "status": "healthy",
+            "database": "connected",
+            "version": "1.0.0",
+        }, status=200)
+
+    except Exception as e:
+        return JsonResponse({
+            "status": "unhealthy",
+            "error": str(e),
+        }, status=503)
+
 schema_view = get_schema_view(
     openapi.Info(
         title="Prison Management System API",
@@ -33,6 +60,7 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
+    path('health/', health_check, name='health-check'),
     path('admin/', admin.site.urls),
     
     # API endpoints
