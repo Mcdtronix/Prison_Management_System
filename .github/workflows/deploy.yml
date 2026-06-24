@@ -160,8 +160,12 @@ jobs:
 
             # ── Step 1: Backup database before any changes ──────────
             echo "📦 Step 1/6: Backing up database..."
-            bash /var/www/pms/scripts/backup_db.sh
-            echo "✅ Database backup complete"
+            if [ -f "/var/www/pms/scripts/backup_db.sh" ]; then
+                bash /var/www/pms/scripts/backup_db.sh
+                echo "✅ Database backup complete"
+            else
+                echo "⚠️ Backup script not found yet (first run). Skipping backup."
+            fi
 
             # ── Step 2: Pull latest code ────────────────────────────
             echo "📥 Step 2/6: Pulling latest code..."
