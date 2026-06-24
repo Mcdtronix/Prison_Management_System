@@ -161,11 +161,10 @@ jobs:
             # ── Step 1: Backup database before any changes ──────────
             echo "📦 Step 1/6: Backing up database..."
             if [ -f "/var/www/pms/scripts/backup_db.sh" ]; then
-                echo "⚠️ Bypassing backup step temporarily to pull fixed scripts."
-                # bash /var/www/pms/scripts/backup_db.sh
-                echo "✅ Database backup bypassed"
+                bash /var/www/pms/scripts/backup_db.sh
+                echo "✅ Database backup complete"
             else
-                echo "⚠️ Backup script not found yet (first run). Skipping backup."
+                echo "⚠️ Backup script not found yet. Skipping backup."
             fi
 
             # ── Step 2: Pull latest code ────────────────────────────
