@@ -29,15 +29,15 @@ def check(name: str, condition: bool, detail: str = ""):
 
 def test_health():
     log("Testing health endpoint...")
-    r = requests.get(f"{BASE_URL}/api/health/", timeout=10) # Using /health/ since we added it to Core urls. Oh wait, it's mapped to just /health/ in Core/urls.py
-    # Wait, the urls.py in Core mounts it as /health/ but we didn't include it under api. We mapped it to path('health/', health_check).
-    # Oh wait, the previous urls.py replacement did: `path('health/', health_check, name='health-check')`.
-    # Let's adjust the URL in smoke_test to match.
-    r = requests.get(f"{BASE_URL}/health/", timeout=10)
-    check("Health endpoint returns 200", r.status_code == 200)
-    check("Health response is JSON", r.headers.get("content-type", "").startswith("application/json"))
-    data = r.json()
-    check("Database is connected", data.get("database") == "connected", str(data))
+    r = requests.get(f"{BASE_URL}/api/ping/", timeout=10)
+    check("Health endpoint returns 200", r.status_code == 200, f"Got {r.status_code}")
+    
+    try:
+        data = r.json()
+        check("Health response is JSON", True)
+        check("Health status is healthy", data.get("status") == "healthy", f"Got {data.get('status')}")
+    except ValueError:
+        check("Health response is JSON", False)
     log("Health check passed", "PASS")
 
 

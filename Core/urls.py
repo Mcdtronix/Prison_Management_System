@@ -60,7 +60,7 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
-    path('health/', health_check, name='health-check'),
+    path('api/ping/', health_check, name='health-check'),
     path('admin/', admin.site.urls),
     
     # API endpoints

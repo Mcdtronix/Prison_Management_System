@@ -160,8 +160,12 @@ jobs:
 
             # ── Step 1: Backup database before any changes ──────────
             echo "📦 Step 1/6: Backing up database..."
-            echo "⚠️ Bypassing backup step temporarily to pull fixed scripts."
-            echo "✅ Database backup bypassed"
+            if [ -f "/var/www/pms/scripts/backup_db.sh" ]; then
+                bash /var/www/pms/scripts/backup_db.sh
+                echo "✅ Database backup complete"
+            else
+                echo "⚠️ Backup script not found yet (first run). Skipping backup."
+            fi
 
             # ── Step 2: Pull latest code ────────────────────────────
             echo "📥 Step 2/6: Pulling latest code..."
@@ -196,7 +200,7 @@ jobs:
 
             for i in $(seq 1 $MAX_RETRIES); do
                 echo "   Health check attempt $i/$MAX_RETRIES..."
-                if curl -sf https://pms.mcdtronix.co.zw/health/ > /dev/null 2>&1; then
+                if curl -sf https://pms.mcdtronix.co.zw/api/ping/ > /dev/null 2>&1; then
                     HEALTHY=true
                     break
                 fi
