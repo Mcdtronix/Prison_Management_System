@@ -1,0 +1,62 @@
+#!/bin/bash
+# ─────────────────────────────────────────────────────────────
+# Emergency rollback script
+# Reverts to the last known good Git commit and restores DB
+# ─────────────────────────────────────────────────────────────
+set -e
+
+APP_DIR="/var/www/pms"
+BACKUP_DIR="/var/backups/pms"
+SERVICE_NAME="pms"
+
+echo "🚨 INITIATING ROLLBACK..."
+
+# Load environment variables safely from .env
+if [ -f "$APP_DIR/.env" ]; then
+    export $(grep -v '^#' "$APP_DIR/.env" | xargs)
+else
+    echo "❌ Error: .env file not found at $APP_DIR/.env"
+    exit 1
+fi
+
+# Fallback to defaults if .env doesn't specify them
+DB_NAME=${DB_NAME:-pms_db}
+DB_USER=${DB_USER:-pms_user}
+
+# Step 1 — Revert to previous Git commit
+cd "$APP_DIR"
+CURRENT_COMMIT=$(git rev-parse HEAD)
+PREVIOUS_COMMIT=$(git rev-parse HEAD~1)
+
+echo "   Current commit:  $CURRENT_COMMIT"
+echo "   Rolling back to: $PREVIOUS_COMMIT"
+
+git reset --hard "$PREVIOUS_COMMIT"
+
+# Step 2 — Restore the most recent pre-deploy backup
+LATEST_BACKUP=$(ls -t "$BACKUP_DIR"/pms_pre_deploy_*.sql.gz 2>/dev/null | head -1)
+
+if [ -n "$LATEST_BACKUP" ]; then
+    echo "📦 Restoring database from: $LATEST_BACKUP"
+    gunzip -c "$LATEST_BACKUP" | PGPASSWORD="$DB_PASSWORD" psql -h 127.0.0.1 -U "$DB_USER" "$DB_NAME"
+    echo "✅ Database restored"
+else
+    echo "⚠️  No backup found — skipping database restore"
+fi
+
+# Step 3 — Reinstall previous dependencies
+source "$APP_DIR/venv/bin/activate"
+pip install -r requirements.txt --quiet
+deactivate
+
+# Step 4 — Restart service
+sudo systemctl restart "$SERVICE_NAME"
+sleep 5
+
+# Step 5 — Verify health
+if curl -sf http://127.0.0.1:8000/health/ > /dev/null; then
+    echo "✅ ROLLBACK SUCCESSFUL — Application is healthy"
+else
+    echo "❌ ROLLBACK FAILED — Manual intervention required"
+    exit 1
+fi
