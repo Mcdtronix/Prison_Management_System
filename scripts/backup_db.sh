@@ -11,11 +11,14 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKUP_FILE="${BACKUP_DIR}/pms_pre_deploy_${TIMESTAMP}.sql.gz"
 RETENTION_DAYS=7
 
-# Load environment variables safely from .env
+# Extract variables safely without executing the .env file
 if [ -f "$APP_DIR/.env" ]; then
-    set -a
-    source "$APP_DIR/.env"
-    set +a
+    _get_env() {
+        grep -E "^$1=" "$APP_DIR/.env" | head -1 | sed -e "s/^$1=//" -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
+    }
+    DB_NAME=$(_get_env DB_NAME)
+    DB_USER=$(_get_env DB_USER)
+    DB_PASSWORD=$(_get_env DB_PASSWORD)
 else
     echo "❌ Error: .env file not found at $APP_DIR/.env"
     exit 1
