@@ -30,8 +30,8 @@ echo "📦 Starting database backup..."
 echo "   Database: $DB_NAME"
 echo "   Output: $BACKUP_FILE"
 
-# Run backup using localhost and the password from .env
-PGPASSWORD="$DB_PASSWORD" pg_dump -h 127.0.0.1 -U "$DB_USER" "$DB_NAME" | gzip > "$BACKUP_FILE"
+# Run backup using localhost and the password from .env, with clean flags for easy restore
+PGPASSWORD="$DB_PASSWORD" pg_dump -h 127.0.0.1 -U "$DB_USER" -c --if-exists "$DB_NAME" | gzip > "$BACKUP_FILE"
 
 echo "✅ Backup completed: $BACKUP_FILE"
 echo "   Size: $(du -sh $BACKUP_FILE | cut -f1)"

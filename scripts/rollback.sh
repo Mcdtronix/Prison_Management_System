@@ -54,7 +54,7 @@ sudo systemctl restart "$SERVICE_NAME"
 sleep 5
 
 # Step 5 — Verify health
-if curl -sf http://127.0.0.1:8000/health/ > /dev/null; then
+if curl -sf https://pms.mcdtronix.co.zw/health/ > /dev/null; then
     echo "✅ ROLLBACK SUCCESSFUL — Application is healthy"
 else
     echo "❌ ROLLBACK FAILED — Manual intervention required"

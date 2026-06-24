@@ -196,7 +196,7 @@ jobs:
 
             for i in $(seq 1 $MAX_RETRIES); do
                 echo "   Health check attempt $i/$MAX_RETRIES..."
-                if curl -sf http://127.0.0.1:8000/health/ > /dev/null 2>&1; then
+                if curl -sf https://pms.mcdtronix.co.zw/health/ > /dev/null 2>&1; then
                     HEALTHY=true
                     break
                 fi
