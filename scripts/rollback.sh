@@ -13,7 +13,9 @@ echo "🚨 INITIATING ROLLBACK..."
 
 # Load environment variables safely from .env
 if [ -f "$APP_DIR/.env" ]; then
-    export $(grep -v '^#' "$APP_DIR/.env" | xargs)
+    set -a
+    source "$APP_DIR/.env"
+    set +a
 else
     echo "❌ Error: .env file not found at $APP_DIR/.env"
     exit 1
