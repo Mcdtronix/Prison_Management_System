@@ -174,6 +174,56 @@ class UserManagementView(APIView):
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
 
+class UserDetailView(APIView):
+    """
+    Admin-only endpoint to manage specific users (e.g., toggle active status).
+    """
+
+    permission_classes = [IsAuthenticated, IsAdminOfficer]
+
+    def patch(self, request, pk):
+        try:
+            profile = UserProfile.objects.get(id=pk)
+            
+            # Admins can only manage users in their own station unless SuperAdmin
+            requester_assignment = get_primary_assignment(request.user)
+            if requester_assignment and normalize_role_code(requester_assignment.role.code) != "SUPER_ADMIN":
+                try:
+                    station = request.user.userprofile.station
+                    if profile.station != station:
+                        return Response({"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
+                except AttributeError:
+                    return Response({"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
+
+            if 'is_active' in request.data:
+                is_active = request.data['is_active']
+                
+                # Prevent deactivating oneself
+                if profile.user == request.user and not is_active:
+                    return Response({"error": "You cannot deactivate your own account."}, status=status.HTTP_400_BAD_REQUEST)
+                
+                profile.is_active = is_active
+                profile.user.is_active = is_active
+                profile.user.save()
+                profile.save()
+
+                action_str = "Activated" if is_active else "Deactivated"
+                log_action(
+                    request=request,
+                    action=f"{action_str} system account for officer: {profile.officer.service_number if profile.officer else profile.user.username}",
+                    module="RBAC",
+                    object_id=str(profile.id),
+                    object_type="UserProfile",
+                    remarks=f"Status changed to {is_active}",
+                )
+
+            serializer = UserProfileSerializer(profile)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except UserProfile.DoesNotExist:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+
+
 class UserCreationOptionsView(APIView):
     """
     Admin-only endpoint to populate user creation forms.

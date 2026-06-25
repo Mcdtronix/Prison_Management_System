@@ -11,6 +11,7 @@ from .views import (
     current_user_view,
     UserCreationOptionsView,
     UserManagementView,
+    UserDetailView,
     PhaseOneSetupView,
 )
 from .views_audit import AuditLogViewSet
@@ -32,6 +33,7 @@ urlpatterns = [
     # User endpoints
     path('me/', current_user_view, name='current_user'),
     path('users/', UserManagementView.as_view(), name='user_list_create'),
+    path('users/<int:pk>/', UserDetailView.as_view(), name='user_detail'),
     path('users/create-options/', UserCreationOptionsView.as_view(), name='user_create_options'),
     path('setup/', PhaseOneSetupView.as_view(), name='phase_one_setup'),
     path('', include((router.urls, 'audit'))),

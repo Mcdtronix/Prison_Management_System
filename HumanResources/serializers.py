@@ -29,7 +29,7 @@ class OfficerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Officer
         fields = "__all__"
-        read_only_fields = ["service_number", "created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at"]
 
 
 class MaritalStatusSerializer(serializers.ModelSerializer):

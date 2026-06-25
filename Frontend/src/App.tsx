@@ -27,6 +27,7 @@ import ThreadView from "@/pages/messaging/ThreadView";
 import Compose from "@/pages/messaging/Compose";
 import Outbox from "@/pages/messaging/Outbox";
 import Drafts from "@/pages/messaging/Drafts";
+import { PrisonLayout } from "@/components/PrisonLayout";
 import { getDefaultRouteForRole, getLandingRouteForUser } from "@/lib/auth";
 
 function AuthLoadingScreen() {
@@ -92,7 +93,9 @@ function App() {
             path="/admin/officers"
             element={
               <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
-                <OfficerManagement />
+                <PrisonLayout title="Officer Management">
+                  <OfficerManagement />
+                </PrisonLayout>
               </ProtectedRoute>
             }
           />
@@ -108,7 +111,9 @@ function App() {
             path="/admin/inmates"
             element={
               <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
-                <InmateOverview />
+                <PrisonLayout title="Inmate Overview">
+                  <InmateOverview />
+                </PrisonLayout>
               </ProtectedRoute>
             }
           />

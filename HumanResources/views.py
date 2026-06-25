@@ -44,6 +44,35 @@ class OfficerViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     serializer_class = OfficerSerializer
     permission_classes = [IsAuthenticated]
 
+    def perform_create(self, serializer):
+        officer = serializer.save()
+        try:
+            # Try to get the admin's station to post the officer there initially
+            station = None
+            
+            # 1. Try to get station from primary assignment
+            from Auth.utils import get_primary_assignment
+            assignment = get_primary_assignment(self.request.user)
+            if assignment and assignment.org_unit and assignment.org_unit.unit_type == "STATION":
+                from Auth.models import Station
+                station = Station.objects.filter(org_unit=assignment.org_unit).first()
+                
+            # 2. Fallback to userprofile
+            if not station and hasattr(self.request.user, 'userprofile') and self.request.user.userprofile.station:
+                station = self.request.user.userprofile.station
+            
+            if station:
+                from .models import OfficerStationHistory
+                OfficerStationHistory.objects.create(
+                    officer=officer,
+                    station=station,
+                    date_posted=officer.date_of_attestation,
+                    posted_by=self.request.user.username
+                )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to create station history for new officer: {e}")
+
 
 class MaritalStatusViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = MaritalStatus.objects.all()

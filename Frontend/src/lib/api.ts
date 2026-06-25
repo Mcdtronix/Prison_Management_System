@@ -361,6 +361,19 @@ export const authApi = {
   },
 
   /**
+   * Update system user status (Activate/Deactivate)
+   */
+  updateUserStatus: async (
+    userId: number,
+    isActive: boolean
+  ): Promise<ApiResponse<ManagedUserProfile>> => {
+    return apiRequest<ManagedUserProfile>(`/auth/users/${userId}/`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_active: isActive }),
+    });
+  },
+
+  /**
    * Refresh access token
    */
   refreshToken: async (): Promise<ApiResponse<{ access: string }>> => {
@@ -421,6 +434,34 @@ export const adminActionsApi = {
   },
   createOrgAdmin: async (orgId: number, payload: { officer: number; role: number; password: string; email?: string }) => {
     return apiRequest(`/auth/admin-actions/${orgId}/create_admin/`, { method: 'POST', body: JSON.stringify(payload) });
+  },
+};
+
+// ==================================================
+// HUMAN RESOURCES API ENDPOINTS
+// ==================================================
+export const hrApi = {
+  /**
+   * Get all officers in the HR system
+   */
+  getOfficers: async (): Promise<ApiResponse<any[]>> => {
+    const response = await apiRequest<any>("/hr/officers/", {
+      method: "GET",
+    });
+    if (response.data && response.data.results) {
+        response.data = response.data.results;
+    }
+    return response;
+  },
+
+  /**
+   * Create a new officer in the HR system
+   */
+  createOfficer: async (payload: any): Promise<ApiResponse<any>> => {
+    return apiRequest<any>("/hr/officers/", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 };
 
