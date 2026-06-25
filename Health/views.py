@@ -52,9 +52,13 @@ class PatientViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter patients by user's station"""
         user_station = self.request.user.userprofile.station
-        return Patient.objects.filter(station=user_station).select_related(
+        queryset = Patient.objects.filter(station=user_station).select_related(
             'inmate', 'officer', 'dependent', 'station'
         )
+        inmate_id = self.request.query_params.get('inmate', None)
+        if inmate_id is not None:
+            queryset = queryset.filter(inmate_id=inmate_id)
+        return queryset
 
     def get_serializer_class(self):
         """Use list serializer for list actions"""
@@ -91,9 +95,13 @@ class AdmissionHealthAssessmentViewSet(OrgUnitContextMixin, viewsets.ModelViewSe
     def get_queryset(self):
         """Filter by user's station"""
         user_station = self.request.user.userprofile.station
-        return AdmissionHealthAssessment.objects.filter(
+        queryset = AdmissionHealthAssessment.objects.filter(
             station=user_station
         ).select_related('inmate', 'station')
+        inmate_id = self.request.query_params.get('inmate', None)
+        if inmate_id is not None:
+            queryset = queryset.filter(inmate_id=inmate_id)
+        return queryset
 
 
 class OutPatientVisitViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
@@ -104,9 +112,13 @@ class OutPatientVisitViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter by user's station"""
         user_station = self.request.user.userprofile.station
-        return OutPatientVisit.objects.filter(
+        queryset = OutPatientVisit.objects.filter(
             station=user_station
         ).select_related('patient', 'station')
+        inmate_id = self.request.query_params.get('inmate', None)
+        if inmate_id is not None:
+            queryset = queryset.filter(patient__inmate_id=inmate_id)
+        return queryset
 
 
 class MentalHealthVisitViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):

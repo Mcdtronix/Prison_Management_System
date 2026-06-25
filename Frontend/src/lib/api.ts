@@ -692,33 +692,49 @@ export const receptionApi = {
 
 // Health API endpoints
 export const healthApi = {
-  getInmateHealthRecord: async (id: string) => {
-    return fetchApi(`/health/inmates/${id}/`);
+  getPatientByInmateId: async (inmateId: string) => {
+    return fetchApi(`/health/patients/?inmate=${inmateId}`);
   },
 
-  createHealthRecord: async (id: string, healthData: any) => {
-    return fetchApi(`/health/inmates/${id}/`, {
+  createPatientForInmate: async (inmateId: string) => {
+    return fetchApi(`/health/patients/`, {
+      method: "POST",
+      body: JSON.stringify({ patient_type: "INMATE", inmate: inmateId }),
+    });
+  },
+
+  getInmateHealthRecord: async (id: string) => {
+    // GET /health/admission-assessments/?inmate={id}
+    return fetchApi(`/health/admission-assessments/?inmate=${id}`);
+  },
+
+  createHealthRecord: async (healthData: any) => {
+    return fetchApi(`/health/admission-assessments/`, {
       method: "POST",
       body: JSON.stringify(healthData),
     });
   },
 
-  updateHealthRecord: async (id: string, healthData: any) => {
-    return fetchApi(`/health/inmates/${id}/`, {
+  updateHealthRecord: async (recordId: string, healthData: any) => {
+    return fetchApi(`/health/admission-assessments/${recordId}/`, {
       method: "PUT",
       body: JSON.stringify(healthData),
     });
   },
 
-  registerOPDVisit: async (id: string, visitData: any) => {
-    return fetchApi(`/health/inmates/${id}/opd/`, {
+  registerOPDVisit: async (visitData: any) => {
+    return fetchApi(`/health/opd-visits/`, {
       method: "POST",
       body: JSON.stringify(visitData),
     });
   },
 
   getOPDRecords: async (id: string) => {
-    return fetchApi(`/health/inmates/${id}/opd/`);
+    return fetchApi(`/health/opd-visits/?inmate=${id}`);
+  },
+
+  getAllOPDVisits: async () => {
+    return fetchApi(`/health/opd-visits/`);
   },
 
   getHealthStatistics: async () => {

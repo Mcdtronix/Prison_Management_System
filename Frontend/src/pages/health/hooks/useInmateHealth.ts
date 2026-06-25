@@ -54,10 +54,11 @@ export const useInmateHealth = (id: string | undefined) => {
       
       if (healthRecord) {
         // Update existing record
-        response = await healthApi.updateHealthRecord(id, data);
+        response = await healthApi.updateHealthRecord(healthRecord.id, data);
       } else {
         // Create new record
-        response = await healthApi.createHealthRecord(id, data);
+        const payload = { ...data, inmate: id };
+        response = await healthApi.createHealthRecord(payload);
       }
       
       if (response.error) {
