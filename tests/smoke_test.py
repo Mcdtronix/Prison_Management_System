@@ -7,12 +7,23 @@ import requests
 import sys
 import os
 
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
 BASE_URL = os.getenv("SMOKE_TEST_URL", "https://pms.mcdtronix.co.zw")
 TEST_USER = os.getenv("SMOKE_TEST_USER", "2934823Z")
 TEST_PASS = os.getenv("SMOKE_TEST_PASS", "Aqi16@khayz")
 
 session = requests.Session()
-
+retry_strategy = Retry(
+    total=5,
+    backoff_factor=2,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+session.mount("https://", adapter)
+session.mount("http://", adapter)
 
 def log(msg: str, status: str = "INFO"):
     icons = {"INFO": "ℹ️", "PASS": "✅", "FAIL": "❌", "WARN": "⚠️"}
@@ -29,7 +40,7 @@ def check(name: str, condition: bool, detail: str = ""):
 
 def test_health():
     log("Testing health endpoint...")
-    r = requests.get(f"{BASE_URL}/api/ping/", timeout=10)
+    r = session.get(f"{BASE_URL}/api/ping/", timeout=10)
     check("Health endpoint returns 200", r.status_code == 200, f"Got {r.status_code}")
     
     try:
