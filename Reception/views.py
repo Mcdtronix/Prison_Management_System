@@ -50,10 +50,12 @@ from .serializers import (
 )
 
 
+from Auth.permissions import IsReceptionOrHealthOrAdmin, IsAdminOfficer
+
 class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Inmate.objects.all()
     serializer_class = InmateSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsReceptionOrHealthOrAdmin]
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -71,6 +73,65 @@ class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
                 'property_history'
             )
         return Inmate.objects.all()
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminOfficer])
+    def approve_admission(self, request, pk=None):
+        inmate = self.get_object()
+        if inmate.admission_status != "PENDING_ADMIN_APPROVAL":
+            return Response(
+                {"error": "Inmate is not pending admin approval. Ensure health assessment is complete."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verify health assessment actually exists as a final check
+        if not hasattr(inmate, 'admission_health_assessment'):
+             return Response(
+                {"error": "Cannot approve admission: Health assessment is missing."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        inmate.admission_status = "ADMISSION_CONFIRMED"
+        inmate.save(update_fields=['admission_status'])
+        return Response({"status": "Admission confirmed successfully."})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminOfficer])
+    def approve_reclassification(self, request, pk=None):
+        inmate = self.get_object()
+        pending_classifications = inmate.classification_history.filter(approval_status="PENDING")
+        if not pending_classifications.exists():
+            return Response({"error": "No pending reclassifications found for this inmate."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Approve the most recent pending classification
+        classification = pending_classifications.latest('effective_date')
+        classification.approval_status = "APPROVED"
+        classification.save(update_fields=['approval_status'])
+        return Response({"status": "Reclassification approved successfully."})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminOfficer])
+    def approve_discharge(self, request, pk=None):
+        inmate = self.get_object()
+        
+        # 1. Verify health assessment for discharge is complete
+        if not hasattr(inmate, 'discharge_health_assessment'):
+            return Response(
+                {"error": "Cannot approve discharge: Discharge Health assessment is missing."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # 2. Find pending release record
+        pending_releases = inmate.release_history.filter(approval_status="PENDING")
+        if not pending_releases.exists():
+            return Response({"error": "No pending discharge request found."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        release = pending_releases.latest('id')
+        release.approval_status = "APPROVED"
+        release.save(update_fields=['approval_status'])
+        
+        # Update current status to discharged
+        inmate.current_status = "DISCHARGED"
+        inmate.save(update_fields=['current_status'])
+        
+        return Response({"status": "Discharge approved successfully."})
 
 
 class NextOfKinViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
@@ -432,6 +493,11 @@ class InmateListView(APIView):
         classification_query = request.query_params.get('classification', None)
         if classification_query:
             queryset = queryset.filter(classification_history__classification=classification_query)
+
+        # Filtering by admission_status
+        admission_status_query = request.query_params.get('admission_status', None)
+        if admission_status_query:
+            queryset = queryset.filter(admission_status=admission_status_query)
 
         # Ensure distinct results
         queryset = queryset.distinct()

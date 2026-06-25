@@ -277,6 +277,83 @@ class AdmissionHealthAssessment(models.Model):
     def __str__(self):
         return f"Admission Assessment: {self.inmate.prison_number} - {self.assessment_date}"
 
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+@receiver(post_save, sender=AdmissionHealthAssessment)
+def advance_admission_workflow(sender, instance, created, **kwargs):
+    """
+    When an admission health assessment is created, move the inmate's
+    admission status from PENDING_HEALTH_ASSESSMENT to PENDING_ADMIN_APPROVAL.
+    """
+    if created and instance.inmate:
+        if instance.inmate.admission_status == "PENDING_HEALTH_ASSESSMENT":
+            instance.inmate.admission_status = "PENDING_ADMIN_APPROVAL"
+            instance.inmate.save(update_fields=['admission_status'])
+
+
+# ==================================================
+# DISCHARGE HEALTH ASSESSMENT REGISTER
+# (Mandatory medical screening for all discharging inmates)
+# ==================================================
+class DischargeHealthAssessment(models.Model):
+    inmate = models.OneToOneField(
+        'Reception.Inmate',
+        on_delete=models.CASCADE,
+        related_name="discharge_health_assessment",
+        help_text="Inmate undergoing discharge assessment"
+    )
+    assessment_date = models.DateField(
+        default=timezone.now,
+        help_text="Date of health assessment"
+    )
+
+    weight = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        validators=[MinValueValidator(20)],
+        help_text="Weight in kilograms"
+    )
+    health_status = models.CharField(
+        max_length=50,
+        choices=[
+            ("HEALTHY", "Healthy / Fit for Discharge"),
+            ("NEEDS_CARE", "Requires ongoing medical care post-discharge"),
+            ("CRITICAL", "Critical / Unfit for standard discharge"),
+        ],
+        default="HEALTHY"
+    )
+    comment = models.TextField(
+        help_text="General health assessment comments", blank=True, null=True
+    )
+
+    # Metadata
+    assessed_by = models.CharField(
+        max_length=100,
+        help_text="Healthcare professional conducting assessment"
+    )
+    station = models.ForeignKey(
+        'Auth.Station',
+        on_delete=models.PROTECT,
+        help_text="Station where assessment was conducted"
+    )
+    owner_org_unit = models.ForeignKey(
+        'Auth.OrgUnit',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='discharge_assessments',
+        db_index=True,
+        help_text="Organization unit where this assessment was conducted."
+    )
+
+    class Meta:
+        db_table = "discharge_health_assessment"
+        ordering = ["-assessment_date"]
+
+    def __str__(self):
+        return f"Discharge Assessment: {self.inmate.prison_number} - {self.assessment_date}"
+
 
 # ==================================================
 # OUT-PATIENT DEPARTMENT (OPD) REGISTER

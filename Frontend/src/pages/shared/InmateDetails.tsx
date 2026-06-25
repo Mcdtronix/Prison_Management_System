@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { inmateApi, adminApi } from "@/lib/api";
+import { inmateApi, adminApi, receptionApi } from "@/lib/api";
 import { PrisonLayout } from "@/components/PrisonLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -44,6 +44,8 @@ interface Inmate {
   admission_type: string;
   admission_date: string;
   current_status: string;
+  admission_status?: string;
+  has_discharge_assessment?: boolean;
   created_at: string;
   updated_at: string;
   next_of_kin?: {
@@ -244,11 +246,8 @@ const InmateDetails = () => {
   const handleDischargeInmate = async () => {
     if (!id) return;
 
-    // In a real app, you'd open a dialog to get the reason
-    const reason = "Sentence completed";
-
     try {
-      await adminApi.dischargeInmate(id, reason);
+      await receptionApi.approveDischarge(id);
       setInmate((prev) => (prev ? { ...prev, status: "discharged" } : null));
       toast({
         title: "Success",
@@ -476,7 +475,16 @@ const InmateDetails = () => {
               {/* Admin actions */}
               {user?.role === "admin" && (
                 <div className="mt-6 space-y-2">
-                  {inmate.status === "pending" && (
+                  {inmate.status === "pending" && inmate.admission_status === "PENDING_HEALTH_ASSESSMENT" && (
+                    <Button
+                      className="w-full bg-gray-400"
+                      disabled
+                      title="Health Assessment required before admin approval"
+                    >
+                      Awaiting Health Assessment
+                    </Button>
+                  )}
+                  {inmate.status === "pending" && inmate.admission_status !== "PENDING_HEALTH_ASSESSMENT" && (
                     <Button
                       className="w-full bg-green-500 hover:bg-green-600"
                       onClick={handleApproveInmate}
@@ -486,12 +494,22 @@ const InmateDetails = () => {
                   )}
                   {inmate.status === "active" && (
                     <>
-                      <Button
-                        className="w-full bg-blue-500 hover:bg-blue-600"
-                        onClick={handleDischargeInmate}
-                      >
-                        Discharge Inmate
-                      </Button>
+                      {inmate.has_discharge_assessment ? (
+                        <Button
+                          className="w-full bg-blue-500 hover:bg-blue-600"
+                          onClick={handleDischargeInmate}
+                        >
+                          Discharge Inmate
+                        </Button>
+                      ) : (
+                        <Button
+                          className="w-full bg-gray-400"
+                          disabled
+                          title="Discharge Health Assessment required before discharge"
+                        >
+                          Awaiting Discharge Assessment
+                        </Button>
+                      )}
                       <Button
                         className="w-full bg-purple-500 hover:bg-purple-600"
                         onClick={handleTransferInmate}

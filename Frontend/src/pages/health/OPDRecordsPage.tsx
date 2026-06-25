@@ -1,8 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { DashboardShell } from '@/components/DashboardShell';
-import { useAuth } from '@/contexts/AuthContext';
+import { PrisonLayout } from '@/components/PrisonLayout';
 import { FileText, Home, LogOut, Plus, ThermometerIcon, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,25 +21,11 @@ import { NotFoundState } from './components/NotFoundState';
 
 const OPDRecordsPage = () => {
   const { id } = useParams<{ id: string }>();
-  const { logout } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [inmate, setInmate] = useState<any>(null);
   const [opdRecords, setOpdRecords] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Define navigation items
-  const navItems = [
-    { icon: <Home size={20} />, label: 'Dashboard', href: '/health' },
-    { icon: <Users size={20} />, label: 'Inmates', href: '/health/inmates' },
-    { icon: <FileText size={20} />, label: 'OPD Records', href: '/health/opd' },
-    { icon: <ThermometerIcon size={20} />, label: 'Check-ups', href: '/health/checkups' },
-  ];
-  
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
   
   useEffect(() => {
     const fetchData = async () => {
@@ -93,41 +78,26 @@ const OPDRecordsPage = () => {
   
   if (isLoading) {
     return (
-      <DashboardShell
-        title="OPD Records"
-        description="Loading..."
-        user={{ name: 'Health Officer', role: 'Health Department' }}
-        onLogout={handleLogout}
-        navItems={navItems}
-      >
+      <PrisonLayout title="OPD Records" description="Loading...">
         <LoadingState />
-      </DashboardShell>
+      </PrisonLayout>
     );
   }
   
   if (!inmate) {
     return (
-      <DashboardShell
-        title="OPD Records"
-        description="Inmate not found"
-        user={{ name: 'Health Officer', role: 'Health Department' }}
-        onLogout={handleLogout}
-        navItems={navItems}
-      >
+      <PrisonLayout title="OPD Records" description="Inmate not found">
         <NotFoundState />
-      </DashboardShell>
+      </PrisonLayout>
     );
   }
   
   return (
-    <DashboardShell
+    <PrisonLayout
       title={`OPD Records: ${inmate.name}`}
       description={`Prison Number: ${inmate.prison_number}`}
-      user={{ name: 'Health Officer', role: 'Health Department' }}
-      onLogout={handleLogout}
-      navItems={navItems}
     >
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-6">
         <Button onClick={() => navigate(`/health/inmate/${id}`)}>
           Back to Health Record
         </Button>
@@ -174,7 +144,7 @@ const OPDRecordsPage = () => {
           )}
         </CardContent>
       </Card>
-    </DashboardShell>
+    </PrisonLayout>
   );
 };
 

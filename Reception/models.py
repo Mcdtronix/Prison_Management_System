@@ -49,6 +49,16 @@ class Inmate(models.Model):
     is_first_time_offender = models.BooleanField(default=True)
     inmate_image = models.ImageField(upload_to="inmate/photos/", blank=True, null=True)
     admission_date = models.DateField(default=timezone.now)
+    ADMISSION_STATUS_CHOICES = [
+        ("PENDING_HEALTH_ASSESSMENT", "Pending Health Assessment"),
+        ("PENDING_ADMIN_APPROVAL", "Pending Admin Approval"),
+        ("ADMISSION_CONFIRMED", "Admission Confirmed"),
+    ]
+    admission_status = models.CharField(
+        max_length=30,
+        choices=ADMISSION_STATUS_CHOICES,
+        default="PENDING_HEALTH_ASSESSMENT"
+    )
     current_status = models.CharField(
         max_length=20,
         choices=[
@@ -136,6 +146,16 @@ class InmateClassificationHistory(models.Model):
     classification = models.CharField(max_length=20, choices=[("A", "A"), ("B", "B"), ("C", "C"), ("D", "D"), ("COND", "Condemned"), ("PUSOD", "PUSOD")])
     effective_date = models.DateField()
     remarks = models.TextField(blank=True, null=True)
+    APPROVAL_STATUS_CHOICES = [
+        ("PENDING", "Pending Approval"),
+        ("APPROVED", "Approved"),
+        ("REJECTED", "Rejected"),
+    ]
+    approval_status = models.CharField(
+        max_length=20,
+        choices=APPROVAL_STATUS_CHOICES,
+        default="PENDING"
+    )
 
     class Meta:
         db_table = "inmate_classification_history"
@@ -336,6 +356,16 @@ class Unconvicted(models.Model):
 # -----------------------------
 class ReleaseHistory(models.Model):
     inmate = models.ForeignKey(Inmate, on_delete=models.CASCADE, related_name="release_history")
+    APPROVAL_STATUS_CHOICES = [
+        ("PENDING", "Pending Approval"),
+        ("APPROVED", "Approved"),
+        ("REJECTED", "Rejected"),
+    ]
+    approval_status = models.CharField(
+        max_length=20,
+        choices=APPROVAL_STATUS_CHOICES,
+        default="PENDING"
+    )
     total_effective_sentence = models.PositiveIntegerField(help_text="Total sentence duration in months")
     remission = models.DecimalField(
         max_digits=6,

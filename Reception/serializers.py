@@ -38,6 +38,7 @@ class InmateSerializer(serializers.ModelSerializer):
 
     prison_number = serializers.CharField(required=False, allow_blank=True, validators=[])
     admission_date = serializers.DateField(default=timezone.now().date())
+    has_discharge_assessment = serializers.SerializerMethodField()
 
     class Meta:
         model = Inmate
@@ -65,10 +66,15 @@ class InmateSerializer(serializers.ModelSerializer):
             "admission_type",
             "admission_date",
             "current_status",
+            "admission_status",
+            "has_discharge_assessment",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_has_discharge_assessment(self, obj):
+        return hasattr(obj, 'discharge_health_assessment')
 
 
 class NextOfKinSerializer(serializers.ModelSerializer):
@@ -925,32 +931,49 @@ class OffenceRegistrationSerializer(serializers.Serializer):
 
 class InmateListSerializer(serializers.ModelSerializer):
     """Serializer for listing inmates with key summary data."""
-    offences = serializers.SerializerMethodField()
+    name = serializers.SerializerMethodField()
+    age = serializers.SerializerMethodField()
+    offense = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
     classification = serializers.SerializerMethodField()
 
     class Meta:
         model = Inmate
         fields = [
-            'id', 'prison_number', 'first_name', 'surname', 
-            'gender', 'date_of_birth', 'admission_date', 
-            'offences', 'status', 'classification'
+            'id', 'prison_number', 'name', 'age',
+            'gender', 'admission_date',
+            'offense', 'status', 'classification',
+            'admission_status'
         ]
 
-    def get_offences(self, obj):
+    def get_name(self, obj):
+        return f"{obj.first_name} {obj.surname}".strip()
+
+    def get_age(self, obj):
+        from datetime import date
+        if obj.date_of_birth:
+            today = date.today()
+            return today.year - obj.date_of_birth.year - ((today.month, today.day) < (obj.date_of_birth.month, obj.date_of_birth.day))
+        return 0
+
+    def get_offense(self, obj):
         """Return a comma-separated list of offence descriptions."""
         return ", ".join([offence.offence_description for offence in obj.offences.all()])
 
     def get_status(self, obj):
-        """Determine the inmate's overall status based on their offences."""
-        statuses = {offence.Offence_status for offence in obj.offences.all()}
-        if 'CONVICTED' in statuses:
-            return 'Convicted'
-        if 'UNCONVICTED' in statuses:
-            return 'Remand'
-        return 'Unknown'
+        """Determine the inmate's overall status based on their admission status and current status."""
+        if obj.current_status == "DISCHARGED":
+            return "discharged"
+        if obj.current_status == "TRANSFERRED":
+            return "transferred"
+            
+        if obj.admission_status in ["PENDING_HEALTH_ASSESSMENT", "PENDING_ADMIN_APPROVAL"]:
+            return "pending"
+            
+        return "active"
 
     def get_classification(self, obj):
         """Get the inmate's most recent classification."""
         latest_classification = obj.classification_history.order_by('-effective_date').first()
         return latest_classification.classification if latest_classification else 'N/A'
+

@@ -34,6 +34,7 @@ interface Inmate {
   sentence: string;
   classification: 'A' | 'B' | 'C' | 'D' | 'PUSOD' | 'CONDEM';
   status: 'active' | 'pending' | 'discharged' | 'transferred';
+  admission_status?: string;
 }
 
 const InmateOverview = () => {
@@ -211,7 +212,18 @@ const InmateOverview = () => {
                       <TableCell>{getStatusBadge(inmate.status)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          {inmate.status === 'pending' && (
+                          {inmate.status === 'pending' && inmate.admission_status === 'PENDING_HEALTH_ASSESSMENT' && (
+                            <Button 
+                              variant="secondary" 
+                              size="sm"
+                              disabled
+                              title="Health Assessment required before admin approval"
+                              className="opacity-70"
+                            >
+                              Awaiting Health Check
+                            </Button>
+                          )}
+                          {inmate.status === 'pending' && inmate.admission_status !== 'PENDING_HEALTH_ASSESSMENT' && (
                             <Button 
                               variant="outline" 
                               size="sm"

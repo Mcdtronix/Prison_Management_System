@@ -1,7 +1,6 @@
 
 import { useParams, useNavigate } from 'react-router-dom';
-import { DashboardShell } from '@/components/DashboardShell';
-import { useAuth } from '@/contexts/AuthContext';
+import { PrisonLayout } from '@/components/PrisonLayout';
 import { FileText, Home, LogOut, ThermometerIcon, Users } from 'lucide-react';
 import { InmateBasicInfo } from './components/InmateBasicInfo';
 import { HealthRecordForm, HealthFormValues } from './components/HealthRecordForm';
@@ -11,61 +10,31 @@ import { useInmateHealth } from './hooks/useInmateHealth';
 
 const InmateHealth = () => {
   const { id } = useParams<{ id: string }>();
-  const { logout } = useAuth();
   const navigate = useNavigate();
-  
   const { inmate, healthRecord, isLoading, isSaving, handleSubmit } = useInmateHealth(id);
-  
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
-  
-  // Define navigation items
-  const navItems = [
-    { icon: <Home size={20} />, label: 'Dashboard', href: '/health' },
-    { icon: <Users size={20} />, label: 'Inmates', href: '/health/inmates' },
-    { icon: <FileText size={20} />, label: 'OPD Records', href: '/health/opd' },
-    { icon: <ThermometerIcon size={20} />, label: 'Check-ups', href: '/health/checkups' },
-  ];
-  
+
   if (isLoading) {
     return (
-      <DashboardShell
-        title="Inmate Health Record"
-        description="Loading..."
-        user={{ name: 'Health Officer', role: 'Health Department' }}
-        onLogout={handleLogout}
-        navItems={navItems}
-      >
+      <PrisonLayout title="Inmate Health Record" description="Loading...">
         <LoadingState />
-      </DashboardShell>
+      </PrisonLayout>
     );
   }
   
   if (!inmate) {
     return (
-      <DashboardShell
-        title="Inmate Health Record"
-        description="Inmate not found"
-        user={{ name: 'Health Officer', role: 'Health Department' }}
-        onLogout={handleLogout}
-        navItems={navItems}
-      >
+      <PrisonLayout title="Inmate Health Record" description="Inmate not found">
         <NotFoundState />
-      </DashboardShell>
+      </PrisonLayout>
     );
   }
   
   const handleCancel = () => navigate('/health');
   
   return (
-    <DashboardShell
+    <PrisonLayout
       title={`Health Record: ${inmate.name}`}
       description={`Prison Number: ${inmate.prison_number}`}
-      user={{ name: 'Health Officer', role: 'Health Department' }}
-      onLogout={handleLogout}
-      navItems={navItems}
     >
       <div className="grid gap-6 md:grid-cols-3">
         <div className="md:col-span-1">
@@ -81,7 +50,7 @@ const InmateHealth = () => {
           />
         </div>
       </div>
-    </DashboardShell>
+    </PrisonLayout>
   );
 };
 

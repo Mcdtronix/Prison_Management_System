@@ -1,7 +1,6 @@
 
 import { useParams } from 'react-router-dom';
-import { DashboardShell } from '@/components/DashboardShell';
-import { useAuth } from '@/contexts/AuthContext';
+import { PrisonLayout } from '@/components/PrisonLayout';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Home, LogOut, ThermometerIcon, Users } from 'lucide-react';
 import { OPDVisitForm } from './components/OPDVisitForm';
@@ -14,25 +13,10 @@ import { useToast } from '@/hooks/use-toast';
 
 const OPDVisitPage = () => {
   const { id } = useParams<{ id: string }>();
-  const { logout } = useAuth();
-  const navigate = useNavigate();
   const { toast } = useToast();
   const [inmate, setInmate] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { isSaving, handleSubmit, handleCancel } = useOPDVisit(id);
-  
-  // Define navigation items
-  const navItems = [
-    { icon: <Home size={20} />, label: 'Dashboard', href: '/health' },
-    { icon: <Users size={20} />, label: 'Inmates', href: '/health/inmates' },
-    { icon: <FileText size={20} />, label: 'OPD Records', href: '/health/opd' },
-    { icon: <ThermometerIcon size={20} />, label: 'Check-ups', href: '/health/checkups' },
-  ];
-  
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
   
   useEffect(() => {
     const fetchInmateData = async () => {
@@ -61,39 +45,24 @@ const OPDVisitPage = () => {
   
   if (isLoading) {
     return (
-      <DashboardShell
-        title="Record OPD Visit"
-        description="Loading..."
-        user={{ name: 'Health Officer', role: 'Health Department' }}
-        onLogout={handleLogout}
-        navItems={navItems}
-      >
+      <PrisonLayout title="Record OPD Visit" description="Loading...">
         <LoadingState />
-      </DashboardShell>
+      </PrisonLayout>
     );
   }
   
   if (!inmate) {
     return (
-      <DashboardShell
-        title="Record OPD Visit"
-        description="Inmate not found"
-        user={{ name: 'Health Officer', role: 'Health Department' }}
-        onLogout={handleLogout}
-        navItems={navItems}
-      >
+      <PrisonLayout title="Record OPD Visit" description="Inmate not found">
         <NotFoundState />
-      </DashboardShell>
+      </PrisonLayout>
     );
   }
   
   return (
-    <DashboardShell
+    <PrisonLayout
       title={`Record OPD Visit: ${inmate.name}`}
       description={`Prison Number: ${inmate.prison_number}`}
-      user={{ name: 'Health Officer', role: 'Health Department' }}
-      onLogout={handleLogout}
-      navItems={navItems}
     >
       <div className="max-w-4xl mx-auto">
         <OPDVisitForm
@@ -103,7 +72,7 @@ const OPDVisitPage = () => {
           isSaving={isSaving}
         />
       </div>
-    </DashboardShell>
+    </PrisonLayout>
   );
 };
 

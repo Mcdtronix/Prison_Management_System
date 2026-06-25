@@ -46,6 +46,7 @@ interface NavItem {
   title: string;
   href: string;
   icon: React.ReactNode;
+  subItems?: { title: string; href: string }[];
 }
 
 export const Sidebar = ({ userRole }: SidebarProps) => {
@@ -150,6 +151,15 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           icon: <Stethoscope size={18} />,
         },
         {
+          title: "Assessments",
+          href: "/health/assessments",
+          icon: <FileText size={18} />,
+          subItems: [
+            { title: "Admission Assessments", href: "/health/assessments/admission" },
+            { title: "Discharge Assessments", href: "/health/assessments/discharge" },
+          ]
+        },
+        {
           title: "Mental Health Register",
           href: "/health/mental-health",
           icon: <Brain size={18} />,
@@ -223,19 +233,33 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
   );
 
   const dashboardUrl = getDefaultRouteForRole(normalizedRole);
-  const [messagesOpen, setMessagesOpen] = useState(false);
+  const [openDropdowns, setOpenDropdowns] = useState<Record<string, boolean>>({});
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
-  const toggleMessages = () => setMessagesOpen(v => !v);
+  const toggleDropdown = (href: string) => {
+    setOpenDropdowns((prev) => ({ ...prev, [href]: !prev[href] }));
+  };
 
-  // Keep messages submenu open when navigating inside /messaging,
-  // close it when navigating away. Also initialize to open if already inside messaging.
+  // Keep dropdowns open when navigating inside their base paths
   useEffect(() => {
+    const newOpenDropdowns: Record<string, boolean> = { ...openDropdowns };
     if (location.pathname.startsWith('/messaging')) {
-      setMessagesOpen(true);
+      newOpenDropdowns['/messaging'] = true;
     } else {
-      setMessagesOpen(false);
+      newOpenDropdowns['/messaging'] = false;
     }
+    
+    navItems.forEach(item => {
+      if (item.subItems) {
+        if (location.pathname.startsWith(item.href)) {
+          newOpenDropdowns[item.href] = true;
+        } else {
+          newOpenDropdowns[item.href] = false;
+        }
+      }
+    });
+    
+    setOpenDropdowns(newOpenDropdowns);
   }, [location.pathname]);
 
   // Poll unread count periodically and update badge
@@ -287,39 +311,63 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           </div>
           <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
             {navItems.map((item) => {
-              if (item.href === '/messaging') {
+              const isMessaging = item.href === '/messaging';
+              const hasSubItems = item.subItems && item.subItems.length > 0;
+              const isDropdown = isMessaging || hasSubItems;
+              const isDropdownOpen = openDropdowns[item.href];
+
+              if (isDropdown) {
                 return (
-                  <div key="messaging-root">
+                  <div key={item.href}>
                     <button
-                      onClick={toggleMessages}
+                      onClick={() => toggleDropdown(item.href)}
                       className={cn(
                         "w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
                         "text-gray-700 hover:text-gray-900 hover:bg-gray-100",
-                        location.pathname.startsWith('/messaging') &&
+                        location.pathname.startsWith(item.href) &&
                           "border-r-2 border-[#d7a928] bg-[#0b4f2a]/10 text-[#0b4f2a]",
                         !isOpen && "justify-center px-2",
                       )}
                     >
                       <span className="text-gray-500 relative">{item.icon}
-                        {unreadCount > 0 && (
+                        {isMessaging && unreadCount > 0 && (
                           <span className="absolute -top-2 -right-2 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-semibold leading-none text-white bg-red-600 rounded-full">{unreadCount}</span>
                         )}
                       </span>
                       {isOpen && <span className="flex-1 text-left">{item.title}</span>}
-                      {isOpen && <ChevronDown size={14} className={cn(messagesOpen ? 'transform rotate-180' : '')} />}
-                      {unreadCount > 0 && isOpen && (
+                      {isOpen && <ChevronDown size={14} className={cn(isDropdownOpen ? 'transform rotate-180' : '')} />}
+                      {isMessaging && unreadCount > 0 && isOpen && (
                         <span className="ml-2 text-xs text-red-600 animate-pulse">●</span>
                       )}
                     </button>
 
-                    {messagesOpen && isOpen && (
+                    {isDropdownOpen && isOpen && (
                       <div className="ml-8 mt-1 space-y-1">
-                        <Link to="/messaging" className="flex items-center justify-between block px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 rounded">
-                          <span>Inbox</span>
-                          {unreadCount > 0 && <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold leading-none text-white bg-red-600 rounded-full">{unreadCount}</span>}
-                        </Link>
-                        <Link to="/messaging/outbox" className="block px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 rounded">Outbox</Link>
-                        <Link to="/messaging/drafts" className="block px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 rounded">Drafts</Link>
+                        {isMessaging ? (
+                          <>
+                            <Link to="/messaging" className="flex items-center justify-between block px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 rounded">
+                              <span>Inbox</span>
+                              {unreadCount > 0 && <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold leading-none text-white bg-red-600 rounded-full">{unreadCount}</span>}
+                            </Link>
+                            <Link to="/messaging/outbox" className="block px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 rounded">Outbox</Link>
+                            <Link to="/messaging/drafts" className="block px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 rounded">Drafts</Link>
+                          </>
+                        ) : (
+                          item.subItems?.map((subItem) => (
+                            <Link 
+                              key={subItem.href} 
+                              to={subItem.href} 
+                              className={cn(
+                                "block px-2 py-1 text-sm rounded transition-colors",
+                                location.pathname === subItem.href 
+                                  ? "bg-gray-100 font-medium text-gray-900" 
+                                  : "text-gray-700 hover:bg-gray-50"
+                              )}
+                            >
+                              {subItem.title}
+                            </Link>
+                          ))
+                        )}
                       </div>
                     )}
                   </div>

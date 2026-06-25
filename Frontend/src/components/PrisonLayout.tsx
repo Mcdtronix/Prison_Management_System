@@ -40,15 +40,15 @@ export const PrisonLayout = ({
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar userRole={user?.role || ""} />
 
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-16 border-b border-gray-200 bg-white flex items-center justify-between px-6 shadow-sm">
+        <header className="sticky top-0 z-10 h-16 border-b border-gray-200 bg-white flex items-center justify-between px-6 shadow-sm">
           <div className="flex items-center gap-4">
             {title && (
               <div>
                 <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
                 {description && (
-                  <p className="text-sm text-gray-600">{description}</p>
+                  <p className="text-sm text-gray-600 truncate max-w-md">{description}</p>
                 )}
               </div>
             )}
@@ -94,7 +94,7 @@ export const PrisonLayout = ({
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-6 overflow-x-hidden">
           {children}
         </main>
       </div>

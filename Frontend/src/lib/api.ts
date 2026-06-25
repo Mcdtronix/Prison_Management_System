@@ -453,11 +453,11 @@ export const adminApi = {
 
   // Inmate management
   getAllInmates: async () => {
-    return fetchApi("/admin/inmates");
+    return fetchApi("/reception/inmate-list/");
   },
 
   approveInmate: async (id: string) => {
-    return fetchApi(`/admin/inmates/${id}/approve`, {
+    return fetchApi(`/reception/inmates/${id}/approve_admission/`, {
       method: "POST",
     });
   },
@@ -642,6 +642,11 @@ export const receptionApi = {
     }
     return fetchApi(`/reception/inmate-list/?${params.toString()}`);
   },
+  approveDischarge: async (id: string) => {
+    return fetchApi(`/reception/inmates/${id}/approve_discharge/`, {
+      method: 'POST',
+    });
+  },
 };
 
 // Health API endpoints
@@ -683,7 +688,7 @@ export const healthApi = {
 // Shared inmate API endpoints
 export const inmateApi = {
   searchInmates: async (query: string) => {
-    return fetchApi(`/reception/inmates/search?q=${encodeURIComponent(query)}`);
+    return fetchApi(`/reception/inmate-list/?search=${encodeURIComponent(query)}`);
   },
 
   getInmateDetails: async (id: string) => {

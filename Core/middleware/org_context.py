@@ -90,10 +90,28 @@ class OrgContextMiddleware(MiddlewareMixin):
                     f'{request.org_unit.code}/{request.department.code}'
                 )
             else:
-                # User has no active primary assignment
-                logger.warning(
-                    f'User {request.user.username} has no active primary assignment'
-                )
+                # Fallback to UserProfile if UserAssignment does not exist
+                if hasattr(request.user, 'userprofile') and request.user.userprofile.is_active:
+                    from Auth.models import OrgUnit
+                    station = request.user.userprofile.station
+                    if station:
+                        org_unit = OrgUnit.objects.filter(code_short=station.code).first()
+                        if not org_unit:
+                            org_unit = OrgUnit.objects.filter(code=station.code).first()
+                            
+                        if org_unit:
+                            request.org_unit = org_unit
+                            request.role = request.user.userprofile.role
+                            request.has_org_context = True
+                            logger.debug(
+                                f'User {request.user.username} attached to org {org_unit.code} via UserProfile fallback'
+                            )
+                
+                if not getattr(request, 'has_org_context', False):
+                    # User has no active primary assignment and no UserProfile fallback
+                    logger.warning(
+                        f'User {request.user.username} has no active primary assignment or valid UserProfile'
+                    )
         
         except Exception as e:
             logger.error(

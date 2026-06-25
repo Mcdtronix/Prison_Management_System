@@ -17,6 +17,8 @@ import HealthDashboard from "@/pages/health/HealthDashboard";
 import InmateHealth from "@/pages/health/InmateHealth";
 import OPDVisitPage from "@/pages/health/OPDVisitPage";
 import OPDRecordsPage from "@/pages/health/OPDRecordsPage";
+import AdmissionAssessments from "@/pages/health/AdmissionAssessments";
+import DischargeAssessments from "@/pages/health/DischargeAssessments";
 import StoresDashboard from "@/pages/stores/StoresDashboard";
 import FarmsDashboard from "@/pages/farms/FarmsDashboard";
 import InmateDetails from "@/pages/shared/InmateDetails";
@@ -175,6 +177,22 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={["HEALTH_OFFICER"]}>
                 <OPDRecordsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/health/assessments/admission"
+            element={
+              <ProtectedRoute allowedRoles={["HEALTH_OFFICER"]}>
+                <AdmissionAssessments />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/health/assessments/discharge"
+            element={
+              <ProtectedRoute allowedRoles={["HEALTH_OFFICER"]}>
+                <DischargeAssessments />
               </ProtectedRoute>
             }
           />

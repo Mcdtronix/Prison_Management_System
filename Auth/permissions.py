@@ -128,3 +128,27 @@ class IsAdminOrHealth(BasePermission):
 
         return role_code in ["ADMIN_OFFICER", "HEALTH_OFFICER", "SUPER_ADMIN"]
 
+class IsReceptionOrHealthOrAdmin(BasePermission):
+    """Admin, Reception, or Health officers"""
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+
+        from .utils import get_primary_assignment
+        assignment = None
+        try:
+            assignment = get_primary_assignment(request.user)
+        except Exception:
+            assignment = None
+
+        if assignment and assignment.is_active:
+            role_code = normalize_role_code(assignment.role.code)
+        else:
+            if not hasattr(request.user, 'userprofile'):
+                return False
+            if not request.user.userprofile.is_active:
+                return False
+            role_code = normalize_role_code(request.user.userprofile.role.code)
+
+        return role_code in ["ADMIN_OFFICER", "RECEPTION_OFFICER", "HEALTH_OFFICER", "SUPER_ADMIN"]
+
