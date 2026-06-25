@@ -30,6 +30,8 @@ import {
   Plus,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Toaster } from "sonner";
+import { CourtSessionModal } from "../reception/components/InmateForm/CourtSessionModal";
 
 interface Inmate {
   id: string;
@@ -176,6 +178,10 @@ const InmateDetails = () => {
   const [healthRecord, setHealthRecord] = useState<HealthRecord | null>(null);
   const [opdVisits, setOPDVisits] = useState<OPDVisit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedOffenceForCourt, setSelectedOffenceForCourt] = useState<{
+    id: string | number;
+    description: string;
+  } | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -882,6 +888,21 @@ const InmateDetails = () => {
                                     ).toLocaleDateString()
                                   : "Not scheduled"}
                               </p>
+                              {(user?.role === "RECEPTION_OFFICER" ||
+                                  user?.role === "ADMIN_OFFICER" ||
+                                  user?.role === "SUPER_ADMIN" ||
+                                  user?.role === "admin" ||
+                                  user?.role === "reception") && (
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    className="mt-3"
+                                    onClick={() => setSelectedOffenceForCourt({ id: offense.id, description: offense.offence_description })}
+                                  >
+                                    <Gavel className="w-4 h-4 mr-2" />
+                                    Record Court Outcome
+                                  </Button>
+                                )}
                             </div>
                           )}
                         </div>
@@ -1144,6 +1165,18 @@ const InmateDetails = () => {
           </Tabs>
         </div>
       </div>
+      <Toaster />
+      {selectedOffenceForCourt && (
+        <CourtSessionModal
+          isOpen={!!selectedOffenceForCourt}
+          onClose={() => setSelectedOffenceForCourt(null)}
+          offenceId={Number(selectedOffenceForCourt.id)}
+          offenceDescription={selectedOffenceForCourt.description}
+          onSuccess={(newDate) => {
+            fetchInmateData(id!);
+          }}
+        />
+      )}
     </PrisonLayout>
   );
 };

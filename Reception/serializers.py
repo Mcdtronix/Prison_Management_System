@@ -25,6 +25,10 @@ from .models import (
     ReleaseHistory,
     # ReleaseHistory,
     InmatePropertyHistory,
+    SentenceGroup,
+    Discharged,
+    ReleaseWorkflow,
+    ArchivedDischarge,
     EscapeHistory,
     InmateDisciplinaryHistory,
     # InmateMedicalHistory,
@@ -181,6 +185,50 @@ class InmateAuditTrailSerializer(serializers.ModelSerializer):
         model = InmateAuditTrail
         fields = "__all__"
         read_only_fields = ["timestamp"]
+
+
+class DischargedSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Discharged
+        fields = "__all__"
+
+class ReleaseWorkflowSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReleaseWorkflow
+        fields = "__all__"
+
+class ArchivedDischargeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ArchivedDischarge
+        fields = "__all__"
+
+class CourtSessionCreateSerializer(serializers.Serializer):
+    session_date = serializers.DateField()
+    outcome = serializers.ChoiceField(choices=CourtSession.OUTCOME_CHOICES)
+    next_court_date = serializers.DateField(required=False, allow_null=True)
+    remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    
+    # Conviction fields
+    sentence_months = serializers.IntegerField(required=False, allow_null=True)
+    sentence_date = serializers.DateField(required=False, allow_null=True)
+
+    # Discharge fields
+    discharge_reason = serializers.ChoiceField(choices=Discharged.DISCHARGE_REASON_CHOICES, required=False, allow_null=True)
+
+    def validate(self, data):
+        outcome = data.get("outcome")
+        if outcome == "REMANDED":
+            if not data.get("next_court_date"):
+                raise serializers.ValidationError({"next_court_date": "Next court date is required when remanded."})
+        elif outcome == "CONVICTED":
+            if data.get("sentence_months") is None:
+                raise serializers.ValidationError({"sentence_months": "Sentence duration is required for convictions."})
+            if not data.get("sentence_date"):
+                raise serializers.ValidationError({"sentence_date": "Sentence date is required for convictions."})
+        elif outcome == "DISCHARGED":
+            if not data.get("discharge_reason"):
+                raise serializers.ValidationError({"discharge_reason": "Discharge reason is required."})
+        return data
 
 
 class ComprehensiveInmateSerializer(serializers.ModelSerializer):

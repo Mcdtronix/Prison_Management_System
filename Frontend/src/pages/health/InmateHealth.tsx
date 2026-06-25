@@ -31,10 +31,14 @@ const InmateHealth = () => {
   
   const handleCancel = () => navigate('/health');
   
+  const inmateName = inmate.first_name && inmate.surname 
+    ? `${inmate.first_name} ${inmate.surname}` 
+    : inmate.name || 'Unknown Inmate';
+  
   return (
     <PrisonLayout
-      title={`Health Record: ${inmate.name}`}
-      description={`Prison Number: ${inmate.prison_number}`}
+      title={`Health Record: ${inmateName}`}
+      description={`Prison Number: ${inmate.prison_number || 'N/A'}`}
     >
       <div className="grid gap-6 md:grid-cols-3">
         <div className="md:col-span-1">

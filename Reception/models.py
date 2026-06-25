@@ -174,7 +174,7 @@ class Offence(models.Model):
     offence_description = models.TextField()
     court = models.CharField(max_length=100)
     date_charged = models.DateField()
-    Offence_status = models.CharField(max_length=20, choices=[("UNCONVICTED", "Unconvicted"), ("CONVICTED", "Convicted")], default="UNCONVICTED")
+    Offence_status = models.CharField(max_length=20, choices=[("UNCONVICTED", "Unconvicted"), ("CONVICTED", "Convicted"), ("DISCHARGED", "Discharged")], default="UNCONVICTED")
 
     class Meta:
         db_table = "offence"
@@ -189,8 +189,14 @@ class CourtSession(models.Model):
     """
     offence = models.ForeignKey(Offence, on_delete=models.CASCADE, related_name="court_sessions")
     session_date = models.DateField(help_text="Date when the court session took place")
-    outcome = models.CharField(max_length=200, blank=True, null=True, help_text="Outcome (e.g., Remanded, Bail Denied)")
-    next_court_date = models.DateField(help_text="The new court date set during this session")
+    
+    OUTCOME_CHOICES = [
+        ("REMANDED", "Remanded (Next Court Date Set)"),
+        ("CONVICTED", "Convicted / Sentenced"),
+        ("DISCHARGED", "Discharged")
+    ]
+    outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, default="REMANDED", help_text="Outcome of the session")
+    next_court_date = models.DateField(null=True, blank=True, help_text="The new court date set during this session (required if remanded)")
     remarks = models.TextField(blank=True, null=True)
 
     class Meta:
@@ -198,7 +204,9 @@ class CourtSession(models.Model):
         ordering = ["-session_date"]
 
     def clean(self):
-        if self.next_court_date <= self.session_date:
+        if self.outcome == "REMANDED" and not self.next_court_date:
+            raise ValidationError("Next court date is required when remanded.")
+        if self.next_court_date and self.next_court_date <= self.session_date:
             raise ValidationError("Next court date must be after the session date.")
 
 class Restitution(models.Model):
@@ -351,6 +359,32 @@ class Unconvicted(models.Model):
             raise ValidationError("Remand end date cannot be before start date.")
 
 
+class Discharged(models.Model):
+    discharged_id = models.AutoField(primary_key=True)
+    prison_number = models.ForeignKey(Inmate, on_delete=models.CASCADE, related_name="discharges")
+    offence = models.OneToOneField(Offence, on_delete=models.CASCADE, related_name="discharge")
+    
+    DISCHARGE_REASON_CHOICES = [
+        ("BAIL", "Bail"),
+        ("FINE", "Fine"),
+        ("ACQUITTED", "Not guilty and acquitted"),
+        ("WITHDRAWN", "Withdrawn before/after plea"),
+        ("COMMUNITY_SERVICE", "Community service"),
+        ("SENTENCE_EXPIRES", "Sentence expires"),
+        ("AMNESTY", "Amnesty"),
+    ]
+    discharge_reason = models.CharField(max_length=50, choices=DISCHARGE_REASON_CHOICES)
+    discharge_date = models.DateField()
+    remarks = models.TextField(blank=True, null=True)
+
+    class Meta:
+        db_table = "discharged"
+
+    def clean(self):
+        if self.discharge_date < self.offence.date_charged:
+            raise ValidationError("Discharge date cannot be before offence charge date")
+
+
 # -----------------------------
 # SENTENCE & RELEASE HISTORY
 # -----------------------------
@@ -389,6 +423,41 @@ class ReleaseHistory(models.Model):
 
     class Meta:
         db_table = "release_history"
+
+
+class ReleaseWorkflow(models.Model):
+    inmate = models.ForeignKey(Inmate, on_delete=models.CASCADE, related_name="release_workflows")
+    STATUS_CHOICES = [
+        ("PROPOSED_BY_RECEPTION", "Proposed by Reception"),
+        ("HEALTH_ASSESSED", "Health Assessed"),
+        ("APPROVED_BY_ADMIN", "Approved by Admin (Released)"),
+    ]
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="PROPOSED_BY_RECEPTION")
+    proposed_date = models.DateTimeField(auto_now_add=True)
+    health_assessment_date = models.DateTimeField(null=True, blank=True)
+    health_remarks = models.TextField(null=True, blank=True)
+    approved_date = models.DateTimeField(null=True, blank=True)
+    admin_remarks = models.TextField(null=True, blank=True)
+
+    class Meta:
+        db_table = "release_workflow"
+        ordering = ["-proposed_date"]
+
+
+class ArchivedDischarge(models.Model):
+    """
+    Stores compressed JSON data of old discharge records (older than 5 years).
+    """
+    archive_date = models.DateTimeField(auto_now_add=True)
+    original_discharge_date = models.DateField()
+    inmate_prison_number = models.CharField(max_length=50, null=True, blank=True)
+    offence_description = models.TextField()
+    discharge_reason = models.CharField(max_length=50)
+    compressed_data = models.JSONField(help_text="Full JSON snapshot of the original discharge and offence records")
+
+    class Meta:
+        db_table = "archived_discharge"
+        ordering = ["-original_discharge_date"]
 
 
 # -----------------------------

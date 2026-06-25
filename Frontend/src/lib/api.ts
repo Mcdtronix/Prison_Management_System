@@ -662,6 +662,13 @@ export const receptionApi = {
     });
   },
 
+  createCourtSession: async (payload: any) => {
+    return fetchApi(`/reception/offences/${payload.offence}/record_court_session/`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   updateInmate: async (id: string, inmateData: any) => {
     return fetchApi(`/reception/inmates/${id}/`, {
       method: "PUT",

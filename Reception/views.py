@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db import transaction
 
 from .models import (
     Inmate,
@@ -24,6 +25,8 @@ from .models import (
     # InmateMedicalHistory,
     InmateDocument,
     InmateAuditTrail,
+    Discharged,
+    ReleaseWorkflow,
 )
 from .serializers import (
     InmateSerializer,
@@ -39,6 +42,7 @@ from .serializers import (
     BasicInmateRegistrationSerializer,
     OffenceRegistrationSerializer,
     ComprehensiveInmateSerializer,
+    CourtSessionCreateSerializer,
     # ReleaseHistorySerializer,
     InmatePropertyHistorySerializer,
     EscapeHistorySerializer,
@@ -156,6 +160,72 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Offence.objects.select_related("inmate")
     serializer_class = OffenceSerializer
     permission_classes = [IsAuthenticated]
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def record_court_session(self, request, pk=None):
+        offence = self.get_object()
+        serializer = CourtSessionCreateSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        data = serializer.validated_data
+        outcome = data['outcome']
+        
+        with transaction.atomic():
+            # 1. Save CourtSession
+            CourtSession.objects.create(
+                offence=offence,
+                session_date=data['session_date'],
+                outcome=outcome,
+                next_court_date=data.get('next_court_date'),
+                remarks=data.get('remarks')
+            )
+            
+            if outcome == 'REMANDED':
+                if hasattr(offence, 'unconviction') and offence.unconviction is not None:
+                    offence.unconviction.next_court_date = data['next_court_date']
+                    offence.unconviction.save()
+            
+            elif outcome == 'CONVICTED':
+                if hasattr(offence, 'unconviction') and offence.unconviction is not None:
+                    offence.unconviction.delete()
+                
+                Convicted.objects.create(
+                    prison_number=offence.inmate,
+                    offence=offence,
+                    sentence_months=data['sentence_months'],
+                    date_of_sentence=data['sentence_date']
+                )
+                
+                offence.Offence_status = 'CONVICTED'
+                offence.save()
+                
+            elif outcome == 'DISCHARGED':
+                if hasattr(offence, 'unconviction') and offence.unconviction is not None:
+                    offence.unconviction.delete()
+                if hasattr(offence, 'conviction') and hasattr(offence.conviction, 'delete'):
+                    offence.conviction.delete()
+                    
+                Discharged.objects.create(
+                    prison_number=offence.inmate,
+                    offence=offence,
+                    discharge_reason=data['discharge_reason'],
+                    discharge_date=data['session_date']
+                )
+                
+                offence.Offence_status = 'DISCHARGED'
+                offence.save()
+                
+                inmate = offence.inmate
+                active_offences = inmate.offences.exclude(Offence_status='DISCHARGED').count()
+                if active_offences == 0:
+                    ReleaseWorkflow.objects.get_or_create(
+                        inmate=inmate,
+                        status="PROPOSED_BY_RECEPTION"
+                    )
+                    
+        return Response({"status": "Court session recorded successfully."})
 
 
 class ConvictedViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):

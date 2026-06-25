@@ -15,10 +15,13 @@ import { Separator } from '@/components/ui/separator';
 interface InmateBasicInfoProps {
   inmate: {
     id: string;
-    name: string;
+    name?: string;
+    first_name?: string;
+    surname?: string;
+    date_of_birth?: string;
     prison_number: string;
     photo_url?: string;
-    age: number;
+    age?: number;
     gender: string;
     admission_date: string;
   };
@@ -27,6 +30,23 @@ interface InmateBasicInfoProps {
 export const InmateBasicInfo: React.FC<InmateBasicInfoProps> = ({ inmate }) => {
   const navigate = useNavigate();
 
+  const calculateAge = (dob?: string) => {
+    if (!dob) return 'Unknown';
+    const birthDate = new Date(dob);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+  
+  const displayAge = inmate.age || calculateAge(inmate.date_of_birth);
+  const fullName = inmate.first_name && inmate.surname 
+    ? `${inmate.first_name} ${inmate.surname}` 
+    : inmate.name || 'Unknown Inmate';
+
   return (
     <Card>
       <CardHeader className="flex flex-col items-center text-center">
@@ -34,7 +54,7 @@ export const InmateBasicInfo: React.FC<InmateBasicInfoProps> = ({ inmate }) => {
           {inmate.photo_url ? (
             <img 
               src={inmate.photo_url} 
-              alt={inmate.name} 
+              alt={fullName} 
               className="w-full h-full object-cover"
             />
           ) : (
@@ -43,16 +63,16 @@ export const InmateBasicInfo: React.FC<InmateBasicInfoProps> = ({ inmate }) => {
             </div>
           )}
         </div>
-        <CardTitle className="text-xl">{inmate.name}</CardTitle>
+        <CardTitle className="text-xl">{fullName}</CardTitle>
         <CardDescription>
-          Prison Number: {inmate.prison_number}
+          Prison Number: {inmate.prison_number || 'N/A'}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
           <div className="flex justify-between">
             <span className="text-sm font-medium">Age:</span>
-            <span className="text-sm">{inmate.age} years</span>
+            <span className="text-sm">{displayAge} {displayAge !== 'Unknown' && 'years'}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-sm font-medium">Gender:</span>

@@ -59,10 +59,14 @@ const OPDVisitPage = () => {
     );
   }
   
+  const inmateName = inmate.first_name && inmate.surname 
+    ? `${inmate.first_name} ${inmate.surname}` 
+    : inmate.name || 'Unknown Inmate';
+
   return (
     <PrisonLayout
-      title={`Record OPD Visit: ${inmate.name}`}
-      description={`Prison Number: ${inmate.prison_number}`}
+      title={`Record OPD Visit: ${inmateName}`}
+      description={`Prison Number: ${inmate.prison_number || 'N/A'}`}
     >
       <div className="max-w-4xl mx-auto">
         <OPDVisitForm
