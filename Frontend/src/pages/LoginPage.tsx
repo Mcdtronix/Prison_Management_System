@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Gavel, AlertCircle } from 'lucide-react';
+import { Gavel, AlertCircle, Shield } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import loginBackground from '@/assets/bckgrnd.jpg';
@@ -17,6 +17,12 @@ const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  
+  // 2FA State
+  const [step, setStep] = useState<'credentials' | 'otp'>('credentials');
+  const [otp, setOtp] = useState('');
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+
   const { login } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -49,13 +55,18 @@ const LoginPage = () => {
       const result = await login(serviceNumber, password);
 
       if (result.success) {
-        toast({
-          title: "Login Successful",
-          description: "Welcome to the Prison Management System",
-        });
-
-        const userRole = localStorage.getItem('user_role');
-        navigate(getDefaultRouteForRole(userRole), { replace: true });
+        // Check if 2FA is globally enabled in local storage
+        const twoFactorEnabled = localStorage.getItem('2fa_enabled') === 'true';
+        
+        if (twoFactorEnabled) {
+          setStep('otp');
+          toast({
+            title: "Verification Required",
+            description: "A 6-digit code has been sent to your registered mobile number.",
+          });
+        } else {
+          finishLogin();
+        }
       } else {
         setLoginError(result.error || 'Login failed. Please try again.');
       }
@@ -65,6 +76,38 @@ const LoginPage = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleVerifyOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+
+    if (otp.length !== 6) {
+      setLoginError('Please enter a valid 6-digit code.');
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+    
+    // Mock network delay for OTP verification
+    setTimeout(() => {
+      setIsVerifyingOtp(false);
+      if (otp === '123456') {
+        finishLogin();
+      } else {
+        setLoginError('Invalid verification code. Please try again. (Hint: Use 123456)');
+      }
+    }, 1000);
+  };
+
+  const finishLogin = () => {
+    toast({
+      title: "Login Successful",
+      description: "Welcome to the Prison Management System",
+    });
+
+    const userRole = localStorage.getItem('user_role');
+    navigate(getDefaultRouteForRole(userRole), { replace: true });
   };
 
   return (
@@ -89,7 +132,7 @@ const LoginPage = () => {
             <p className="text-xs mt-1">Format: 1234567A (7 digits + letter)</p>
           </div>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={step === 'credentials' ? handleSubmit : handleVerifyOtp}>
           <CardContent className="space-y-4">
             {loginError && (
               <Alert className="border-red-300/70 bg-red-500/20 text-red-50">
@@ -98,49 +141,88 @@ const LoginPage = () => {
               </Alert>
             )}
 
-            <div className="space-y-2">
-              <Label className="text-white/95" htmlFor="serviceNumber">Service Number</Label>
-              <Input
-                id="serviceNumber"
-                placeholder="e.g., 2934823Z"
-                value={serviceNumber}
-                onChange={(e) => setServiceNumber(e.target.value.toUpperCase())}
-                disabled={isLoading}
-                className={`h-11 border-white/35 bg-white/15 text-white placeholder:text-white/60 focus-visible:ring-[#d7a928] ${loginError?.includes('service number') ? 'border-red-400' : ''}`}
-              />
-              <p className="text-xs text-white/70">
-                Your unique 8-character service identifier
-              </p>
-            </div>
+            {step === 'credentials' ? (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-white/95" htmlFor="serviceNumber">Service Number</Label>
+                  <Input
+                    id="serviceNumber"
+                    placeholder="e.g., 2934823Z"
+                    value={serviceNumber}
+                    onChange={(e) => setServiceNumber(e.target.value.toUpperCase())}
+                    disabled={isLoading}
+                    className={`h-11 border-white/35 bg-white/15 text-white placeholder:text-white/60 focus-visible:ring-[#d7a928] ${loginError?.includes('service number') ? 'border-red-400' : ''}`}
+                  />
+                  <p className="text-xs text-white/70">
+                    Your unique 8-character service identifier
+                  </p>
+                </div>
 
-            <div className="space-y-2">
-              <Label className="text-white/95" htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoading}
-                className={`h-11 border-white/35 bg-white/15 text-white placeholder:text-white/60 focus-visible:ring-[#d7a928] ${loginError?.includes('password') ? 'border-red-400' : ''}`}
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label className="text-white/95" htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={isLoading}
+                    className={`h-11 border-white/35 bg-white/15 text-white placeholder:text-white/60 focus-visible:ring-[#d7a928] ${loginError?.includes('password') ? 'border-red-400' : ''}`}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="space-y-4 py-2 animate-in fade-in zoom-in-95 duration-300">
+                <div className="text-center text-white/90 mb-4">
+                  <Shield className="h-12 w-12 mx-auto text-[#d7a928] mb-2" />
+                  <p className="font-medium text-lg">Two-Factor Authentication</p>
+                  <p className="text-sm text-white/70 mt-1">
+                    Enter the 6-digit verification code sent to your registered mobile number ending in ****567.
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-white/95 text-center block" htmlFor="otp">Verification Code</Label>
+                  <Input
+                    id="otp"
+                    type="text"
+                    maxLength={6}
+                    placeholder="• • • • • •"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, ''))}
+                    disabled={isVerifyingOtp}
+                    className="h-14 text-center text-2xl tracking-widest border-white/35 bg-white/15 text-white placeholder:text-white/40 focus-visible:ring-[#d7a928]"
+                  />
+                </div>
+              </div>
+            )}
           </CardContent>
-          <CardFooter>
+          <CardFooter className="flex-col gap-3">
             <Button
-              className="w-full bg-[#0b4f2a] font-medium text-white hover:bg-[#063f20] disabled:opacity-50"
+              className="w-full bg-[#0b4f2a] font-medium text-white hover:bg-[#063f20] disabled:opacity-50 h-11"
               type="submit"
-              disabled={isLoading}
+              disabled={step === 'credentials' ? isLoading : isVerifyingOtp}
             >
-              {isLoading ? (
+              {(isLoading || isVerifyingOtp) ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Authenticating...
+                  {step === 'credentials' ? 'Authenticating...' : 'Verifying Code...'}
                 </>
               ) : (
-                "Login to Portal"
+                step === 'credentials' ? 'Login to Portal' : 'Verify & Continue'
               )}
             </Button>
+            
+            {step === 'otp' && (
+              <Button 
+                type="button" 
+                variant="ghost" 
+                className="w-full text-white/70 hover:text-white hover:bg-white/10 text-xs h-8"
+                onClick={() => { setStep('credentials'); setOtp(''); setLoginError(null); }}
+              >
+                Back to Login
+              </Button>
+            )}
           </CardFooter>
         </form>
 

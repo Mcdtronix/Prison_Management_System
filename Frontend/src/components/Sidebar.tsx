@@ -93,7 +93,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
         },
         {
           title: "Settings",
-          href: "/admin/settings",
+          href: "/settings",
           icon: <Settings size={18} />,
         },
       ];
@@ -147,6 +147,11 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           href: "/reception/unlock",
           icon: <Unlock size={18} />,
         },
+        {
+          title: "Settings",
+          href: "/settings",
+          icon: <Settings size={18} />,
+        },
       ];
       break;
     case "HEALTH_OFFICER":
@@ -197,6 +202,11 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           href: "/health/equipment",
           icon: <Wrench size={18} />,
         },
+        {
+          title: "Settings",
+          href: "/settings",
+          icon: <Settings size={18} />,
+        },
       ];
       break;
     case "STORES_OFFICER":
@@ -213,6 +223,11 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           href: "/stores/issues",
           icon: <Warehouse size={18} />,
         },
+        {
+          title: "Settings",
+          href: "/settings",
+          icon: <Settings size={18} />,
+        },
       ];
       break;
     case "FARMS_OFFICER":
@@ -228,6 +243,11 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           title: "Livestock",
           href: "/farms/livestock",
           icon: <Tractor size={18} />,
+        },
+        {
+          title: "Settings",
+          href: "/settings",
+          icon: <Settings size={18} />,
         },
       ];
       break;

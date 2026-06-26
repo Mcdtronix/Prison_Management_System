@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import * as Sentry from '@sentry/react'
 import App from './App.tsx'
+import { ThemeProvider } from './contexts/ThemeProvider'
 import './index.css'
 
 if (import.meta.env.VITE_SENTRY_DSN) {
@@ -18,4 +19,8 @@ if (import.meta.env.VITE_SENTRY_DSN) {
   });
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <ThemeProvider defaultTheme="system" storageKey="prison-ms-theme">
+    <App />
+  </ThemeProvider>
+);

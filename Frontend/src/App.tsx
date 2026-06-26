@@ -14,6 +14,7 @@ import RoleManagement from "@/pages/admin/RoleManagement";
 import DepartmentManagement from "@/pages/admin/DepartmentManagement";
 import UserAssignmentManagement from "@/pages/admin/UserAssignmentManagement";
 import DataExposureManagement from "@/pages/admin/DataExposureManagement";
+import SettingsPage from "@/pages/shared/Settings";
 import ReceptionDashboard from "@/pages/reception/ReceptionDashboard";
 import InmateRegistration from "@/pages/reception/InmateRegistration";
 import OffenceRegistration from "@/pages/reception/OffenceRegistration";
@@ -296,6 +297,24 @@ function App() {
           />
 
           {/* Shared routes */}
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "SUPER_ADMIN",
+                  "ADMIN_OFFICER",
+                  "RECEPTION_OFFICER",
+                  "HEALTH_OFFICER",
+                  "STORES_OFFICER",
+                  "FARMS_OFFICER"
+                ]}
+              >
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+
           <Route
             path="/inmates/:id"
             element={
