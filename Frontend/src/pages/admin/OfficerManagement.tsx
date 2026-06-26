@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { KeyRound, RefreshCw, ShieldPlus, UserPlus, UserMinus, UserCheck } from "lucide-react";
 
 import { authApi, hrApi } from "@/lib/api";
@@ -73,6 +74,7 @@ interface RoleOption {
 }
 
 const OfficerManagement = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -396,6 +398,7 @@ const OfficerManagement = () => {
                       <TableHead>National ID</TableHead>
                       <TableHead>Gender</TableHead>
                       <TableHead>System Account</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -418,6 +421,11 @@ const OfficerManagement = () => {
                             <Badge variant={hasAccount ? "default" : "secondary"}>
                               {hasAccount ? "Yes" : "No"}
                             </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="outline" size="sm" onClick={() => navigate(`/admin/officers/${off.service_number}`)}>
+                              View Profile
+                            </Button>
                           </TableCell>
                         </TableRow>
                         );

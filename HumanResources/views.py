@@ -39,6 +39,16 @@ from .serializers import (
 )
 
 
+
+class OfficerFilterMixin:
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        officer_id = self.request.query_params.get('officer', None)
+        if officer_id is not None:
+            if hasattr(self.queryset.model, 'officer'):
+                queryset = queryset.filter(officer_id=officer_id)
+        return queryset
+
 class OfficerViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Officer.objects.all()
     serializer_class = OfficerSerializer
@@ -98,25 +108,25 @@ class CourseViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 
-class OfficerStationHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class OfficerStationHistoryViewSet(OfficerFilterMixin, OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = OfficerStationHistory.objects.select_related("officer", "station")
     serializer_class = OfficerStationHistorySerializer
     permission_classes = [IsAuthenticated]
 
 
-class OfficerRankHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class OfficerRankHistoryViewSet(OfficerFilterMixin, OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = OfficerRankHistory.objects.select_related("officer", "rank")
     serializer_class = OfficerRankHistorySerializer
     permission_classes = [IsAuthenticated]
 
 
-class OfficerQualificationViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class OfficerQualificationViewSet(OfficerFilterMixin, OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = OfficerQualification.objects.select_related("officer", "qualification_type")
     serializer_class = OfficerQualificationSerializer
     permission_classes = [IsAuthenticated]
 
 
-class OfficerCourseHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class OfficerCourseHistoryViewSet(OfficerFilterMixin, OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = OfficerCourseHistory.objects.select_related("officer", "course")
     serializer_class = OfficerCourseHistorySerializer
     permission_classes = [IsAuthenticated]
@@ -128,7 +138,7 @@ class OffenceTypeViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 
-class ChargeSheetViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class ChargeSheetViewSet(OfficerFilterMixin, OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = ChargeSheet.objects.select_related("officer", "offence_type")
     serializer_class = ChargeSheetSerializer
     permission_classes = [IsAuthenticated]
@@ -140,19 +150,19 @@ class SentenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 
-class DependantViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class DependantViewSet(OfficerFilterMixin, OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Dependant.objects.select_related("officer")
     serializer_class = DependantSerializer
     permission_classes = [IsAuthenticated]
 
 
-class OfficerDocumentViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class OfficerDocumentViewSet(OfficerFilterMixin, OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = OfficerDocument.objects.select_related("officer")
     serializer_class = OfficerDocumentSerializer
     permission_classes = [IsAuthenticated]
 
 
-class OfficerAuditTrailViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class OfficerAuditTrailViewSet(OfficerFilterMixin, OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = OfficerAuditTrail.objects.select_related("officer")
     serializer_class = OfficerAuditTrailSerializer
     permission_classes = [IsAuthenticated]

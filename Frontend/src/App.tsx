@@ -8,6 +8,7 @@ import NotFound from "@/pages/NotFound";
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminWizard from "@/pages/admin/AdminWizard";
 import OfficerManagement from "@/pages/admin/OfficerManagement";
+import OfficerDetails from "@/pages/admin/OfficerDetails";
 import InmateOverview from "@/pages/admin/InmateOverview";
 import ReceptionDashboard from "@/pages/reception/ReceptionDashboard";
 import InmateRegistration from "@/pages/reception/InmateRegistration";
@@ -97,6 +98,16 @@ function App() {
               <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
                 <PrisonLayout title="Officer Management">
                   <OfficerManagement />
+                </PrisonLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/officers/:id"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
+                <PrisonLayout title="Officer Details">
+                  <OfficerDetails />
                 </PrisonLayout>
               </ProtectedRoute>
             }

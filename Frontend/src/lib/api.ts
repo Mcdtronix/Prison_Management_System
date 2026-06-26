@@ -454,6 +454,10 @@ export const hrApi = {
     return response;
   },
 
+  getOfficer: async (id: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/hr/officers/${id}/`);
+  },
+
   /**
    * Create a new officer in the HR system
    */
@@ -462,6 +466,103 @@ export const hrApi = {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  },
+
+  // Station History
+  getStationHistory: async (officerId: string): Promise<ApiResponse<any[]>> => {
+    const response = await apiRequest<any>(`/hr/station-history/?officer=${officerId}`);
+    if (response.data && response.data.results) response.data = response.data.results;
+    return response;
+  },
+  addStationHistory: async (payload: any): Promise<ApiResponse<any>> => {
+    return apiRequest<any>("/hr/station-history/", { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  // Rank History
+  getRankHistory: async (officerId: string): Promise<ApiResponse<any[]>> => {
+    const response = await apiRequest<any>(`/hr/rank-history/?officer=${officerId}`);
+    if (response.data && response.data.results) response.data = response.data.results;
+    return response;
+  },
+  addRankHistory: async (payload: any): Promise<ApiResponse<any>> => {
+    return apiRequest<any>("/hr/rank-history/", { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  // Qualifications
+  getQualifications: async (officerId: string): Promise<ApiResponse<any[]>> => {
+    const response = await apiRequest<any>(`/hr/qualifications/?officer=${officerId}`);
+    if (response.data && response.data.results) response.data = response.data.results;
+    return response;
+  },
+  addQualification: async (payload: FormData): Promise<ApiResponse<any>> => {
+    return apiRequest<any>("/hr/qualifications/", { method: "POST", body: payload });
+  },
+
+  // Courses
+  getCoursesHistory: async (officerId: string): Promise<ApiResponse<any[]>> => {
+    const response = await apiRequest<any>(`/hr/courses-history/?officer=${officerId}`);
+    if (response.data && response.data.results) response.data = response.data.results;
+    return response;
+  },
+  addCourseHistory: async (payload: FormData): Promise<ApiResponse<any>> => {
+    return apiRequest<any>("/hr/courses-history/", { method: "POST", body: payload });
+  },
+
+  // Charge Sheets
+  getChargeSheets: async (officerId: string): Promise<ApiResponse<any[]>> => {
+    const response = await apiRequest<any>(`/hr/charge-sheets/?officer=${officerId}`);
+    if (response.data && response.data.results) response.data = response.data.results;
+    return response;
+  },
+  addChargeSheet: async (payload: FormData): Promise<ApiResponse<any>> => {
+    return apiRequest<any>("/hr/charge-sheets/", { method: "POST", body: payload });
+  },
+
+  // Sentences
+  addSentence: async (payload: any): Promise<ApiResponse<any>> => {
+    return apiRequest<any>("/hr/sentences/", { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  // Dependants
+  getDependants: async (officerId: string): Promise<ApiResponse<any[]>> => {
+    const response = await apiRequest<any>(`/hr/dependants/?officer=${officerId}`);
+    if (response.data && response.data.results) response.data = response.data.results;
+    return response;
+  },
+  addDependant: async (payload: FormData): Promise<ApiResponse<any>> => {
+    return apiRequest<any>("/hr/dependants/", { method: "POST", body: payload });
+  },
+
+  // Documents
+  getDocuments: async (officerId: string): Promise<ApiResponse<any[]>> => {
+    const response = await apiRequest<any>(`/hr/documents/?officer=${officerId}`);
+    if (response.data && response.data.results) response.data = response.data.results;
+    return response;
+  },
+  addDocument: async (payload: FormData): Promise<ApiResponse<any>> => {
+    return apiRequest<any>("/hr/documents/", { method: "POST", body: payload });
+  },
+
+  // Lookups
+  getRanks: async (): Promise<ApiResponse<any[]>> => {
+    const response = await apiRequest<any>("/hr/ranks/");
+    if (response.data && response.data.results) response.data = response.data.results;
+    return response;
+  },
+  getQualificationTypes: async (): Promise<ApiResponse<any[]>> => {
+    const response = await apiRequest<any>("/hr/qualification-types/");
+    if (response.data && response.data.results) response.data = response.data.results;
+    return response;
+  },
+  getCourses: async (): Promise<ApiResponse<any[]>> => {
+    const response = await apiRequest<any>("/hr/courses/");
+    if (response.data && response.data.results) response.data = response.data.results;
+    return response;
+  },
+  getOffenceTypes: async (): Promise<ApiResponse<any[]>> => {
+    const response = await apiRequest<any>("/hr/offence-types/");
+    if (response.data && response.data.results) response.data = response.data.results;
+    return response;
   },
 };
 
