@@ -76,6 +76,9 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           title: "Officers",
           href: "/admin/officers",
           icon: <UserCheck size={18} />,
+          subItems: [
+            { title: "Officers List", href: "/admin/officers" },
+          ]
         },
         { title: "Admin Wizard", href: "/admin/wizard", icon: <UserPlus size={18} /> },
         {
