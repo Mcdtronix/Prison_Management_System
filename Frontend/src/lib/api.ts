@@ -868,3 +868,36 @@ export const inmateApi = {
     return fetchApi(`/reception/inmates/${id}/timeline/`);
   },
 };
+
+// RBAC API endpoints
+export const rbacApi = {
+  getRoles: async () => fetchApi('/auth/roles/'),
+  createRole: async (data: any) => fetchApi('/auth/roles/', { method: 'POST', body: JSON.stringify(data) }),
+  updateRole: async (id: number, data: any) => fetchApi(`/auth/roles/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteRole: async (id: number) => fetchApi(`/auth/roles/${id}/`, { method: 'DELETE' }),
+
+  getDepartments: async () => fetchApi('/auth/departments/'),
+  createDepartment: async (data: any) => fetchApi('/auth/departments/', { method: 'POST', body: JSON.stringify(data) }),
+  updateDepartment: async (id: number, data: any) => fetchApi(`/auth/departments/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDepartment: async (id: number) => fetchApi(`/auth/departments/${id}/`, { method: 'DELETE' }),
+
+  getOrgUnitDepartments: async () => fetchApi('/auth/org-unit-departments/'),
+  createOrgUnitDepartment: async (data: any) => fetchApi('/auth/org-unit-departments/', { method: 'POST', body: JSON.stringify(data) }),
+  updateOrgUnitDepartment: async (id: number, data: any) => fetchApi(`/auth/org-unit-departments/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteOrgUnitDepartment: async (id: number) => fetchApi(`/auth/org-unit-departments/${id}/`, { method: 'DELETE' }),
+
+  getUserAssignments: async () => fetchApi('/auth/user-assignments/'),
+  createUserAssignment: async (data: any) => fetchApi('/auth/user-assignments/', { method: 'POST', body: JSON.stringify(data) }),
+  updateUserAssignment: async (id: number, data: any) => fetchApi(`/auth/user-assignments/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteUserAssignment: async (id: number) => fetchApi(`/auth/user-assignments/${id}/`, { method: 'DELETE' }),
+
+  getDataExposurePolicies: async () => fetchApi('/auth/data-exposure-policies/'),
+  createDataExposurePolicy: async (data: any) => fetchApi('/auth/data-exposure-policies/', { method: 'POST', body: JSON.stringify(data) }),
+  updateDataExposurePolicy: async (id: number, data: any) => fetchApi(`/auth/data-exposure-policies/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDataExposurePolicy: async (id: number) => fetchApi(`/auth/data-exposure-policies/${id}/`, { method: 'DELETE' }),
+
+  getDataExposureRecords: async () => fetchApi('/auth/data-exposure-records/'),
+  createDataExposureRecord: async (data: any) => fetchApi('/auth/data-exposure-records/', { method: 'POST', body: JSON.stringify(data) }),
+  updateDataExposureRecord: async (id: number, data: any) => fetchApi(`/auth/data-exposure-records/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDataExposureRecord: async (id: number) => fetchApi(`/auth/data-exposure-records/${id}/`, { method: 'DELETE' }),
+};

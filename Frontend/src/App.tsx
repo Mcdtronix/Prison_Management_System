@@ -10,6 +10,10 @@ import AdminWizard from "@/pages/admin/AdminWizard";
 import OfficerManagement from "@/pages/admin/OfficerManagement";
 import OfficerDetails from "@/pages/admin/OfficerDetails";
 import InmateOverview from "@/pages/admin/InmateOverview";
+import RoleManagement from "@/pages/admin/RoleManagement";
+import DepartmentManagement from "@/pages/admin/DepartmentManagement";
+import UserAssignmentManagement from "@/pages/admin/UserAssignmentManagement";
+import DataExposureManagement from "@/pages/admin/DataExposureManagement";
 import ReceptionDashboard from "@/pages/reception/ReceptionDashboard";
 import InmateRegistration from "@/pages/reception/InmateRegistration";
 import OffenceRegistration from "@/pages/reception/OffenceRegistration";
@@ -126,6 +130,46 @@ function App() {
               <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
                 <PrisonLayout title="Inmate Overview">
                   <InmateOverview />
+                </PrisonLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/roles"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
+                <PrisonLayout title="Role Management" description="Manage system roles and access levels">
+                  <RoleManagement />
+                </PrisonLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/departments"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
+                <PrisonLayout title="Department Management" description="Manage organizational departments">
+                  <DepartmentManagement />
+                </PrisonLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/assignments"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
+                <PrisonLayout title="User Assignments" description="Manage user roles and department access">
+                  <UserAssignmentManagement />
+                </PrisonLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/data-exposure"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
+                <PrisonLayout title="Data Exposure Management" description="Manage data sharing policies between stations">
+                  <DataExposureManagement />
                 </PrisonLayout>
               </ProtectedRoute>
             }
@@ -271,6 +315,10 @@ function App() {
           {/* 404 route */}
           <Route
             path="/messaging"
+            element={<Navigate to="/messaging/inbox" replace />}
+          />
+          <Route
+            path="/messaging/inbox"
             element={
               <ProtectedRoute allowedRoles={["SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
                 <MessagingInbox />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { KeyRound, RefreshCw, ShieldPlus, UserPlus, UserMinus, UserCheck } from "lucide-react";
 
@@ -34,6 +34,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
 interface ManagedUserProfile {
   id: number;
@@ -73,6 +78,23 @@ interface RoleOption {
   name: string;
 }
 
+const officerSchema = z.object({
+  service_number: z.string().min(3, "Service number is required"),
+  first_name: z.string().min(2, "First name is required"),
+  surname: z.string().min(2, "Surname is required"),
+  national_id: z.string().min(5, "National ID is required"),
+  gender: z.string().min(1, "Gender is required"),
+  date_of_birth: z.string().min(1, "Date of birth is required"),
+  date_of_attestation: z.string().min(1, "Date of attestation is required"),
+});
+
+const userAccountSchema = z.object({
+  officer: z.string().min(1, "Officer selection is required"),
+  role: z.string().min(1, "Role selection is required"),
+  email: z.string().email("Invalid email").optional().or(z.literal("")),
+  password: z.string().min(8, "Password must be at least 8 characters long"),
+});
+
 const OfficerManagement = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -85,21 +107,30 @@ const OfficerManagement = () => {
   const [officers, setOfficers] = useState<FullOfficer[]>([]);
   const [officerOptions, setOfficerOptions] = useState<OfficerOption[]>([]);
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
-  const [formData, setFormData] = useState({
-    officer: "",
-    role: "",
-    password: "",
-    email: "",
+
+  const officerForm = useForm<z.infer<typeof officerSchema>>({
+    resolver: zodResolver(officerSchema),
+    defaultValues: {
+      service_number: "",
+      first_name: "",
+      surname: "",
+      national_id: "",
+      gender: "",
+      date_of_birth: "",
+      date_of_attestation: "",
+    },
+    mode: "onChange",
   });
 
-  const [officerFormData, setOfficerFormData] = useState({
-    service_number: "",
-    first_name: "",
-    surname: "",
-    national_id: "",
-    gender: "",
-    date_of_birth: "",
-    date_of_attestation: "",
+  const userAccountForm = useForm<z.infer<typeof userAccountSchema>>({
+    resolver: zodResolver(userAccountSchema),
+    defaultValues: {
+      officer: "",
+      role: "",
+      email: "",
+      password: "",
+    },
+    mode: "onChange",
   });
 
   const loadData = async (background = false) => {
@@ -160,51 +191,26 @@ const OfficerManagement = () => {
     );
   }, [searchQuery, officers]);
 
-  const resetForm = () => {
-    setFormData({ officer: "", role: "", password: "", email: "" });
-  };
+  const selectedOfficer = officerOptions.find((officer) => officer.service_number === userAccountForm.watch("officer"));
 
-  const resetOfficerForm = () => {
-    setOfficerFormData({
-      service_number: "", first_name: "", surname: "", national_id: "", gender: "", date_of_birth: "", date_of_attestation: "",
-    });
-  };
-
-  const selectedOfficer = officerOptions.find((officer) => officer.service_number === formData.officer);
-
-  const handleAddOfficer = async () => {
-    if (!officerFormData.service_number || !officerFormData.first_name || !officerFormData.surname || !officerFormData.national_id || !officerFormData.gender || !officerFormData.date_of_birth || !officerFormData.date_of_attestation) {
-      toast({ title: "Missing information", description: "All fields are required.", variant: "destructive" });
-      return;
-    }
-
-    const response = await hrApi.createOfficer(officerFormData);
+  const onAddOfficerSubmit = async (data: z.infer<typeof officerSchema>) => {
+    const response = await hrApi.createOfficer(data);
 
     if (response.error) {
       toast({ title: "Officer creation failed", description: response.error, variant: "destructive" });
       return;
     }
 
-    toast({ title: "Officer Registered", description: `${officerFormData.first_name} ${officerFormData.surname} added to the system.` });
-    resetOfficerForm();
+    toast({ title: "Officer Registered", description: `${data.first_name} ${data.surname} added to the system.` });
+    officerForm.reset();
     setAddOfficerDialogOpen(false);
     loadData(true);
   };
 
-  const handleCreate = async () => {
-    if (!formData.officer || !formData.role || !formData.password) {
-      toast({ title: "Missing information", description: "Officer, role, and password are required.", variant: "destructive" });
-      return;
-    }
-
-    const roleId = Number(formData.role);
-    if (Number.isNaN(roleId)) {
-      toast({ title: "Invalid role", description: "Please select a valid role.", variant: "destructive" });
-      return;
-    }
-
+  const onCreateUserSubmit = async (data: z.infer<typeof userAccountSchema>) => {
+    const roleId = Number(data.role);
     const response = await authApi.createUserFromOfficer({
-      officer: formData.officer, role: roleId, password: formData.password, email: formData.email || undefined,
+      officer: data.officer, role: roleId, password: data.password, email: data.email || undefined,
     });
 
     if (response.error) {
@@ -212,8 +218,8 @@ const OfficerManagement = () => {
       return;
     }
 
-    toast({ title: "System account created", description: `${selectedOfficer?.full_name || formData.officer} can now sign in.` });
-    resetForm();
+    toast({ title: "System account created", description: `${selectedOfficer?.full_name || data.officer} can now sign in.` });
+    userAccountForm.reset();
     setDialogOpen(false);
     loadData(true);
   };
@@ -247,7 +253,7 @@ const OfficerManagement = () => {
           </Button>
 
           {/* ADD OFFICER DIALOG */}
-          <Dialog open={addOfficerDialogOpen} onOpenChange={(open) => { setAddOfficerDialogOpen(open); if (!open) resetOfficerForm(); }}>
+          <Dialog open={addOfficerDialogOpen} onOpenChange={(open) => { setAddOfficerDialogOpen(open); if (!open) officerForm.reset(); }}>
             <DialogTrigger asChild>
               <Button variant="secondary">
                 <UserPlus className="mr-2 h-4 w-4" />
@@ -259,55 +265,52 @@ const OfficerManagement = () => {
                 <DialogTitle>Register New Officer</DialogTitle>
                 <DialogDescription>Enter official details to register an officer in the HR system.</DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-2">
-                <div className="space-y-2">
-                  <Label>Service Number</Label>
-                  <Input placeholder="e.g. 1234567Z" value={officerFormData.service_number} onChange={(e) => setOfficerFormData(curr => ({...curr, service_number: e.target.value}))} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>First Name</Label>
-                    <Input placeholder="John" value={officerFormData.first_name} onChange={(e) => setOfficerFormData(curr => ({...curr, first_name: e.target.value}))} />
+              <Form {...officerForm}>
+                <form onSubmit={officerForm.handleSubmit(onAddOfficerSubmit)} className="space-y-4 py-2">
+                  <div className="space-y-4">
+                    <FormField control={officerForm.control} name="service_number" render={({ field }) => (
+                      <FormItem><FormLabel>Service Number</FormLabel><FormControl><Input placeholder="e.g. 1234567Z" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField control={officerForm.control} name="first_name" render={({ field }) => (
+                        <FormItem><FormLabel>First Name</FormLabel><FormControl><Input placeholder="John" {...field} /></FormControl><FormMessage /></FormItem>
+                      )} />
+                      <FormField control={officerForm.control} name="surname" render={({ field }) => (
+                        <FormItem><FormLabel>Surname</FormLabel><FormControl><Input placeholder="Doe" {...field} /></FormControl><FormMessage /></FormItem>
+                      )} />
+                    </div>
+                    <FormField control={officerForm.control} name="national_id" render={({ field }) => (
+                      <FormItem><FormLabel>National ID</FormLabel><FormControl><Input placeholder="e.g. 12-345678 A 90" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField control={officerForm.control} name="gender" render={({ field }) => (
+                        <FormItem><FormLabel>Gender</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl>
+                            <SelectContent><SelectItem value="Male">Male</SelectItem><SelectItem value="Female">Female</SelectItem></SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={officerForm.control} name="date_of_birth" render={({ field }) => (
+                        <FormItem><FormLabel>Date of Birth</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                      )} />
+                    </div>
+                    <FormField control={officerForm.control} name="date_of_attestation" render={({ field }) => (
+                      <FormItem><FormLabel>Date of Attestation</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Surname</Label>
-                    <Input placeholder="Doe" value={officerFormData.surname} onChange={(e) => setOfficerFormData(curr => ({...curr, surname: e.target.value}))} />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>National ID</Label>
-                  <Input placeholder="e.g. 12-345678 A 90" value={officerFormData.national_id} onChange={(e) => setOfficerFormData(curr => ({...curr, national_id: e.target.value}))} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Gender</Label>
-                    <Select value={officerFormData.gender} onValueChange={(v) => setOfficerFormData(curr => ({...curr, gender: v}))}>
-                      <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Male">Male</SelectItem>
-                        <SelectItem value="Female">Female</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Date of Birth</Label>
-                    <Input type="date" value={officerFormData.date_of_birth} onChange={(e) => setOfficerFormData(curr => ({...curr, date_of_birth: e.target.value}))} />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Date of Attestation</Label>
-                  <Input type="date" value={officerFormData.date_of_attestation} onChange={(e) => setOfficerFormData(curr => ({...curr, date_of_attestation: e.target.value}))} />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setAddOfficerDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleAddOfficer}><UserPlus className="mr-2 h-4 w-4" /> Save Officer</Button>
-              </DialogFooter>
+                  <DialogFooter>
+                    <Button variant="outline" type="button" onClick={() => setAddOfficerDialogOpen(false)}>Cancel</Button>
+                    <Button type="submit" disabled={!officerForm.formState.isValid}><UserPlus className="mr-2 h-4 w-4" /> Save Officer</Button>
+                  </DialogFooter>
+                </form>
+              </Form>
             </DialogContent>
           </Dialog>
 
           {/* CREATE SYSTEM USER DIALOG */}
-          <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
+          <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) userAccountForm.reset(); }}>
             <DialogTrigger asChild>
               <Button disabled={officerOptions.length === 0}>
                 <ShieldPlus className="mr-2 h-4 w-4" />
@@ -319,49 +322,53 @@ const OfficerManagement = () => {
                 <DialogTitle>Create Officer Account</DialogTitle>
                 <DialogDescription>Select an eligible officer, assign a system role, and set a starting password.</DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-2">
-                <div className="space-y-2">
-                  <Label>Officer</Label>
-                  <Select value={formData.officer} onValueChange={(value) => setFormData((current) => ({ ...current, officer: value }))}>
-                    <SelectTrigger><SelectValue placeholder="Select an officer" /></SelectTrigger>
-                    <SelectContent>
-                      {officerOptions.map((officer) => (
-                         <SelectItem key={officer.service_number} value={officer.service_number}>
-                           {officer.full_name} ({officer.service_number})
-                         </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {selectedOfficer && (
-                    <p className="text-xs text-muted-foreground">
-                      Station: {selectedOfficer.current_station_name} ({selectedOfficer.current_station_code})
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label>System Role</Label>
-                  <Select value={formData.role} onValueChange={(value) => setFormData((current) => ({ ...current, role: value }))}>
-                    <SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger>
-                    <SelectContent>
-                      {roleOptions.map((role) => (
-                        <SelectItem key={role.id} value={String(role.id)}>{role.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Email Address</Label>
-                  <Input type="email" placeholder="Optional email address" value={formData.email} onChange={(event) => setFormData((current) => ({ ...current, email: event.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Temporary Password</Label>
-                  <Input type="password" placeholder="Set an initial password" value={formData.password} onChange={(event) => setFormData((current) => ({ ...current, password: event.target.value }))} />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleCreate}><KeyRound className="mr-2 h-4 w-4" /> Create Account</Button>
-              </DialogFooter>
+              <Form {...userAccountForm}>
+                <form onSubmit={userAccountForm.handleSubmit(onCreateUserSubmit)} className="space-y-4 py-2">
+                  <FormField control={userAccountForm.control} name="officer" render={({ field }) => (
+                    <FormItem><FormLabel>Officer</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl><SelectTrigger><SelectValue placeholder="Select an officer" /></SelectTrigger></FormControl>
+                        <SelectContent>
+                          {officerOptions.map((officer) => (
+                             <SelectItem key={officer.service_number} value={officer.service_number}>
+                               {officer.full_name} ({officer.service_number})
+                             </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedOfficer && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Station: {selectedOfficer.current_station_name} ({selectedOfficer.current_station_code})
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={userAccountForm.control} name="role" render={({ field }) => (
+                    <FormItem><FormLabel>System Role</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl><SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger></FormControl>
+                        <SelectContent>
+                          {roleOptions.map((role) => (
+                            <SelectItem key={role.id} value={String(role.id)}>{role.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={userAccountForm.control} name="email" render={({ field }) => (
+                    <FormItem><FormLabel>Email Address</FormLabel><FormControl><Input type="email" placeholder="Optional email address" {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
+                  <FormField control={userAccountForm.control} name="password" render={({ field }) => (
+                    <FormItem><FormLabel>Temporary Password</FormLabel><FormControl><Input type="password" placeholder="Set an initial password" {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
+                  <DialogFooter>
+                    <Button variant="outline" type="button" onClick={() => setDialogOpen(false)}>Cancel</Button>
+                    <Button type="submit" disabled={!userAccountForm.formState.isValid}><KeyRound className="mr-2 h-4 w-4" /> Create Account</Button>
+                  </DialogFooter>
+                </form>
+              </Form>
             </DialogContent>
           </Dialog>
         </div>
@@ -404,7 +411,7 @@ const OfficerManagement = () => {
                   <TableBody>
                     {filteredOfficers.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                           No officers found in the database.
                         </TableCell>
                       </TableRow>

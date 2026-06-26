@@ -69,8 +69,8 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
     case "SUPER_ADMIN":
     case "ADMIN_OFFICER":
       navItems = [
-        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         { title: "Dashboard", href: "/admin", icon: <Home size={18} /> },
+        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         { title: "Inmates", href: "/admin/inmates", icon: <Users size={18} /> },
         {
           title: "Officers",
@@ -80,7 +80,17 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
             { title: "Officers List", href: "/admin/officers" },
           ]
         },
-        { title: "Admin Wizard", href: "/admin/wizard", icon: <UserPlus size={18} /> },
+        {
+          title: "Admin Wizard",
+          href: "/admin/wizard",
+          icon: <UserPlus size={18} />,
+          subItems: [
+            { title: "Roles", href: "/admin/roles" },
+            { title: "Departments", href: "/admin/departments" },
+            { title: "Assignments", href: "/admin/assignments" },
+            { title: "Data Exposure", href: "/admin/data-exposure" }
+          ]
+        },
         {
           title: "Settings",
           href: "/admin/settings",
@@ -91,12 +101,12 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
     case "RECEPTION_OFFICER":
       navItems = [
         { title: "Dashboard", href: "/reception", icon: <Home size={18} /> },
+        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         {
           title: "New Admission",
           href: "/reception/register",
           icon: <UserPlus size={18} />,
         },
-        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         {
           title: "Inmate Details",
           href: "/reception/inmates",
@@ -141,8 +151,8 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
       break;
     case "HEALTH_OFFICER":
       navItems = [
-        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         { title: "Dashboard", href: "/health", icon: <Home size={18} /> },
+        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         {
           title: "Inmate Health",
           href: "/health/inmates",
@@ -191,8 +201,8 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
       break;
     case "STORES_OFFICER":
       navItems = [
-        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         { title: "Dashboard", href: "/stores", icon: <Home size={18} /> },
+        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         {
           title: "Inventory",
           href: "/stores/inventory",
@@ -207,8 +217,8 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
       break;
     case "FARMS_OFFICER":
       navItems = [
-        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         { title: "Dashboard", href: "/farms", icon: <Home size={18} /> },
+        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         {
           title: "Projects",
           href: "/farms/projects",
@@ -243,7 +253,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
     setOpenDropdowns((prev) => ({ ...prev, [href]: !prev[href] }));
   };
 
-  // Keep dropdowns open when navigating inside their base paths
+  // Keep dropdowns open when navigating inside their base paths or to sub-items
   useEffect(() => {
     const newOpenDropdowns: Record<string, boolean> = { ...openDropdowns };
     if (location.pathname.startsWith('/messaging')) {
@@ -254,7 +264,11 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
     
     navItems.forEach(item => {
       if (item.subItems) {
-        if (location.pathname.startsWith(item.href)) {
+        const isChildActive = item.subItems.some(subItem => 
+          location.pathname === subItem.href || location.pathname.startsWith(subItem.href + '/')
+        );
+        
+        if (location.pathname.startsWith(item.href) || isChildActive) {
           newOpenDropdowns[item.href] = true;
         } else {
           newOpenDropdowns[item.href] = false;
@@ -316,7 +330,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
             {navItems.map((item) => {
               const isMessaging = item.href === '/messaging';
               const hasSubItems = item.subItems && item.subItems.length > 0;
-              const isDropdown = isMessaging || hasSubItems;
+              const isDropdown = hasSubItems;
               const isDropdownOpen = openDropdowns[item.href];
 
               if (isDropdown) {
@@ -346,31 +360,20 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
 
                     {isDropdownOpen && isOpen && (
                       <div className="ml-8 mt-1 space-y-1">
-                        {isMessaging ? (
-                          <>
-                            <Link to="/messaging" className="flex items-center justify-between block px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 rounded">
-                              <span>Inbox</span>
-                              {unreadCount > 0 && <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold leading-none text-white bg-red-600 rounded-full">{unreadCount}</span>}
-                            </Link>
-                            <Link to="/messaging/outbox" className="block px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 rounded">Outbox</Link>
-                            <Link to="/messaging/drafts" className="block px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 rounded">Drafts</Link>
-                          </>
-                        ) : (
-                          item.subItems?.map((subItem) => (
-                            <Link 
-                              key={subItem.href} 
-                              to={subItem.href} 
-                              className={cn(
-                                "block px-2 py-1 text-sm rounded transition-colors",
-                                location.pathname === subItem.href 
-                                  ? "bg-gray-100 font-medium text-gray-900" 
-                                  : "text-gray-700 hover:bg-gray-50"
-                              )}
-                            >
-                              {subItem.title}
-                            </Link>
-                          ))
-                        )}
+                        {item.subItems?.map((subItem) => (
+                          <Link 
+                            key={subItem.href} 
+                            to={subItem.href} 
+                            className={cn(
+                              "block px-2 py-1 text-sm rounded transition-colors",
+                              location.pathname === subItem.href 
+                                ? "bg-gray-100 font-medium text-gray-900" 
+                                : "text-gray-700 hover:bg-gray-50"
+                            )}
+                          >
+                            {subItem.title}
+                          </Link>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -384,13 +387,21 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
                   className={cn(
                     "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
                     "text-gray-700 hover:text-gray-900 hover:bg-gray-100",
-                    location.pathname === item.href &&
+                    (location.pathname === item.href || (isMessaging && location.pathname.startsWith(item.href))) &&
                       "border-r-2 border-[#d7a928] bg-[#0b4f2a]/10 text-[#0b4f2a]",
                     !isOpen && "justify-center px-2",
                   )}
                 >
-                  <span className="text-gray-500">{item.icon}</span>
+                  <span className="text-gray-500 relative">
+                    {item.icon}
+                    {isMessaging && unreadCount > 0 && (
+                      <span className="absolute -top-2 -right-2 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-semibold leading-none text-white bg-red-600 rounded-full">{unreadCount}</span>
+                    )}
+                  </span>
                   {isOpen && <span>{item.title}</span>}
+                  {isMessaging && unreadCount > 0 && isOpen && (
+                    <span className="ml-2 text-xs text-red-600 animate-pulse">●</span>
+                  )}
                 </Link>
               )
             })}

@@ -16,11 +16,21 @@ from .views import (
 )
 from .views_audit import AuditLogViewSet
 from .views_admin import AdminWorkflowViewSet
+from .views_rbac import (
+    RoleViewSet, DepartmentViewSet, OrgUnitDepartmentViewSet,
+    UserAssignmentViewSet, DataExposurePolicyViewSet, DataExposureRecordViewSet
+)
 from rest_framework.routers import DefaultRouter
 
 router = DefaultRouter()
 router.register(r'logs', AuditLogViewSet, basename='auditlog')
 router.register(r'admin-actions', AdminWorkflowViewSet, basename='admin-actions')
+router.register(r'roles', RoleViewSet, basename='roles')
+router.register(r'departments', DepartmentViewSet, basename='departments')
+router.register(r'org-unit-departments', OrgUnitDepartmentViewSet, basename='org-unit-departments')
+router.register(r'user-assignments', UserAssignmentViewSet, basename='user-assignments')
+router.register(r'data-exposure-policies', DataExposurePolicyViewSet, basename='data-exposure-policies')
+router.register(r'data-exposure-records', DataExposureRecordViewSet, basename='data-exposure-records')
 
 app_name = 'auth'
 

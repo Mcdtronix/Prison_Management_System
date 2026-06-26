@@ -67,3 +67,50 @@ class CreateStationSerializer(serializers.Serializer):
             unit_type='STATION',
             parent=validated_data['parent']
         )
+
+from .models import Role, Department, UserAssignment, DataExposurePolicy, DataExposureRecord, OrgUnitDepartment
+
+class RoleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Role
+        fields = '__all__'
+
+class DepartmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Department
+        fields = '__all__'
+
+class OrgUnitDepartmentSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    department_code = serializers.CharField(source='department.code', read_only=True)
+    class Meta:
+        model = OrgUnitDepartment
+        fields = '__all__'
+
+class UserAssignmentSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+    full_name = serializers.SerializerMethodField()
+    role_name = serializers.CharField(source='role.name', read_only=True)
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    class Meta:
+        model = UserAssignment
+        fields = '__all__'
+
+    def get_full_name(self, obj):
+        if obj.user:
+            return f"{obj.user.first_name} {obj.user.last_name}".strip()
+        return ""
+
+class DataExposurePolicySerializer(serializers.ModelSerializer):
+    source_org_name = serializers.CharField(source='source_org_unit.name', read_only=True)
+    target_org_name = serializers.CharField(source='target_org_unit.name', read_only=True)
+    class Meta:
+        model = DataExposurePolicy
+        fields = '__all__'
+
+class DataExposureRecordSerializer(serializers.ModelSerializer):
+    policy_code = serializers.CharField(source='policy.code', read_only=True)
+    target_org_name = serializers.CharField(source='target_org_unit.name', read_only=True)
+    class Meta:
+        model = DataExposureRecord
+        fields = '__all__'
