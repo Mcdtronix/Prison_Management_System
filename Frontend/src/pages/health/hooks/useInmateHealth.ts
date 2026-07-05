@@ -27,7 +27,14 @@ export const useInmateHealth = (id: string | undefined) => {
         // Fetch health record if it exists
         const healthResponse = await healthApi.getInmateHealthRecord(id);
         if (healthResponse.data) {
-          setHealthRecord(healthResponse.data);
+          const responseData = healthResponse.data;
+          // Handle both paginated and non-paginated list responses
+          const records = Array.isArray(responseData) ? responseData : (responseData.results || []);
+          if (records.length > 0) {
+            setHealthRecord(records[0]);
+          } else {
+            setHealthRecord(null);
+          }
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -52,7 +59,7 @@ export const useInmateHealth = (id: string | undefined) => {
     try {
       let response;
       
-      if (healthRecord) {
+      if (healthRecord && healthRecord.id) {
         // Update existing record
         response = await healthApi.updateHealthRecord(healthRecord.id, data);
       } else {
@@ -74,6 +81,7 @@ export const useInmateHealth = (id: string | undefined) => {
       
       // Set or update the health record state
       setHealthRecord(response.data);
+      return true;
       
     } catch (error) {
       console.error('Error saving health record:', error);
@@ -82,6 +90,7 @@ export const useInmateHealth = (id: string | undefined) => {
         description: 'Failed to save health record',
         variant: 'destructive',
       });
+      return false;
     } finally {
       setIsSaving(false);
     }

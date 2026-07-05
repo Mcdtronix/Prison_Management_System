@@ -183,11 +183,7 @@ class StockCardEntryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Ensure station isolation on create"""
-        org_unit = getattr(self.request, 'org_unit', None)
-        if not org_unit:
-            from Auth.utils import get_current_org_unit
-            org_unit = get_current_org_unit(self.request.user)
-        serializer.save(station=self.request.user.userprofile.station, owner_org_unit=org_unit)
+        serializer.save(station=self.request.user.userprofile.station)
 
 
 # ==================================================
@@ -207,11 +203,7 @@ class MedicalEquipmentViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Ensure station isolation on create"""
-        org_unit = getattr(self.request, 'org_unit', None)
-        if not org_unit:
-            from Auth.utils import get_current_org_unit
-            org_unit = get_current_org_unit(self.request.user)
-        serializer.save(station=self.request.user.userprofile.station, owner_org_unit=org_unit)
+        serializer.save(station=self.request.user.userprofile.station)
 
 
 class EquipmentUsageLogViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):

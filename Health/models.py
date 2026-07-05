@@ -270,7 +270,9 @@ class AdmissionHealthAssessment(models.Model):
     def save(self, *args, **kwargs):
         # Auto-calculate BMI
         if self.weight and self.height:
-            self.bmi = round(float(self.weight) / ((float(self.height) / 100) ** 2), 2)
+            from decimal import Decimal
+            calculated_bmi = round(float(self.weight) / ((float(self.height) / 100) ** 2), 2)
+            self.bmi = Decimal(str(calculated_bmi))
         self.full_clean()
         super().save(*args, **kwargs)
 

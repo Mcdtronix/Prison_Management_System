@@ -49,7 +49,12 @@ const InmateHealth = () => {
           <HealthRecordForm 
             healthRecord={healthRecord} 
             isSaving={isSaving} 
-            onSubmit={handleSubmit as (data: HealthFormValues) => void}
+            onSubmit={async (data: HealthFormValues) => {
+              const success = await handleSubmit(data);
+              if (success) {
+                navigate('/health/inmates');
+              }
+            }}
             onCancel={handleCancel}
           />
         </div>

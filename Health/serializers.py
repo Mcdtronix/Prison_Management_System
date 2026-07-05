@@ -34,7 +34,7 @@ class PatientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Patient
         fields = "__all__"
-        read_only_fields = ["id", "created_at", "updated_at", "name", "age", "identifier"]
+        read_only_fields = ["id", "created_at", "updated_at", "name", "age", "identifier", "station", "owner_org_unit"]
 
     def validate(self, data):
         """Ensure station context for data isolation"""
@@ -72,7 +72,7 @@ class AdmissionHealthAssessmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = AdmissionHealthAssessment
         fields = "__all__"
-        read_only_fields = ["id", "bmi", "inmate_name", "inmate_prison_number"]
+        read_only_fields = ["id", "bmi", "inmate_name", "inmate_prison_number", "station", "owner_org_unit"]
 
     def validate(self, data):
         """Auto-calculate BMI and set station"""
@@ -96,7 +96,7 @@ class OutPatientVisitSerializer(serializers.ModelSerializer):
     class Meta:
         model = OutPatientVisit
         fields = "__all__"
-        read_only_fields = ["id", "patient_name", "patient_age", "patient_identifier"]
+        read_only_fields = ["id", "patient_name", "patient_age", "patient_identifier", "station"]
 
     def validate_blood_pressure(self, value):
         """Validate BP format"""
@@ -110,11 +110,6 @@ class OutPatientVisitSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and hasattr(request.user, 'userprofile'):
             data['station'] = request.user.userprofile.station
-            org_unit = getattr(request, 'org_unit', None)
-            if not org_unit:
-                from Auth.utils import get_current_org_unit
-                org_unit = get_current_org_unit(request.user)
-            data['owner_org_unit'] = org_unit
         return data
 
 
@@ -127,19 +122,13 @@ class MentalHealthVisitSerializer(serializers.ModelSerializer):
     class Meta:
         model = MentalHealthVisit
         fields = "__all__"
-        read_only_fields = ["id", "patient_name", "patient_age", "patient_identifier"]
+        read_only_fields = ["id", "patient_name", "patient_age", "patient_identifier", "station"]
 
     def validate(self, data):
         """Set station from request"""
         request = self.context.get('request')
         if request and hasattr(request.user, 'userprofile'):
             data['station'] = request.user.userprofile.station
-            org_unit = getattr(request, 'org_unit', None)
-            if not org_unit:
-                from Auth.utils import get_current_org_unit
-                org_unit = get_current_org_unit(request.user)
-            # Chronic patient linked via Patient; ensure owner org is propagated on patient creation
-            data['owner_org_unit'] = org_unit
         return data
 
 
@@ -154,7 +143,7 @@ class ChronicPatientSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChronicPatient
         fields = "__all__"
-        read_only_fields = ["id", "patient_name", "patient_age", "patient_identifier", "patient_address", "patient_phone"]
+        read_only_fields = ["id", "patient_name", "patient_age", "patient_identifier", "patient_address", "patient_phone", "station"]
 
     def validate(self, data):
         """Set station from request"""
@@ -183,7 +172,7 @@ class StockCardEntrySerializer(serializers.ModelSerializer):
     class Meta:
         model = StockCardEntry
         fields = "__all__"
-        read_only_fields = ["id", "medicine_name", "medicine_strength"]
+        read_only_fields = ["id", "medicine_name", "medicine_strength", "station"]
 
     def validate(self, data):
         """Validate stock calculations and set station"""
@@ -212,12 +201,6 @@ class StockCardEntrySerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and hasattr(request.user, 'userprofile'):
             data['station'] = request.user.userprofile.station
-            org_unit = getattr(request, 'org_unit', None)
-            if not org_unit:
-                from Auth.utils import get_current_org_unit
-                org_unit = get_current_org_unit(request.user)
-            # Stock card entries belong to station/org unit
-            data['owner_org_unit'] = org_unit
 
         return data
 
@@ -230,18 +213,13 @@ class MedicalEquipmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = MedicalEquipment
         fields = "__all__"
-        read_only_fields = ["id"]
+        read_only_fields = ["id", "station"]
 
     def validate(self, data):
         """Set station from request"""
         request = self.context.get('request')
         if request and hasattr(request.user, 'userprofile'):
             data['station'] = request.user.userprofile.station
-            org_unit = getattr(request, 'org_unit', None)
-            if not org_unit:
-                from Auth.utils import get_current_org_unit
-                org_unit = get_current_org_unit(request.user)
-            data['owner_org_unit'] = org_unit
         return data
 
 
