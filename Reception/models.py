@@ -191,21 +191,23 @@ class CourtSession(models.Model):
     session_date = models.DateField(help_text="Date when the court session took place")
     
     OUTCOME_CHOICES = [
+        ("SCHEDULED", "Scheduled / Pending"),
         ("REMANDED", "Remanded (Next Court Date Set)"),
         ("CONVICTED", "Convicted / Sentenced"),
         ("DISCHARGED", "Discharged")
     ]
-    outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, default="REMANDED", help_text="Outcome of the session")
-    next_court_date = models.DateField(null=True, blank=True, help_text="The new court date set during this session (required if remanded)")
+    outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, default="SCHEDULED", help_text="Outcome of the session")
+    next_court_date = models.DateField(null=True, blank=True, help_text="The new court date set during this session (required if remanded or scheduled)")
     remarks = models.TextField(blank=True, null=True)
+    warrant_document = models.FileField(upload_to="court_warrants/", blank=True, null=True, help_text="Document/Warrant requesting the inmate to attend court")
 
     class Meta:
         db_table = "court_session"
         ordering = ["-session_date"]
 
     def clean(self):
-        if self.outcome == "REMANDED" and not self.next_court_date:
-            raise ValidationError("Next court date is required when remanded.")
+        if self.outcome in ["REMANDED", "SCHEDULED"] and not self.next_court_date:
+            raise ValidationError(f"Next court date is required when {self.outcome.lower()}.")
         if self.next_court_date and self.next_court_date <= self.session_date:
             raise ValidationError("Next court date must be after the session date.")
 

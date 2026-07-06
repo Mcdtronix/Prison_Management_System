@@ -118,6 +118,39 @@ class CourtSessionSerializer(serializers.ModelSerializer):
         model = CourtSession
         fields = "__all__"
 
+class UpcomingCourtSessionSerializer(serializers.ModelSerializer):
+    inmate_name = serializers.SerializerMethodField()
+    prison_number = serializers.SerializerMethodField()
+    offence_description = serializers.SerializerMethodField()
+    offence_status = serializers.SerializerMethodField()
+    restitution_status = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = CourtSession
+        fields = [
+            "id", "session_date", "outcome", "next_court_date", "remarks", 
+            "warrant_document", "inmate_name", "prison_number", 
+            "offence_description", "offence_status", "restitution_status", "offence_id"
+        ]
+        
+    def get_inmate_name(self, obj):
+        return f"{obj.offence.inmate.first_name} {obj.offence.inmate.surname}"
+        
+    def get_prison_number(self, obj):
+        return obj.offence.inmate.prison_number
+        
+    def get_offence_description(self, obj):
+        return obj.offence.offence_description
+        
+    def get_offence_status(self, obj):
+        return obj.offence.Offence_status
+        
+    def get_restitution_status(self, obj):
+        restitution = obj.offence.restitutions.first()
+        if restitution:
+            return restitution.status
+        return "N/A"
+
 
 class RestitutionExtensionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -217,9 +250,9 @@ class CourtSessionCreateSerializer(serializers.Serializer):
 
     def validate(self, data):
         outcome = data.get("outcome")
-        if outcome == "REMANDED":
+        if outcome in ["REMANDED", "SCHEDULED"]:
             if not data.get("next_court_date"):
-                raise serializers.ValidationError({"next_court_date": "Next court date is required when remanded."})
+                raise serializers.ValidationError({"next_court_date": f"Next court date is required when {outcome.lower()}."})
         elif outcome == "CONVICTED":
             if data.get("sentence_months") is None:
                 raise serializers.ValidationError({"sentence_months": "Sentence duration is required for convictions."})
@@ -229,6 +262,15 @@ class CourtSessionCreateSerializer(serializers.Serializer):
             if not data.get("discharge_reason"):
                 raise serializers.ValidationError({"discharge_reason": "Discharge reason is required."})
         return data
+
+class ScheduleCourtSessionSerializer(serializers.Serializer):
+    offence_id = serializers.IntegerField()
+    next_court_date = serializers.DateField()
+    remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    warrant_document = serializers.FileField(required=True, allow_null=False, error_messages={
+        'required': "Uploading a court warrant/request document is mandatory.",
+        'null': "Court warrant/request document cannot be null."
+    })
 
 
 class ComprehensiveInmateSerializer(serializers.ModelSerializer):
@@ -919,6 +961,14 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                     )
                     action = "created" if created else "updated"
                     logger.info(f"Unconvicted record {action} with ID: {unconvicted.pk}")
+                    
+                    if unconvicted.next_court_date:
+                        CourtSession.objects.get_or_create(
+                            offence=offence,
+                            session_date=unconvicted.next_court_date,
+                            outcome='SCHEDULED',
+                            defaults={'next_court_date': unconvicted.next_court_date}
+                        )
                 except Exception as e:
                     logger.error(f"Error processing unconvicted record: {e}")
                     raise
@@ -959,6 +1009,15 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                         inmate=inmate,
                         **mapped_data
                     )
+                    
+                    if restitution.restitution_date:
+                        CourtSession.objects.get_or_create(
+                            offence=offence,
+                            session_date=restitution.restitution_date,
+                            outcome='SCHEDULED',
+                            defaults={'next_court_date': restitution.restitution_date}
+                        )
+
                     logger.info(f"Restitution created with ID: {restitution.id}")
                 except Exception as e:
                     logger.error(f"Error creating restitution: {e}")

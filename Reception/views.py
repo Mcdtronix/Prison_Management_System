@@ -51,6 +51,8 @@ from .serializers import (
     InmateDocumentSerializer,
     InmateAuditTrailSerializer,
     InmateListSerializer,
+    UpcomingCourtSessionSerializer,
+    ScheduleCourtSessionSerializer,
 )
 
 
@@ -574,3 +576,64 @@ class InmateListView(APIView):
 
         serializer = InmateListSerializer(queryset, many=True)
         return Response(serializer.data)
+
+
+class UpcomingCourtSessionsView(OrgUnitContextMixin, APIView):
+    """
+    Returns a list of upcoming court sessions.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Only scheduled and remanded sessions typically have upcoming court dates
+        queryset = CourtSession.objects.filter(
+            outcome__in=["SCHEDULED", "REMANDED"],
+            next_court_date__isnull=False
+        ).select_related("offence__inmate").prefetch_related("offence__restitutions").order_by("next_court_date")
+        
+        # Apply org unit filtering if needed
+        org_unit = getattr(request, 'org_unit', None)
+        if org_unit:
+            queryset = queryset.filter(offence__inmate__owner_org_unit=org_unit)
+
+        serializer = UpcomingCourtSessionSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+
+class ScheduleCourtSessionView(OrgUnitContextMixin, APIView):
+    """
+    Endpoint for scheduling a new court session and uploading a warrant.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ScheduleCourtSessionSerializer(data=request.data)
+        if serializer.is_valid():
+            offence_id = serializer.validated_data['offence_id']
+            next_court_date = serializer.validated_data['next_court_date']
+            remarks = serializer.validated_data.get('remarks')
+            warrant_document = serializer.validated_data.get('warrant_document')
+
+            try:
+                offence = Offence.objects.get(id=offence_id)
+            except Offence.DoesNotExist:
+                return Response({"error": "Offence not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            with transaction.atomic():
+                # Create the court session
+                session = CourtSession.objects.create(
+                    offence=offence,
+                    session_date=next_court_date, # we will just use next court date for session_date since it's scheduled
+                    outcome="SCHEDULED",
+                    next_court_date=next_court_date,
+                    remarks=remarks,
+                    warrant_document=warrant_document
+                )
+                
+                # Optionally, if they are unconvicted, update their next_court_date
+                if hasattr(offence, 'unconviction') and offence.unconviction:
+                    offence.unconviction.next_court_date = next_court_date
+                    offence.unconviction.save()
+
+            return Response({"message": "Court session scheduled successfully.", "id": session.id}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -9,8 +9,10 @@ from .views import (
     OffenceViewSet,
     ConvictedViewSet,
     UnconvictedViewSet,
-    RestitutionViewSet,
     CourtSessionViewSet,
+    UpcomingCourtSessionsView,
+    ScheduleCourtSessionView,
+    RestitutionViewSet,
     RestitutionExtensionViewSet,
     InmateRegistrationView,
     OffenceRegistrationView,
@@ -46,10 +48,12 @@ router.register(r'documents', InmateDocumentViewSet)
 router.register(r'audit-trail', InmateAuditTrailViewSet)
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path('court-sessions/upcoming/', UpcomingCourtSessionsView.as_view(), name='upcoming-court-sessions'),
+    path('court-sessions/schedule/', ScheduleCourtSessionView.as_view(), name='schedule-court-session'),
     path('register/', InmateRegistrationView.as_view(), name='basic-inmate-registration'),
     path('register-offences/', OffenceRegistrationView.as_view(), name='offence-registration'),
     path('pending-approval/', PendingAdminApprovalView.as_view(), name='pending-admin-approval'),
     path('pending-offences/', PendingOffenceRegistrationView.as_view(), name='pending-offence-registration'),
     path('inmate-list/', InmateListView.as_view(), name='inmate-list'),
+    path('', include(router.urls)),
 ]

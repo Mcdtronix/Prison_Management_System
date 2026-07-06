@@ -796,6 +796,33 @@ export const receptionApi = {
       method: 'POST',
     });
   },
+  getUpcomingCourtSessions: async () => {
+    return fetchApi(`/reception/court-sessions/upcoming/`);
+  },
+  scheduleCourtSession: async (data: any) => {
+    // If data is FormData, we need to handle it differently
+    if (data instanceof FormData) {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`${API_BASE_URL}/reception/court-sessions/schedule/`, {
+        method: "POST",
+        headers: {
+          Authorization: `Token ${token}`,
+          // Don't set Content-Type for FormData, browser will set it with boundary
+        },
+        body: data,
+      });
+      const responseData = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { data: null, error: responseData.detail || "Error scheduling court session" };
+      }
+      return { data: responseData, error: null };
+    } else {
+      return fetchApi(`/reception/court-sessions/schedule/`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    }
+  },
 };
 
 // Health API endpoints

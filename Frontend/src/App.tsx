@@ -19,6 +19,7 @@ import ReceptionDashboard from "@/pages/reception/ReceptionDashboard";
 import InmateRegistration from "@/pages/reception/InmateRegistration";
 import OffenceRegistration from "@/pages/reception/OffenceRegistration";
 import InmateList from "@/pages/reception/InmateList";
+import Courts from "@/pages/reception/Courts";
 import HealthDashboard from "@/pages/health/HealthDashboard";
 import InmateHealth from "@/pages/health/InmateHealth";
 import InmateHealthList from "@/pages/health/InmateHealthList";
@@ -206,6 +207,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
                 <InmateList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reception/courts"
+            element={
+              <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
+                <Courts />
               </ProtectedRoute>
             }
           />

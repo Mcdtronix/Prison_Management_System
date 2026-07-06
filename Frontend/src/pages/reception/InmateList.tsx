@@ -11,14 +11,14 @@ import { Link } from 'react-router-dom';
 interface Inmate {
   id: number;
   prison_number: string;
-  first_name: string;
-  surname: string;
+  name: string;
+  age: number;
   gender: string;
-  date_of_birth: string;
   admission_date: string;
-  offences: string;
+  offense: string;
   status: string;
   classification: string;
+  admission_status: string;
 }
 
 const InmateList = () => {
@@ -87,10 +87,10 @@ const InmateList = () => {
                         {inmate.prison_number}
                       </Link>
                     </TableCell>
-                    <TableCell>{`${inmate.surname}, ${inmate.first_name}`}</TableCell>
+                    <TableCell>{inmate.name}</TableCell>
                     <TableCell>{inmate.status}</TableCell>
                     <TableCell>{inmate.classification}</TableCell>
-                    <TableCell>{inmate.offences}</TableCell>
+                    <TableCell>{inmate.offense}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
