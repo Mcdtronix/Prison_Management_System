@@ -30,7 +30,7 @@ interface PendingApprovalInmate {
   name: string;
   admission_date: string;
   offense: string;
-  status: "pending_approval";
+  status: string;
 }
 
 interface PendingOffenceInmate {
@@ -221,9 +221,20 @@ const ReceptionDashboard = () => {
                           </TableCell>
                           <TableCell>{inmate.offense}</TableCell>
                           <TableCell>
-                            <Badge className="bg-yellow-500">
-                              Pending Approval
-                            </Badge>
+                            {inmate.status === 'PENDING_HEALTH_ASSESSMENT' && (
+                              <Badge className="bg-red-500 hover:bg-red-600">Pending Health</Badge>
+                            )}
+                            {inmate.status === 'PENDING_ADMIN_APPROVAL' && (
+                              <Badge className="bg-yellow-500 hover:bg-yellow-600">Pending Admin</Badge>
+                            )}
+                            {inmate.status === 'ADMISSION_CONFIRMED' && (
+                              <Badge className="bg-green-500 hover:bg-green-600">Confirmed</Badge>
+                            )}
+                            {!['PENDING_HEALTH_ASSESSMENT', 'PENDING_ADMIN_APPROVAL', 'ADMISSION_CONFIRMED'].includes(inmate.status) && (
+                              <Badge className="bg-gray-500">
+                                {inmate.status ? inmate.status.replace(/_/g, ' ') : 'Unknown'}
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             <Button

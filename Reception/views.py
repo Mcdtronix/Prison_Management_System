@@ -399,7 +399,7 @@ class PendingAdminApprovalView(APIView):
                 'name': f"{inmate.surname} {inmate.first_name}",
                 'admission_date': inmate.admission_date,
                 'offense': inmate.offences.first().offence_description[:50] if inmate.offences.exists() else 'N/A',
-                'status': 'pending_approval'
+                'status': inmate.admission_status
             })
 
         return Response(data)
