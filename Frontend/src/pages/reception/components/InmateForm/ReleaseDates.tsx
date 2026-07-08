@@ -115,8 +115,8 @@ const ReleaseDates: React.FC<ReleaseDatesProps> = ({ form }) => {
                 </div>
 
                 {summary.hasRestitution && (
-                    <Alert className="bg-blue-50 border-blue-200">
-                        <Info className="h-4 w-4 text-blue-600" />
+                    <Alert className="bg-[#d7a928]/10 border-[#d7a928]">
+                        <Info className="h-4 w-4 text-[#0b4f2a]" />
                         <AlertTitle className="text-blue-800">Restitution Conditions</AlertTitle>
                         <AlertDescription className="text-blue-700 text-xs mt-1">
                             The Alternative Computation will only become active if the restitution is fully paid and the official receipt is uploaded before the assigned deadline. Until then, the Standard Computation applies.

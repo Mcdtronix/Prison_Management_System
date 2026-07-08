@@ -163,7 +163,7 @@ const Courts = () => {
                             {session.offence_description}
                           </TableCell>
                           <TableCell>
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#d7a928]/20 text-blue-800">
                               {session.offence_status}
                             </span>
                           </TableCell>

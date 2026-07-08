@@ -81,7 +81,7 @@ const ThreadView = () => {
                       {/* Message Header */}
                       <div className="bg-gray-50/50 px-4 py-3 flex justify-between items-start border-b">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-lg">
+                          <div className="w-10 h-10 rounded-full bg-[#d7a928]/20 flex items-center justify-center text-blue-700 font-bold text-lg">
                             {(m.sender?.mailbox_address || '?')[0].toUpperCase()}
                           </div>
                           <div>
@@ -120,7 +120,7 @@ const ThreadView = () => {
                   />
                   <div className="flex justify-between items-center mt-4">
                     <div className="text-xs text-gray-400">Attachments are not supported in quick reply.</div>
-                    <Button onClick={send} disabled={isSending || !body.trim()} className="bg-blue-600 hover:bg-blue-700">
+                    <Button onClick={send} disabled={isSending || !body.trim()} className="bg-[#0b4f2a] hover:bg-[#063f20]">
                       {isSending ? 'Sending...' : 'Send'}
                     </Button>
                   </div>

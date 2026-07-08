@@ -176,6 +176,9 @@ const Restitution: React.FC<RestitutionProps> = ({
                   <label className="text-sm font-medium">Restitution Amount</label>
                   <Input
                     name="restitutionAmount"
+                    type="number"
+                    step="0.01"
+                    min="0"
                     placeholder="Enter amount"
                     value={currentRestitution.restitutionAmount}
                     onChange={handleInputChange}

@@ -226,6 +226,13 @@ async function fetchApi(
 // ==================================================
 export const authApi = {
   /**
+   * Get audit logs for accountability tracking
+   */
+  getAuditLogs: async () => {
+    return fetchApi("/auth/logs/");
+  },
+
+  /**
    * Login with service number and password
    * @param serviceNumber - Officer service number (e.g., 2934823Z)
    * @param password - User password

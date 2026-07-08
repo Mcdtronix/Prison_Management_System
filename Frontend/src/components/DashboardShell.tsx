@@ -51,7 +51,7 @@ export function DashboardShell({
               <SheetContent side="left" className="pr-0">
                 <div className="px-7">
                   <Link to="/" className="flex items-center gap-2">
-                    <Gavel className="h-6 w-6 text-[#9b87f5]" />
+                    <Gavel className="h-6 w-6 text-[#0b4f2a]" />
                     <span className="font-bold">Prison Management</span>
                   </Link>
                 </div>
@@ -71,7 +71,7 @@ export function DashboardShell({
               </SheetContent>
             </Sheet>
             <Link to="/" className="hidden items-center gap-2 md:flex">
-              <Gavel className="h-6 w-6 text-[#9b87f5]" />
+              <Gavel className="h-6 w-6 text-[#0b4f2a]" />
               <span className="font-bold">Prison Management</span>
             </Link>
           </div>

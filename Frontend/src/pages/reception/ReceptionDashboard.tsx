@@ -127,7 +127,7 @@ const ReceptionDashboard = () => {
             <CardTitle className="text-sm font-medium">
               Pending Offence Registration
             </CardTitle>
-            <div className="h-4 w-4 rounded-full bg-blue-500" />
+            <div className="h-4 w-4 rounded-full bg-[#0b4f2a]" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -156,7 +156,7 @@ const ReceptionDashboard = () => {
             <CardTitle className="text-sm font-medium">
               Pending Discharges
             </CardTitle>
-            <div className="h-4 w-4 rounded-full bg-purple-500" />
+            <div className="h-4 w-4 rounded-full bg-[#0b4f2a]" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">2</div>
@@ -208,7 +208,7 @@ const ReceptionDashboard = () => {
                       filteredApprovalInmates.map((inmate) => (
                         <TableRow key={inmate.id}>
                           <TableCell 
-                            className="font-medium text-blue-600 hover:underline cursor-pointer"
+                            className="font-medium text-[#0b4f2a] hover:underline cursor-pointer"
                             onClick={() => navigate(`/inmates/${inmate.id}`)}
                           >
                             {inmate.prison_number}
@@ -302,7 +302,7 @@ const ReceptionDashboard = () => {
                       filteredOffenceInmates.map((inmate) => (
                         <TableRow key={inmate.id}>
                           <TableCell 
-                            className="font-medium text-blue-600 hover:underline cursor-pointer"
+                            className="font-medium text-[#0b4f2a] hover:underline cursor-pointer"
                             onClick={() => navigate(`/inmates/${inmate.id}`)}
                           >
                             {inmate.prison_number}
@@ -314,7 +314,7 @@ const ReceptionDashboard = () => {
                             ).toLocaleDateString()}
                           </TableCell>
                           <TableCell>
-                            <Badge className="bg-blue-500">
+                            <Badge className="bg-[#0b4f2a]">
                               Pending Offences
                             </Badge>
                           </TableCell>

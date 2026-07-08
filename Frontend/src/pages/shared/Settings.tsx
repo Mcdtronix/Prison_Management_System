@@ -77,7 +77,7 @@ const SettingsPage = () => {
                       
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div 
-                          className={`border-2 rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 ${theme === 'light' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+                          className={`border-2 rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 ${theme === 'light' ? 'border-[#0b4f2a] bg-[#d7a928]/10' : 'border-gray-200 hover:border-gray-300'}`}
                           onClick={() => setTheme('light')}
                         >
                           <div className="w-full h-20 bg-gray-100 rounded border flex items-center justify-center shadow-inner">
@@ -87,7 +87,7 @@ const SettingsPage = () => {
                         </div>
 
                         <div 
-                          className={`border-2 rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 ${theme === 'dark' ? 'border-blue-600 bg-blue-50/10' : 'border-gray-200 hover:border-gray-300'}`}
+                          className={`border-2 rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 ${theme === 'dark' ? 'border-[#0b4f2a] bg-[#d7a928]/10/10' : 'border-gray-200 hover:border-gray-300'}`}
                           onClick={() => setTheme('dark')}
                         >
                           <div className="w-full h-20 bg-gray-900 rounded border border-gray-700 flex items-center justify-center shadow-inner">
@@ -97,7 +97,7 @@ const SettingsPage = () => {
                         </div>
 
                         <div 
-                          className={`border-2 rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 ${theme === 'system' ? 'border-blue-600 bg-blue-50/10' : 'border-gray-200 hover:border-gray-300'}`}
+                          className={`border-2 rounded-lg p-4 cursor-pointer flex flex-col items-center gap-2 ${theme === 'system' ? 'border-[#0b4f2a] bg-[#d7a928]/10/10' : 'border-gray-200 hover:border-gray-300'}`}
                           onClick={() => setTheme('system')}
                         >
                           <div className="w-full h-20 bg-gradient-to-r from-gray-100 to-gray-900 rounded border flex items-center justify-center shadow-inner">

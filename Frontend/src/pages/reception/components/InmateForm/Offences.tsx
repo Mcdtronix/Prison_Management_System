@@ -77,6 +77,8 @@ const Offences: React.FC<OffencesProps> = ({
 
   const convictionStatus = localForm.watch("convictionStatus");
   const hasRestitution = localForm.watch("hasRestitution");
+  const hasFine = localForm.watch("hasFine");
+  const hasBail = localForm.watch("hasBail");
 
   // Emit draft changes to parent for conditional sections (release/restitution)
   useEffect(() => {
@@ -108,6 +110,10 @@ const Offences: React.FC<OffencesProps> = ({
       sentenceDate: '',
       nextCourtDate: '',
       hasRestitution: false,
+      hasBail: false,
+      bailAmount: '',
+      hasFine: false,
+      fineAmount: '',
     };
     onDraftOffenceChange(defaultOffence);
   };
@@ -258,23 +264,60 @@ const Offences: React.FC<OffencesProps> = ({
                       />
                     </div>
                   )}
-                  <FormField
-                    control={localForm.control}
-                    name="hasRestitution"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel>Has Restitution</FormLabel>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border p-4 rounded-md shadow-sm">
+                    <FormField
+                      control={localForm.control}
+                      name="hasRestitution"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                          <div className="space-y-1 leading-none">
+                            <FormLabel>Has Restitution</FormLabel>
+                          </div>
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <div className="space-y-3">
+                      <FormField
+                        control={localForm.control}
+                        name="hasFine"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                            <div className="space-y-1 leading-none">
+                              <FormLabel>Has Fine</FormLabel>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+                      {hasFine && (
+                        <FormField
+                          control={localForm.control}
+                          name="fineAmount"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Fine Amount</FormLabel>
+                              <FormControl>
+                                <Input type="number" min="0" step="0.01" placeholder="Enter amount" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <FormField
@@ -291,6 +334,41 @@ const Offences: React.FC<OffencesProps> = ({
                   )}
                 />
               )}
+
+              <div className="border p-4 rounded-md shadow-sm space-y-3 mt-4">
+                <FormField
+                  control={localForm.control}
+                  name="hasBail"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Has Bail</FormLabel>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+                {hasBail && (
+                  <FormField
+                    control={localForm.control}
+                    name="bailAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Bail Amount</FormLabel>
+                        <FormControl>
+                          <Input type="number" min="0" step="0.01" placeholder="Enter amount" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </div>
             </form>
           </Form>
           

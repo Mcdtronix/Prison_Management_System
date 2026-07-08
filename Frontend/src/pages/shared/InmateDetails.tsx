@@ -112,6 +112,17 @@ interface Inmate {
   age?: number;
   photo_url?: string;
   status?: string;
+  admission_health_assessment?: {
+    id: string;
+    assessment_date: string;
+    weight: string;
+    height?: string;
+    bmi?: string;
+    comment?: string;
+    is_chronic_patient: boolean;
+    assessed_by: string;
+  };
+  timeline?: TimelineEvent[];
 }
 
 interface Offense {
@@ -195,21 +206,30 @@ const InmateDetails = () => {
       // Fetch inmate details
       const detailsResponse = await inmateApi.getInmateDetails(inmateId);
       if (detailsResponse.data) {
-        setInmate(detailsResponse.data as Inmate);
-      }
+        const inmateData = detailsResponse.data as Inmate;
+        setInmate(inmateData);
 
-      // If user is health officer or admin, fetch health records
-      if (user?.role === "health" || user?.role === "admin") {
-        const healthResponse = await fetch(`/api/health/inmates/${inmateId}`);
-        const healthData = await healthResponse.json();
-        if (healthData.success) {
-          setHealthRecord(healthData.data);
+        if (inmateData.timeline) {
+          setTimeline(inmateData.timeline);
         }
 
-        const opdResponse = await fetch(`/api/health/inmates/${inmateId}/opd`);
-        const opdData = await opdResponse.json();
-        if (opdData.success) {
-          setOPDVisits(opdData.data);
+        if (inmateData.admission_health_assessment) {
+          const assessment = inmateData.admission_health_assessment;
+          setHealthRecord({
+            id: assessment.id.toString(),
+            date: assessment.assessment_date,
+            temperature: 'N/A',
+            height: assessment.height ? `${assessment.height} cm` : 'N/A',
+            weight: `${assessment.weight} kg`,
+            blood_pressure: 'N/A',
+            medical_conditions: assessment.is_chronic_patient ? ['Chronic Condition Reported'] : [],
+            medications: [],
+            allergies: [],
+            health_status: assessment.is_chronic_patient ? 'Chronic Patient' : 'Standard',
+            notes: assessment.comment || 'No notes provided',
+          });
+        } else {
+          setHealthRecord(null);
         }
       }
     } catch (error) {
@@ -321,11 +341,11 @@ const InmateDetails = () => {
       case "IN_CUSTODY":
         return <Badge className="bg-green-500">In Custody</Badge>;
       case "TRANSFERRED":
-        return <Badge className="bg-purple-500">Transferred</Badge>;
+        return <Badge className="bg-[#0b4f2a]">Transferred</Badge>;
       case "ESCAPED":
         return <Badge className="bg-red-500">Escaped</Badge>;
       case "DISCHARGED":
-        return <Badge className="bg-blue-500">Discharged</Badge>;
+        return <Badge className="bg-[#0b4f2a]">Discharged</Badge>;
       case "DECEASED":
         return <Badge className="bg-gray-500">Deceased</Badge>;
       default:
@@ -374,7 +394,7 @@ const InmateDetails = () => {
       >
         <div className="flex justify-center items-center h-64">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#9b87f5] mx-auto mb-4"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0b4f2a] mx-auto mb-4"></div>
             <p>Loading inmate information...</p>
           </div>
         </div>
@@ -417,7 +437,7 @@ const InmateDetails = () => {
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-[#F1F0FB]">
-                    <User className="h-12 w-12 text-[#7E69AB]" />
+                    <User className="h-12 w-12 text-[#0b4f2a]" />
                   </div>
                 )}
               </div>
@@ -429,7 +449,7 @@ const InmateDetails = () => {
               </CardDescription>
               <div className="mt-2">
                 {getStatusBadge(inmate.current_status)}
-                <Badge className="ml-2 bg-[#7E69AB]">
+                <Badge className="ml-2 bg-[#d7a928]">
                   Class {inmate.classification?.classification}
                 </Badge>
               </div>
@@ -502,7 +522,7 @@ const InmateDetails = () => {
                     <>
                       {inmate.has_discharge_assessment ? (
                         <Button
-                          className="w-full bg-blue-500 hover:bg-blue-600"
+                          className="w-full bg-[#0b4f2a] hover:bg-[#0b4f2a]"
                           onClick={handleDischargeInmate}
                         >
                           Discharge Inmate
@@ -517,7 +537,7 @@ const InmateDetails = () => {
                         </Button>
                       )}
                       <Button
-                        className="w-full bg-purple-500 hover:bg-purple-600"
+                        className="w-full bg-[#0b4f2a] hover:bg-[#0b4f2a]"
                         onClick={handleTransferInmate}
                       >
                         Transfer Inmate
@@ -535,7 +555,7 @@ const InmateDetails = () => {
                                 size="sm"
                                 className={
                                   inmate.classification === cls
-                                    ? "bg-[#9b87f5] text-white"
+                                    ? "bg-[#0b4f2a] text-white"
                                     : ""
                                 }
                                 onClick={() => handleClassifyInmate(cls)}
@@ -930,9 +950,9 @@ const InmateDetails = () => {
                     <div className="relative border-l border-gray-200 pl-6 ml-3 space-y-6">
                       {timeline.map((event) => (
                         <div key={event.id} className="relative">
-                          <div className="absolute -left-9 mt-1.5 h-4 w-4 rounded-full bg-[#9b87f5]"></div>
+                          <div className="absolute -left-9 mt-1.5 h-4 w-4 rounded-full bg-[#0b4f2a]"></div>
                           <div className="mb-1 flex items-center">
-                            <Badge className="bg-[#7E69AB]">
+                            <Badge className="bg-[#d7a928]">
                               {event.event_type}
                             </Badge>
                             <span className="ml-2 text-xs text-muted-foreground">

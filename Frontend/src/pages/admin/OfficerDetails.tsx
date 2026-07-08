@@ -382,7 +382,7 @@ function QualificationsTab({ records, officerId, types, reload }: { records: any
                 <TableCell>{types.find(t => t.id === r.qualification_type)?.name || r.qualification_type}</TableCell>
                 <TableCell>{r.institution}</TableCell>
                 <TableCell>{r.date_awarded}</TableCell>
-                <TableCell>{r.certificate ? <a href={r.certificate} target="_blank" className="text-blue-500 underline">View File</a> : "None"}</TableCell>
+                <TableCell>{r.certificate ? <a href={r.certificate} target="_blank" className="text-[#0b4f2a] underline">View File</a> : "None"}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -446,7 +446,7 @@ function CoursesTab({ records, officerId, availableCourses, reload }: { records:
                 <TableCell>{availableCourses.find(c => c.id === r.course)?.name || r.course}</TableCell>
                 <TableCell>{r.start_date} to {r.end_date}</TableCell>
                 <TableCell>{r.result}</TableCell>
-                <TableCell>{r.certificate ? <a href={r.certificate} target="_blank" className="text-blue-500 underline">View</a> : "-"}</TableCell>
+                <TableCell>{r.certificate ? <a href={r.certificate} target="_blank" className="text-[#0b4f2a] underline">View</a> : "-"}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -502,7 +502,7 @@ function DependantsTab({ records, officerId, reload }: { records: any[]; officer
                 <TableCell className="font-medium">{r.full_name}</TableCell>
                 <TableCell>{r.relationship}</TableCell>
                 <TableCell>{r.date_of_birth}</TableCell>
-                <TableCell>{r.birth_certificate ? <a href={r.birth_certificate} target="_blank" className="text-blue-500 underline">View</a> : "-"}</TableCell>
+                <TableCell>{r.birth_certificate ? <a href={r.birth_certificate} target="_blank" className="text-[#0b4f2a] underline">View</a> : "-"}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -575,7 +575,7 @@ function DisciplinaryTab({ records, officerId, offences, reload }: { records: an
                 <TableCell>{r.charge_date}</TableCell>
                 <TableCell><Badge>{r.status}</Badge></TableCell>
                 <TableCell className="max-w-[200px] truncate">{r.description}</TableCell>
-                <TableCell>{r.document ? <a href={r.document} target="_blank" className="text-blue-500 underline">View</a> : "-"}</TableCell>
+                <TableCell>{r.document ? <a href={r.document} target="_blank" className="text-[#0b4f2a] underline">View</a> : "-"}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -627,7 +627,7 @@ function DocumentsTab({ records, officerId, reload }: { records: any[]; officerI
               <TableRow key={r.id}>
                 <TableCell className="font-medium">{r.document_type}</TableCell>
                 <TableCell>{format(new Date(r.uploaded_at), "PPP")}</TableCell>
-                <TableCell><a href={r.file} target="_blank" className="text-blue-500 underline">Download / View</a></TableCell>
+                <TableCell><a href={r.file} target="_blank" className="text-[#0b4f2a] underline">Download / View</a></TableCell>
               </TableRow>
             ))}
           </TableBody>

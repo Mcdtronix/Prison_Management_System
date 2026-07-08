@@ -66,7 +66,7 @@ const OPDRecordsPage = () => {
       case 'pending':
         return <Badge className="bg-yellow-500">Pending</Badge>;
       case 'follow-up':
-        return <Badge className="bg-blue-500">Follow-Up</Badge>;
+        return <Badge className="bg-[#0b4f2a]">Follow-Up</Badge>;
       default:
         return <Badge>{status}</Badge>;
     }

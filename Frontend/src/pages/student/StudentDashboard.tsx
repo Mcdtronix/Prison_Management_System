@@ -54,14 +54,14 @@ const StudentDashboard = () => {
       title: "My Courses",
       value: isLoading ? "..." : courseCount,
       icon: <Book className="h-6 w-6" />,
-      color: "bg-blue-100 text-blue-700",
+      color: "bg-[#d7a928]/20 text-blue-700",
       link: "/student/courses",
     },
     {
       title: "Timetable",
       value: "View",
       icon: <Calendar className="h-6 w-6" />,
-      color: "bg-purple-100 text-purple-700",
+      color: "bg-[#d7a928]/20 text-purple-700",
       link: "/student/timetable",
     },
     {

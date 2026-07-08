@@ -307,7 +307,7 @@ const InmateForm = () => {
           </Button>
           <Button
             type="submit"
-            className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
+            className="bg-[#0b4f2a] hover:bg-[#063f20] text-white font-medium"
             disabled={isSubmitting}
           >
             {isSubmitting ? (

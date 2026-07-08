@@ -83,7 +83,7 @@ const InmateList = () => {
                 {inmates.map((inmate) => (
                   <TableRow key={inmate.id}>
                     <TableCell>
-                      <Link to={`/inmates/${inmate.id}`} className="text-blue-600 hover:underline">
+                      <Link to={`/inmates/${inmate.id}`} className="text-[#0b4f2a] hover:underline">
                         {inmate.prison_number}
                       </Link>
                     </TableCell>

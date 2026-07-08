@@ -106,7 +106,7 @@ export default function InmateHealthList() {
                         {new Date(inmate.admission_date || inmate.created_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="bg-blue-50 text-blue-700 hover:bg-blue-50">
+                        <Badge variant="outline" className="bg-[#d7a928]/10 text-blue-700 hover:bg-[#d7a928]/10">
                           {inmate.admission_status?.replace(/_/g, ' ') || 'ACTIVE'}
                         </Badge>
                       </TableCell>
@@ -114,7 +114,7 @@ export default function InmateHealthList() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="text-[#9b87f5]"
+                          className="text-[#0b4f2a]"
                           onClick={() => navigate(`/health/inmate/${inmate.id}`)}
                         >
                           <Activity className="h-4 w-4 mr-2" />

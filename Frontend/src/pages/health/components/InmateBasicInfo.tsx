@@ -59,7 +59,7 @@ export const InmateBasicInfo: React.FC<InmateBasicInfoProps> = ({ inmate }) => {
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-[#F1F0FB]">
-              <User className="h-12 w-12 text-[#7E69AB]" />
+              <User className="h-12 w-12 text-[#0b4f2a]" />
             </div>
           )}
         </div>

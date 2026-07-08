@@ -14,6 +14,7 @@ import RoleManagement from "@/pages/admin/RoleManagement";
 import DepartmentManagement from "@/pages/admin/DepartmentManagement";
 import UserAssignmentManagement from "@/pages/admin/UserAssignmentManagement";
 import DataExposureManagement from "@/pages/admin/DataExposureManagement";
+import AuditTrail from "@/pages/admin/AuditTrail";
 import SettingsPage from "@/pages/shared/Settings";
 import ReceptionDashboard from "@/pages/reception/ReceptionDashboard";
 import InmateRegistration from "@/pages/reception/InmateRegistration";
@@ -172,6 +173,16 @@ function App() {
               <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
                 <PrisonLayout title="Data Exposure Management" description="Manage data sharing policies between stations">
                   <DataExposureManagement />
+                </PrisonLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/audit-trail"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
+                <PrisonLayout title="Audit Trail" description="Comprehensive system audit logs for accountability tracking">
+                  <AuditTrail />
                 </PrisonLayout>
               </ProtectedRoute>
             }

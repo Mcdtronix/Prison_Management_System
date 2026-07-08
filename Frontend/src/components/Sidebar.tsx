@@ -92,6 +92,11 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           ]
         },
         {
+          title: "Audit Trail",
+          href: "/admin/audit-trail",
+          icon: <Activity size={18} />,
+        },
+        {
           title: "Settings",
           href: "/settings",
           icon: <Settings size={18} />,
@@ -256,7 +261,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
   }
 
   const sidebarClasses = cn(
-    "fixed h-full bg-white border-r border-gray-200 transition-all duration-300 z-20",
+    "fixed h-full bg-[#0b4f2a] border-r border-[#063f20] text-white transition-all duration-300 z-20",
     isOpen ? "w-64" : "w-16",
   );
 
@@ -317,13 +322,13 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
     <>
       <div className={sidebarClasses}>
         <div className={sidebarContentClasses}>
-          <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
+          <div className="h-16 flex items-center justify-between px-4 border-b border-[#063f20]">
             {isOpen && (
               <Link to={dashboardUrl} className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#0b4f2a] font-bold text-[#d7a928] ring-1 ring-[#d7a928]">
+                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white font-bold text-[#0b4f2a] ring-1 ring-[#d7a928]">
                   <Shield size={16} />
                 </div>
-                <span className="font-semibold text-lg text-gray-900">
+                <span className="font-semibold text-lg text-white">
                   PrisonMS
                 </span>
               </Link>
@@ -331,7 +336,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
             {!isOpen && (
               <div className="w-full flex justify-center">
                 <Link to={dashboardUrl} className="flex items-center">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#0b4f2a] text-[#d7a928] ring-1 ring-[#d7a928]">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-[#0b4f2a] ring-1 ring-[#d7a928]">
                     <Shield size={16} />
                   </div>
                 </Link>
@@ -341,7 +346,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
               variant="ghost"
               size="sm"
               onClick={toggleSidebar}
-              className="text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+              className="text-gray-300 hover:text-white hover:bg-[#063f20]"
             >
               {isOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
             </Button>
@@ -360,13 +365,13 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
                       onClick={() => toggleDropdown(item.href)}
                       className={cn(
                         "w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                        "text-gray-700 hover:text-gray-900 hover:bg-gray-100",
+                        "text-gray-300 hover:text-white hover:bg-[#063f20]",
                         location.pathname.startsWith(item.href) &&
-                          "border-r-2 border-[#d7a928] bg-[#0b4f2a]/10 text-[#0b4f2a]",
+                          "border-r-2 border-[#d7a928] bg-[#063f20] text-white",
                         !isOpen && "justify-center px-2",
                       )}
                     >
-                      <span className="text-gray-500 relative">{item.icon}
+                      <span className="text-gray-300 relative">{item.icon}
                         {isMessaging && unreadCount > 0 && (
                           <span className="absolute -top-2 -right-2 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-semibold leading-none text-white bg-red-600 rounded-full">{unreadCount}</span>
                         )}
@@ -387,8 +392,8 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
                             className={cn(
                               "block px-2 py-1 text-sm rounded transition-colors",
                               location.pathname === subItem.href 
-                                ? "bg-gray-100 font-medium text-gray-900" 
-                                : "text-gray-700 hover:bg-gray-50"
+                                ? "bg-[#063f20] font-medium text-white" 
+                                : "text-gray-300 hover:bg-[#063f20] hover:text-white"
                             )}
                           >
                             {subItem.title}
@@ -406,13 +411,13 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
                   to={item.href}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                    "text-gray-700 hover:text-gray-900 hover:bg-gray-100",
+                    "text-gray-300 hover:text-white hover:bg-[#063f20]",
                     (location.pathname === item.href || (isMessaging && location.pathname.startsWith(item.href))) &&
-                      "border-r-2 border-[#d7a928] bg-[#0b4f2a]/10 text-[#0b4f2a]",
+                      "border-r-2 border-[#d7a928] bg-[#063f20] text-white",
                     !isOpen && "justify-center px-2",
                   )}
                 >
-                  <span className="text-gray-500 relative">
+                  <span className="text-gray-300 relative">
                     {item.icon}
                     {isMessaging && unreadCount > 0 && (
                       <span className="absolute -top-2 -right-2 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-semibold leading-none text-white bg-red-600 rounded-full">{unreadCount}</span>

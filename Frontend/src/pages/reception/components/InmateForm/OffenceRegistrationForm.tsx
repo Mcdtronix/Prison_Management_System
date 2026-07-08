@@ -18,12 +18,13 @@ import Offences from "./Offences";
 import ReleaseDates from "./ReleaseDates";
 import Restitution from "./Restitution";
 
-// Base schema for common offence fields
 const baseOffenceSchema = z.object({
   offence: z.string().min(1, "Offence description is required"),
   furtherCharge: z.string().optional(),
   court: z.string().min(1, "Court is required"),
   hasRestitution: z.boolean().optional(),
+  hasBail: z.boolean().optional(),
+  bailAmount: z.string().optional(),
 });
 
 // Schema for convicted and unconvicted offences using a discriminated union
@@ -35,6 +36,8 @@ export const offenceDataSchema = z.discriminatedUnion("convictionStatus", [
     sentenceDays: z.coerce.number().min(0).optional(),
     sentenceDate: z.string().optional(), // Validated via superRefine
     nextCourtDate: z.string().optional(),
+    hasFine: z.boolean().optional(),
+    fineAmount: z.string().optional(),
   }).merge(baseOffenceSchema),
   z.object({
     convictionStatus: z.literal("unconvicted"),
@@ -181,6 +184,10 @@ const OffenceRegistrationForm = ({
     nextCourtDate: '',
     remandStartDate: '',
     hasRestitution: false,
+    hasBail: false,
+    bailAmount: '',
+    hasFine: false,
+    fineAmount: '',
   });
 
   const resolvedInmateId =
@@ -213,6 +220,8 @@ const OffenceRegistrationForm = ({
       furtherCharge: o.further_charge || "",
       court: o.court || "",
       hasRestitution: Boolean(o.restitution_amount),
+      hasBail: Boolean(o.has_bail),
+      bailAmount: o.bail_amount?.toString() || "",
     };
 
     if (convictionStatus === "convicted") {
@@ -223,6 +232,8 @@ const OffenceRegistrationForm = ({
         ? new Date(o.date_of_sentence).toISOString().split('T')[0]
         : "";
       mapped.nextCourtDate = "";
+      mapped.hasFine = Boolean(o.has_fine);
+      mapped.fineAmount = o.fine_amount?.toString() || "";
     } else {
       mapped.nextCourtDate = o.next_court_date
         ? new Date(o.next_court_date).toISOString().split('T')[0]
@@ -234,6 +245,8 @@ const OffenceRegistrationForm = ({
       mapped.sentenceMonths = 0;
       mapped.sentenceDays = 0;
       mapped.sentenceDate = "";
+      mapped.hasFine = false;
+      mapped.fineAmount = "";
     }
     return mapped;
   };
@@ -396,6 +409,10 @@ const OffenceRegistrationForm = ({
       // If in edit mode, embed the offence ID into the payload
       const formattedData = {
         ...data,
+        restitutions: data.restitutions?.map(r => ({
+          ...r,
+          restitutionAmount: String(r.restitutionAmount).replace(/[^\d.]/g, '')
+        })),
         offences: data.offences.map((offence, index) => {
           const originalOffence = offencesSummary.find(
             (o: any) => String(o.id) === String(offenceToEditId)
@@ -417,6 +434,8 @@ const OffenceRegistrationForm = ({
 
           return {
             ...offence,
+            bailAmount: offence.bailAmount ? String(offence.bailAmount).replace(/[^\d.]/g, '') : undefined,
+            fineAmount: offence.fineAmount ? String(offence.fineAmount).replace(/[^\d.]/g, '') : undefined,
             // ✅ Add computed sentence field
             sentence: offence.convictionStatus === "convicted" ? sentenceString : undefined,
             id: editMode && originalOffence ? originalOffence.id : undefined,
@@ -602,13 +621,13 @@ const OffenceRegistrationForm = ({
 
         {/* Sentencing Strategy Toggle */}
         {(offences.some((o) => o.convictionStatus === "convicted") || draftConvictionStatus === "convicted") && (
-          <Card className="p-4 border-blue-200 bg-blue-50">
+          <Card className="p-4 border-[#d7a928] bg-[#d7a928]/10">
             <h4 className="text-md font-medium text-blue-800 mb-4">Sentencing Strategy</h4>
             <FormField
               control={form.control}
               name="sentenceGroup.isGrouped"
               render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-blue-200 bg-white p-4 shadow-sm mb-4">
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-[#d7a928] bg-white p-4 shadow-sm mb-4">
                   <FormControl>
                     <Checkbox
                       checked={field.value}
@@ -778,7 +797,7 @@ const OffenceRegistrationForm = ({
           </Button>
           <Button
             type="submit"
-            className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
+            className="bg-[#0b4f2a] hover:bg-[#063f20] text-white font-medium"
             disabled={isSubmitting}
           >
             {isSubmitting ? (

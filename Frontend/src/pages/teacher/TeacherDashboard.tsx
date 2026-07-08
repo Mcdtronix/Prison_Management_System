@@ -53,7 +53,7 @@ const TeacherDashboard = () => {
       title: "My Courses",
       value: isLoading ? "..." : courseCount,
       icon: <Book className="h-6 w-6" />,
-      color: "bg-blue-100 text-blue-700",
+      color: "bg-[#d7a928]/20 text-blue-700",
       link: "/teacher/courses",
     },
     {
@@ -67,7 +67,7 @@ const TeacherDashboard = () => {
       title: "Attendance",
       value: "Manage",
       icon: <CalendarDays className="h-6 w-6" />,
-      color: "bg-purple-100 text-purple-700",
+      color: "bg-[#d7a928]/20 text-purple-700",
       link: "/teacher/attendance",
     },
     {
@@ -123,21 +123,21 @@ const TeacherDashboard = () => {
                   <div className="font-medium">Advanced Mathematics</div>
                   <div className="text-sm text-muted-foreground">Room: 101</div>
                 </div>
-                <span className="text-sm bg-blue-100 text-blue-700 px-2 py-1 rounded">Today, 10:00 AM</span>
+                <span className="text-sm bg-[#d7a928]/20 text-blue-700 px-2 py-1 rounded">Today, 10:00 AM</span>
               </li>
               <li className="p-2 bg-accent rounded-md flex justify-between">
                 <div>
                   <div className="font-medium">Computer Science</div>
                   <div className="text-sm text-muted-foreground">Room: 203</div>
                 </div>
-                <span className="text-sm bg-blue-100 text-blue-700 px-2 py-1 rounded">Today, 2:00 PM</span>
+                <span className="text-sm bg-[#d7a928]/20 text-blue-700 px-2 py-1 rounded">Today, 2:00 PM</span>
               </li>
               <li className="p-2 bg-accent rounded-md flex justify-between">
                 <div>
                   <div className="font-medium">Faculty Meeting</div>
                   <div className="text-sm text-muted-foreground">Room: Conference Hall</div>
                 </div>
-                <span className="text-sm bg-purple-100 text-purple-700 px-2 py-1 rounded">Tomorrow, 9:00 AM</span>
+                <span className="text-sm bg-[#d7a928]/20 text-purple-700 px-2 py-1 rounded">Tomorrow, 9:00 AM</span>
               </li>
             </ul>
           </CardContent>

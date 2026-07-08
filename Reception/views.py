@@ -380,9 +380,11 @@ class PendingAdminApprovalView(APIView):
         """Get inmates pending admin approval."""
         visible_org_units = getattr(request, 'visible_org_units', None)
         
-        # Get inmates who have offences registered (pending final approval)
+        # Get inmates who have offences registered but are not yet confirmed
         inmates_with_offences = Inmate.objects.exclude(
             offences__isnull=True
+        ).exclude(
+            admission_status="ADMISSION_CONFIRMED"
         )
         
         if visible_org_units is not None:

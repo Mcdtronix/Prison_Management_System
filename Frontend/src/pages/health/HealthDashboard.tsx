@@ -147,7 +147,7 @@ const HealthDashboard = () => {
       case 'pending':
         return <Badge className="bg-yellow-500">Pending</Badge>;
       case 'follow-up':
-        return <Badge className="bg-blue-500">Follow-Up</Badge>;
+        return <Badge className="bg-[#0b4f2a]">Follow-Up</Badge>;
       default:
         return <Badge>{status}</Badge>;
     }
@@ -242,7 +242,7 @@ const HealthDashboard = () => {
                       recentPatients.map((patient) => (
                       <TableRow key={patient.id}>
                         <TableCell 
-                          className="font-medium text-blue-600 hover:underline cursor-pointer"
+                          className="font-medium text-[#0b4f2a] hover:underline cursor-pointer"
                           onClick={() => navigate(`/inmates/${patient.id}`)}
                         >
                           {patient.prison_number}
@@ -301,7 +301,7 @@ const HealthDashboard = () => {
                     {searchResults.map((inmate) => (
                       <TableRow key={inmate.id}>
                         <TableCell 
-                          className="font-medium text-blue-600 hover:underline cursor-pointer"
+                          className="font-medium text-[#0b4f2a] hover:underline cursor-pointer"
                           onClick={() => navigate(`/inmates/${inmate.id}`)}
                         >
                           {inmate.prison_number}

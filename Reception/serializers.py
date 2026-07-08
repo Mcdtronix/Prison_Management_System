@@ -282,14 +282,17 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
     offences = serializers.SerializerMethodField()
     release_history = serializers.SerializerMethodField()
     station_history = InmateStationHistorySerializer(read_only=True, many=True)
+    admission_health_assessment = serializers.SerializerMethodField()
+    timeline = serializers.SerializerMethodField()
 
     class Meta:
         model = Inmate
         fields = [
             "id", "prison_number", "crb_number", "first_name", "surname", "other_names",
             "national_id", "date_of_birth", "gender", "nationality", "admission_type",
-            "admission_date", "current_status", "created_at", "updated_at",
-            "next_of_kin", "classification", "valuables", "offences", "release_history", "station_history"
+            "admission_date", "current_status", "admission_status", "created_at", "updated_at",
+            "next_of_kin", "classification", "valuables", "offences", "release_history", "station_history",
+            "admission_health_assessment", "timeline"
         ]
 
     def get_valuables(self, obj):
@@ -304,6 +307,45 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
                 'date_logged': valuables.date_logged,
             }
         return None
+
+    def get_admission_health_assessment(self, obj):
+        if hasattr(obj, 'admission_health_assessment') and obj.admission_health_assessment:
+            assessment = obj.admission_health_assessment
+            return {
+                'id': assessment.id,
+                'assessment_date': assessment.assessment_date,
+                'weight': assessment.weight,
+                'height': assessment.height,
+                'bmi': assessment.bmi,
+                'comment': assessment.comment,
+                'is_chronic_patient': assessment.is_chronic_patient,
+                'assessed_by': assessment.assessed_by,
+            }
+        return None
+
+    def get_timeline(self, obj):
+        events = []
+        
+        events.append({
+            'id': f"adm_{obj.id}",
+            'date': obj.admission_date,
+            'event_type': 'Admission',
+            'description': f'Inmate admitted as {obj.get_admission_type_display() if hasattr(obj, "get_admission_type_display") else obj.admission_type}.',
+            'recorded_by': 'System'
+        })
+        
+        if hasattr(obj, 'admission_health_assessment') and obj.admission_health_assessment:
+            assessment = obj.admission_health_assessment
+            events.append({
+                'id': f"ha_{assessment.id}",
+                'date': assessment.assessment_date,
+                'event_type': 'Health Assessment',
+                'description': f'Admission health assessment completed by {assessment.assessed_by}.',
+                'recorded_by': assessment.assessed_by
+            })
+            
+        events.sort(key=lambda x: x['date'], reverse=True)
+        return events
 
     def get_next_of_kin(self, obj):
         """Get inmate's next of kin."""
@@ -414,6 +456,10 @@ class OffenceDataSerializer(serializers.Serializer):
     remission = serializers.CharField(max_length=50, required=False, allow_blank=True)
     nextCourtDate = FlexibleDateField(required=False, allow_null=True, input_formats=["%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "iso-8601"])
     remandStartDate = FlexibleDateField(required=False, allow_null=True, input_formats=["%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "iso-8601"])
+    hasBail = serializers.BooleanField(default=False, required=False)
+    bailAmount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
+    hasFine = serializers.BooleanField(default=False, required=False)
+    fineAmount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
 
     def validate(self, data):
         """Validate offence data based on conviction status."""
@@ -435,6 +481,8 @@ class OffenceDataSerializer(serializers.Serializer):
             data['sentence'] = ''
             data['sentenceDate'] = None
             data['remission'] = ''
+            data['hasFine'] = False
+            data['fineAmount'] = None
 
         return data
 
@@ -898,6 +946,8 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                     offence.court = offence_data['court']
                     offence.date_charged = date_charged # Update date_charged as well
                     offence.Offence_status = 'CONVICTED' if offence_data['convictionStatus'] == 'convicted' else 'UNCONVICTED'
+                    offence.has_bail = offence_data.get('hasBail', False)
+                    offence.bail_amount = offence_data.get('bailAmount')
                     offence.save()
                     print(f"DEBUG: Successfully UPDATED Offence ID: {offence.id} in database")
                 except Offence.DoesNotExist:
@@ -909,7 +959,9 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                     offence_description=offence_data['offence'],
                     court=offence_data['court'],
                     date_charged=date_charged,
-                    Offence_status='CONVICTED' if offence_data['convictionStatus'] == 'convicted' else 'UNCONVICTED'
+                    Offence_status='CONVICTED' if offence_data['convictionStatus'] == 'convicted' else 'UNCONVICTED',
+                    has_bail=offence_data.get('hasBail', False),
+                    bail_amount=offence_data.get('bailAmount')
                 )
                 print(f"DEBUG: Successfully CREATED Offence ID: {offence.id} in database")
             
@@ -936,6 +988,8 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                             'sentence_months': sentence_months,
                             'sentence_days': sentence_days,
                             'sentence_group': sentence_group_instance,
+                            'has_fine': offence_data.get('hasFine', False),
+                            'fine_amount': offence_data.get('fineAmount')
                         }
                     )
                     action = "created" if created else "updated"

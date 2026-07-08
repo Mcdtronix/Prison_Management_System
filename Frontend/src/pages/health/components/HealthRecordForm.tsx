@@ -176,7 +176,7 @@ export const HealthRecordForm: React.FC<HealthRecordFormProps> = ({
               </Button>
               <Button
                 type="submit"
-                className="bg-[#9b87f5] hover:bg-[#7E69AB]"
+                className="bg-[#0b4f2a] hover:bg-[#063f20]"
                 disabled={isSaving}
               >
                 {isSaving ? 'Saving...' : (healthRecord ? 'Update Record' : 'Save Record')}

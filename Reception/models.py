@@ -89,8 +89,17 @@ class Inmate(models.Model):
     def save(self, *args, **kwargs):
         if not self.prison_number:
             year_suffix = timezone.now().strftime("%y")
-            last = Inmate.objects.filter(prison_number__endswith=f"/{year_suffix}").count() + 1
-            self.prison_number = f"{last:04d}/{year_suffix}"
+            prison_numbers = Inmate.objects.filter(prison_number__endswith=f"/{year_suffix}").values_list('prison_number', flat=True)
+            max_num = 0
+            for pn in prison_numbers:
+                if pn:
+                    try:
+                        num = int(pn.split('/')[0])
+                        if num > max_num:
+                            max_num = num
+                    except (ValueError, IndexError):
+                        pass
+            self.prison_number = f"{(max_num + 1):04d}/{year_suffix}"
         super().save(*args, **kwargs)
 
     def clean(self):
@@ -175,6 +184,9 @@ class Offence(models.Model):
     court = models.CharField(max_length=100)
     date_charged = models.DateField()
     Offence_status = models.CharField(max_length=20, choices=[("UNCONVICTED", "Unconvicted"), ("CONVICTED", "Convicted"), ("DISCHARGED", "Discharged")], default="UNCONVICTED")
+    
+    has_bail = models.BooleanField(default=False)
+    bail_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = "offence"
@@ -313,6 +325,9 @@ class Convicted(models.Model):
     sentence_years = models.PositiveIntegerField(default=0)
     sentence_months = models.PositiveIntegerField(default=0)
     sentence_days = models.PositiveIntegerField(default=0)
+
+    has_fine = models.BooleanField(default=False)
+    fine_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
     effective_sentence_days = models.PositiveIntegerField(default=0)
     remission_days = models.PositiveIntegerField(default=0)

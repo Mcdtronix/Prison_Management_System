@@ -42,13 +42,13 @@ export const PrisonLayout = ({
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="sticky top-0 z-10 h-16 border-b border-gray-200 bg-white flex items-center justify-between px-6 shadow-sm">
+        <header className="sticky top-0 z-10 h-16 border-b border-[#063f20] bg-[#0b4f2a] flex items-center justify-between px-6 shadow-sm">
           <div className="flex items-center gap-4">
             {title && (
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
+                <h1 className="text-xl font-semibold text-white">{title}</h1>
                 {description && (
-                  <p className="text-sm text-gray-600 truncate max-w-md">{description}</p>
+                  <p className="text-sm text-gray-200 truncate max-w-md">{description}</p>
                 )}
               </div>
             )}
@@ -58,22 +58,22 @@ export const PrisonLayout = ({
             {/* User Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="flex items-center gap-2 px-3">
+                <Button variant="ghost" className="flex items-center gap-2 px-3 text-white hover:bg-[#063f20] hover:text-white">
                   <Avatar className="h-8 w-8">
                     <AvatarImage src="" alt={getUserDisplayName()} />
-                    <AvatarFallback className="bg-[#d7a928]/25 text-[#0b4f2a]">
+                    <AvatarFallback className="bg-[#d7a928] text-[#0b4f2a]">
                       {getUserDisplayName().charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="hidden md:flex flex-col items-start">
-                    <span className="text-sm font-medium text-gray-900">
+                    <span className="text-sm font-medium text-white">
                       {getUserDisplayName()}
                     </span>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-gray-300">
                       {getUserRoleDisplay()}
                     </span>
                   </div>
-                  <User className="h-4 w-4 text-gray-500" />
+                  <User className="h-4 w-4 text-gray-300" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">

@@ -207,7 +207,7 @@ const Results = () => {
       case 'B+':
       case 'B':
       case 'B-':
-        return 'text-blue-600';
+        return 'text-[#0b4f2a]';
       case 'C+':
       case 'C':
         return 'text-amber-600';
@@ -294,7 +294,7 @@ const Results = () => {
                                 course.status === 'completed' 
                                   ? 'bg-green-100 text-green-700' 
                                   : course.status === 'ongoing'
-                                  ? 'bg-blue-100 text-blue-700'
+                                  ? 'bg-[#d7a928]/20 text-blue-700'
                                   : 'bg-amber-100 text-amber-700'
                               }`}>
                                 {course.status.charAt(0).toUpperCase() + course.status.slice(1)}

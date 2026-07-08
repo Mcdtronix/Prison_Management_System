@@ -112,9 +112,9 @@ export default function Compose() {
                   onDragOver={(e) => e.preventDefault()}
                 >
                   {recipients.map(r => (
-                    <div key={r} className="bg-blue-50 border border-blue-200 text-blue-700 px-2 py-1 rounded-full flex items-center gap-1 text-sm">
+                    <div key={r} className="bg-[#d7a928]/10 border border-[#d7a928] text-blue-700 px-2 py-1 rounded-full flex items-center gap-1 text-sm">
                       <span>{r}</span>
-                      <button type="button" onClick={() => removeRecipient(r)} className="text-blue-500 hover:text-blue-700 focus:outline-none">
+                      <button type="button" onClick={() => removeRecipient(r)} className="text-[#0b4f2a] hover:text-[#063f20] focus:outline-none">
                         <X className="h-3 w-3" />
                       </button>
                     </div>
@@ -187,7 +187,7 @@ export default function Compose() {
             {/* Bottom Actions */}
             <div className="pt-4 pb-8 flex items-center justify-between border-t mt-auto shrink-0">
               <div className="flex items-center gap-4">
-                <Button type="submit" disabled={isSending || recipients.length === 0} className="bg-blue-600 hover:bg-blue-700 px-6 rounded-full">
+                <Button type="submit" disabled={isSending || recipients.length === 0} className="bg-[#0b4f2a] hover:bg-[#063f20] px-6 rounded-full">
                   {isSending ? 'Sending...' : (
                     <>
                       Send <Send className="ml-2 h-4 w-4" />

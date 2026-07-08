@@ -9,7 +9,7 @@ const NotFound = () => {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
       <div className="p-4 rounded-full bg-[#F1F0FB] mb-6">
-        <Gavel className="h-12 w-12 text-[#9b87f5]" />
+        <Gavel className="h-12 w-12 text-[#0b4f2a]" />
       </div>
       <h1 className="text-4xl font-bold text-[#1A1F2C] mb-2">404</h1>
       <h2 className="text-2xl font-semibold mb-4">Page Not Found</h2>
@@ -24,7 +24,7 @@ const NotFound = () => {
           Go Back
         </Button>
         <Button 
-          className="bg-[#9b87f5] hover:bg-[#7E69AB]"
+          className="bg-[#0b4f2a] hover:bg-[#063f20]"
           onClick={() => navigate('/')}
         >
           Return Home

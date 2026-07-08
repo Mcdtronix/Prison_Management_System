@@ -100,9 +100,9 @@ const InmateOverview = () => {
       case 'pending':
         return <Badge className="bg-yellow-500">Pending</Badge>;
       case 'discharged':
-        return <Badge className="bg-blue-500">Discharged</Badge>;
+        return <Badge className="bg-[#0b4f2a]">Discharged</Badge>;
       case 'transferred':
-        return <Badge className="bg-purple-500">Transferred</Badge>;
+        return <Badge className="bg-[#0b4f2a]">Transferred</Badge>;
       default:
         return <Badge>{status}</Badge>;
     }
@@ -198,7 +198,7 @@ const InmateOverview = () => {
                   filteredInmates.map((inmate) => (
                     <TableRow key={inmate.id}>
                       <TableCell 
-                        className="font-medium text-blue-600 hover:underline cursor-pointer"
+                        className="font-medium text-[#0b4f2a] hover:underline cursor-pointer"
                         onClick={() => handleViewInmate(inmate.id)}
                       >
                         {inmate.prison_number}
@@ -207,7 +207,7 @@ const InmateOverview = () => {
                       <TableCell>{new Date(inmate.admission_date).toLocaleDateString()}</TableCell>
                       <TableCell>{inmate.offense}</TableCell>
                       <TableCell>
-                        <Badge className="bg-[#7E69AB]">Class {inmate.classification}</Badge>
+                        <Badge className="bg-[#d7a928]">Class {inmate.classification}</Badge>
                       </TableCell>
                       <TableCell>{getStatusBadge(inmate.status)}</TableCell>
                       <TableCell className="text-right">

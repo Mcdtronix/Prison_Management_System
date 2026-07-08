@@ -8,7 +8,7 @@ from django.db import models
 from .models import AuditLog, OrgUnit
 from .serializers_audit import AuditLogSerializer
 from .rbac import user_has_capability
-
+from .permissions import IsAdminOfficer
 
 class IsScopedAdmin(permissions.BasePermission):
     """Permission that allows NHQ/PHQ/Station admins to view logs within their scope.
@@ -43,7 +43,7 @@ class IsScopedAdmin(permissions.BasePermission):
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AuditLog.objects.all().order_by('-timestamp')
     serializer_class = AuditLogSerializer
-    permission_classes = [IsScopedAdmin]
+    permission_classes = [IsAdminOfficer]
 
     def get_queryset(self):
         qs = super().get_queryset()
