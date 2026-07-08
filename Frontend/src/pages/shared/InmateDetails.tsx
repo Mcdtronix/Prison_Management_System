@@ -25,13 +25,13 @@ import {
   Thermometer,
   BookOpen,
   AlertCircle,
+
   Clock,
   Pencil,
   Plus,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Toaster } from "sonner";
-import { CourtSessionModal } from "../reception/components/InmateForm/CourtSessionModal";
 
 interface Inmate {
   id: string;
@@ -189,10 +189,6 @@ const InmateDetails = () => {
   const [healthRecord, setHealthRecord] = useState<HealthRecord | null>(null);
   const [opdVisits, setOPDVisits] = useState<OPDVisit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedOffenceForCourt, setSelectedOffenceForCourt] = useState<{
-    id: string | number;
-    description: string;
-  } | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -865,6 +861,16 @@ const InmateDetails = () => {
                               <div>
                                 <div>
                                   <p className="text-sm font-medium mb-1">
+                                    Next Court Date:
+                                  </p>
+                                  <p className="text-sm mb-3">
+                                    {offense.restitution_date
+                                      ? `${new Date(offense.restitution_date).toLocaleDateString()} (Restitution)`
+                                      : "Closed"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium mb-1">
                                     Sentence:
                                   </p>
                                   <p className="text-sm">
@@ -896,6 +902,33 @@ const InmateDetails = () => {
                                 )}
                               </div>
                             </div>
+                          ) : offense.conviction_status === "discharged" ? (
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <div>
+                                <p className="text-sm font-medium mb-1">
+                                  Discharge Reason:
+                                </p>
+                                <p className="text-sm mb-3">
+                                  {offense.discharge_reason?.replace(/_/g, " ")}
+                                </p>
+                                <p className="text-sm font-medium mb-1">
+                                  Discharge Date:
+                                </p>
+                                <p className="text-sm">
+                                  {offense.discharge_date ? new Date(offense.discharge_date).toLocaleDateString() : "N/A"}
+                                </p>
+                                {offense.remarks && (
+                                  <>
+                                    <p className="text-sm font-medium mb-1 mt-3">
+                                      Remarks:
+                                    </p>
+                                    <p className="text-sm">
+                                      {offense.remarks}
+                                    </p>
+                                  </>
+                                )}
+                              </div>
+                            </div>
                           ) : (
                             <div>
                               <p className="text-sm font-medium mb-1">
@@ -917,7 +950,9 @@ const InmateDetails = () => {
                                     size="sm" 
                                     variant="outline" 
                                     className="mt-3"
-                                    onClick={() => setSelectedOffenceForCourt({ id: offense.id, description: offense.offence_description })}
+                                    onClick={() =>
+                                      navigate(`/reception/record-court-outcome/${id}/${offense.id}`)
+                                    }
                                   >
                                     <Gavel className="w-4 h-4 mr-2" />
                                     Record Court Outcome
@@ -925,6 +960,40 @@ const InmateDetails = () => {
                                 )}
                             </div>
                           )}
+
+                          {/* Render Remand Dates and Court History */}
+                          <div className="mt-4 pt-4 border-t border-gray-200">
+                            <p className="text-sm font-medium mb-2">History & Timeline</p>
+                            {offense.remand_start_date && (
+                              <div className="text-sm mb-2 text-gray-600 bg-gray-50 p-2 rounded">
+                                <span className="font-semibold">Remanded: </span> 
+                                {new Date(offense.remand_start_date).toLocaleDateString()}
+                                {offense.remand_end_date && ` - ${new Date(offense.remand_end_date).toLocaleDateString()}`}
+                              </div>
+                            )}
+                            
+                            {offense.court_history && offense.court_history.length > 0 ? (
+                              <div className="space-y-2 mt-2">
+                                {offense.court_history.map((session: any, idx: number) => (
+                                  <div key={idx} className="text-sm p-2 bg-gray-50 rounded border-l-2 border-[#0b4f2a]">
+                                    <div className="flex justify-between mb-1">
+                                      <span className="font-semibold text-xs text-gray-500">
+                                        {new Date(session.session_date).toLocaleDateString()}
+                                      </span>
+                                      <Badge variant="outline" className="text-xs py-0 h-4">
+                                        {session.outcome}
+                                      </Badge>
+                                    </div>
+                                    {session.remarks && (
+                                      <p className="text-gray-600 text-xs mt-1">Note: {session.remarks}</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-gray-500 italic mt-2">No court sessions recorded.</p>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1186,17 +1255,6 @@ const InmateDetails = () => {
         </div>
       </div>
       <Toaster />
-      {selectedOffenceForCourt && (
-        <CourtSessionModal
-          isOpen={!!selectedOffenceForCourt}
-          onClose={() => setSelectedOffenceForCourt(null)}
-          offenceId={Number(selectedOffenceForCourt.id)}
-          offenceDescription={selectedOffenceForCourt.description}
-          onSuccess={(newDate) => {
-            fetchInmateData(id!);
-          }}
-        />
-      )}
     </PrisonLayout>
   );
 };

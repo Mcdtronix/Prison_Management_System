@@ -25,7 +25,7 @@ interface OffencesProps {
   addOffence: (offence: z.infer<typeof offenceDataSchema>) => void;
   removeOffence: (index: number) => void;
   editOffence: (index: number) => void; // New prop for editing
-  onDraftChange?: (draft: { convictionStatus: 'convicted' | 'unconvicted'; hasRestitution?: boolean }) => void;
+  onDraftChange?: (draft: { convictionStatus: 'convicted' | 'unconvicted' | 'discharged'; hasRestitution?: boolean }) => void;
   // Props for controlling the local form from the parent
   draftOffence: z.infer<typeof offenceDataSchema>;
   onDraftOffenceChange: (offence: z.infer<typeof offenceDataSchema>) => void;
@@ -83,7 +83,7 @@ const Offences: React.FC<OffencesProps> = ({
   // Emit draft changes to parent for conditional sections (release/restitution)
   useEffect(() => {
     if (onDraftChange) {
-      onDraftChange({ convictionStatus: convictionStatus as 'convicted' | 'unconvicted', hasRestitution });
+      onDraftChange({ convictionStatus: convictionStatus as 'convicted' | 'unconvicted' | 'discharged', hasRestitution });
     }
   }, [convictionStatus, hasRestitution, onDraftChange]);
 
@@ -102,7 +102,6 @@ const Offences: React.FC<OffencesProps> = ({
     const defaultOffence: z.infer<typeof offenceDataSchema> = {
       offence: '',
       convictionStatus: 'unconvicted',
-      furtherCharge: '',
       court: '',
       sentenceYears: 0,
       sentenceMonths: 0,
@@ -183,22 +182,9 @@ const Offences: React.FC<OffencesProps> = ({
                       <SelectContent>
                         <SelectItem value="convicted">Convicted</SelectItem>
                         <SelectItem value="unconvicted">Unconvicted</SelectItem>
+                        <SelectItem value="discharged">Discharged</SelectItem>
                       </SelectContent>
                     </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={localForm.control}
-                name="furtherCharge"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Further Charge (Optional)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Any additional charges" {...field} />
-                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -318,6 +304,62 @@ const Offences: React.FC<OffencesProps> = ({
                       )}
                     </div>
                   </div>
+                </div>
+              ) : convictionStatus === 'discharged' ? (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={localForm.control}
+                    name="dischargeReason"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Discharge Reason</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select reason" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="ACQUITTED">Acquitted</SelectItem>
+                            <SelectItem value="WITHDRAWN">Withdrawn</SelectItem>
+                            <SelectItem value="BAIL">Bail</SelectItem>
+                            <SelectItem value="FINE">Fine</SelectItem>
+                            <SelectItem value="COMMUNITY_SERVICE">Community Service</SelectItem>
+                            <SelectItem value="SENTENCE_EXPIRES">Sentence Expires</SelectItem>
+                            <SelectItem value="AMNESTY">Amnesty</SelectItem>
+                            <SelectItem value="OTHER">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={localForm.control}
+                    name="dischargeDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Discharge Date</FormLabel>
+                        <FormControl>
+                          <Input type="date" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={localForm.control}
+                    name="remarks"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel>Remarks (Optional)</FormLabel>
+                        <FormControl>
+                          <Textarea placeholder="Additional details about the discharge" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               ) : (
                 <FormField

@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db import transaction
+from django.utils import timezone
 
 from .models import (
     Inmate,
@@ -79,6 +80,23 @@ class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
                 'property_history'
             )
         return Inmate.objects.all()
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def validate_unique(self, request):
+        """Validate if prison_number or national_id already exists."""
+        prison_number = request.data.get('prison_number')
+        national_id = request.data.get('national_id')
+        errors = {}
+        
+        if prison_number and Inmate.objects.filter(prison_number=prison_number).exists():
+            errors['prison_number'] = ['Prison number already exists']
+            
+        if national_id and Inmate.objects.filter(national_id=national_id).exists():
+            errors['national_id'] = ['National ID already exists']
+            
+        if errors:
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'status': 'ok'})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminOfficer])
     def approve_admission(self, request, pk=None):
@@ -184,48 +202,100 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
                 remarks=data.get('remarks')
             )
             
+            inmate = offence.inmate
+            
             if outcome == 'REMANDED':
                 if hasattr(offence, 'unconviction') and offence.unconviction is not None:
                     offence.unconviction.next_court_date = data['next_court_date']
                     offence.unconviction.save()
             
             elif outcome == 'CONVICTED':
+                # Preserve Unconvicted history, just set remand_end_date
                 if hasattr(offence, 'unconviction') and offence.unconviction is not None:
-                    offence.unconviction.delete()
+                    if not offence.unconviction.remand_end_date:
+                        offence.unconviction.remand_end_date = data.get('sentence_date') or data['session_date']
+                        offence.unconviction.save()
                 
-                Convicted.objects.create(
-                    prison_number=offence.inmate,
+                convicted, created = Convicted.objects.update_or_create(
                     offence=offence,
-                    sentence_months=data['sentence_months'],
-                    date_of_sentence=data['sentence_date']
+                    defaults={
+                        'prison_number': inmate,
+                        'sentence_years': data.get('sentence_years', 0),
+                        'sentence_months': data.get('sentence_months', 0),
+                        'sentence_days': data.get('sentence_days', 0),
+                        'date_of_sentence': data.get('sentence_date'),
+                        'has_fine': data.get('has_fine', False),
+                        'fine_amount': data.get('fine_amount')
+                    }
                 )
+                
+                if data.get('has_restitution'):
+                    Restitution.objects.update_or_create(
+                        offence=offence,
+                        defaults={
+                            'inmate': inmate,
+                            'restitution_amount': data.get('restitution_amount'),
+                            'restitution_date': data.get('restitution_date'),
+                            'restitution_sentence_years': data.get('restitution_sentence_years', 0),
+                            'restitution_sentence_months': data.get('restitution_sentence_months', 0),
+                            'restitution_sentence_days': data.get('restitution_sentence_days', 0),
+                            'status': 'PENDING'
+                        }
+                    )
                 
                 offence.Offence_status = 'CONVICTED'
                 offence.save()
                 
             elif outcome == 'DISCHARGED':
                 if hasattr(offence, 'unconviction') and offence.unconviction is not None:
-                    offence.unconviction.delete()
-                if hasattr(offence, 'conviction') and hasattr(offence.conviction, 'delete'):
-                    offence.conviction.delete()
+                    if not offence.unconviction.remand_end_date:
+                        offence.unconviction.remand_end_date = data['session_date']
+                        offence.unconviction.save()
                     
-                Discharged.objects.create(
-                    prison_number=offence.inmate,
+                Discharged.objects.update_or_create(
                     offence=offence,
-                    discharge_reason=data['discharge_reason'],
-                    discharge_date=data['session_date']
+                    defaults={
+                        'prison_number': inmate,
+                        'discharge_reason': data.get('discharge_reason'),
+                        'discharge_date': data['session_date'],
+                        'remarks': data.get('remarks')
+                    }
                 )
                 
                 offence.Offence_status = 'DISCHARGED'
                 offence.save()
                 
-                inmate = offence.inmate
                 active_offences = inmate.offences.exclude(Offence_status='DISCHARGED').count()
                 if active_offences == 0:
                     ReleaseWorkflow.objects.get_or_create(
                         inmate=inmate,
                         status="PROPOSED_BY_RECEPTION"
                     )
+                    
+            # Handle Reclassification
+            reclassification = data.get('reclassification')
+            if reclassification:
+                current_class = inmate.classification_history.order_by('-effective_date').first()
+                if not current_class or current_class.classification != reclassification:
+                    InmateClassificationHistory.objects.create(
+                        inmate=inmate,
+                        classification=reclassification,
+                        effective_date=timezone.now().date(),
+                        approval_status='PENDING',
+                        remarks='Proposed based on new court outcome'
+                    )
+                    InmateAuditTrail.objects.create(
+                        inmate=inmate,
+                        action=f"Proposed reclassification to {reclassification}",
+                        performed_by=request.user.username if request.user else 'System'
+                    )
+            
+            # Audit trail for the court session outcome
+            InmateAuditTrail.objects.create(
+                inmate=inmate,
+                action=f"Recorded Court Session for '{offence.offence_description[:30]}': Outcome {outcome}",
+                performed_by=request.user.username if request.user else 'System'
+            )
                     
         return Response({"status": "Court session recorded successfully."})
 
@@ -639,3 +709,143 @@ class ScheduleCourtSessionView(OrgUnitContextMixin, APIView):
 
             return Response({"message": "Court session scheduled successfully.", "id": session.id}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class ReceptionAnalyticsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Count, Q
+        from django.utils import timezone
+        import datetime
+        from .models import Convicted
+
+        now = timezone.now()
+        today = now.date()
+        thirty_days_ago = today - datetime.timedelta(days=30)
+        seven_days_ahead = today + datetime.timedelta(days=7)
+
+        # Base Inmate Queryset
+        visible_org_units = getattr(request, 'visible_org_units', None)
+        qs = Inmate.objects.all()
+        if visible_org_units is not None:
+            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
+
+        # KPIs
+        total_in_custody = qs.filter(current_status="IN_CUSTODY").count()
+        admissions_this_month = qs.filter(admission_date__gte=thirty_days_ago).count()
+        pending_admissions = qs.filter(admission_status__in=["PENDING_HEALTH_ASSESSMENT", "PENDING_ADMIN_APPROVAL"]).count()
+
+        # Court Sessions next 7 days
+        court_qs = CourtSession.objects.all()
+        if visible_org_units is not None:
+            court_qs = court_qs.filter(
+                Q(offence__inmate__owner_org_unit__in=visible_org_units) | 
+                Q(offence__inmate__owner_org_unit__isnull=True)
+            )
+        upcoming_courts = court_qs.filter(next_court_date__gte=today, next_court_date__lte=seven_days_ahead).count()
+
+        # Status Distribution
+        in_custody_qs = qs.filter(current_status="IN_CUSTODY")
+        remand_count = in_custody_qs.filter(offences__Offence_status="UNCONVICTED").distinct().count()
+        convicted_count = in_custody_qs.filter(offences__Offence_status="CONVICTED").distinct().count()
+
+        status_distribution = [
+            {"name": "Remand", "value": remand_count},
+            {"name": "Convicted", "value": convicted_count}
+        ]
+
+        # Classification Distribution
+        classification_counts = {}
+        for inmate in in_custody_qs:
+            latest_class = inmate.classification_history.filter(approval_status="APPROVED").order_by("-effective_date").first()
+            cls = latest_class.classification if latest_class else "Unclassified"
+            classification_counts[cls] = classification_counts.get(cls, 0) + 1
+        
+        classification_distribution = [{"name": k, "value": v} for k, v in classification_counts.items()]
+
+        # Gender Demographics
+        gender_counts = in_custody_qs.values("gender").annotate(count=Count("id"))
+        gender_distribution = [{"name": g["gender"] or "Unknown", "value": g["count"]} for g in gender_counts]
+
+        # Offences Breakdown
+        offence_counts = Offence.objects.filter(inmate__in=in_custody_qs).values("offence_description").annotate(count=Count("id")).order_by("-count")[:10]
+        offences_distribution = [{"name": o["offence_description"][:30] + ('...' if len(o["offence_description"]) > 30 else ''), "value": o["count"]} for o in offence_counts]
+
+        # Sentences Period
+        convictions = Convicted.objects.filter(offence__inmate__in=in_custody_qs)
+        sentences_dist = {
+            "< 1 Year": 0,
+            "1-3 Years": 0,
+            "3-5 Years": 0,
+            "> 5 Years": 0
+        }
+        for c in convictions:
+            years = (c.sentence_years or 0) + (c.sentence_months or 0)/12.0
+            if years < 1:
+                sentences_dist["< 1 Year"] += 1
+            elif 1 <= years < 3:
+                sentences_dist["1-3 Years"] += 1
+            elif 3 <= years < 5:
+                sentences_dist["3-5 Years"] += 1
+            else:
+                sentences_dist["> 5 Years"] += 1
+        sentences_distribution = [{"name": k, "value": v} for k, v in sentences_dist.items() if v > 0]
+        if not sentences_distribution:
+            sentences_distribution = [{"name": "None", "value": 1}]
+
+        # Admission Trends (Last 6 months)
+        admission_trends = []
+        for i in range(5, -1, -1):
+            month_date = today.replace(day=1) - datetime.timedelta(days=30*i)
+            month_start = month_date.replace(day=1)
+            # handle december rollover for next month
+            if month_start.month == 12:
+                next_month = month_start.replace(year=month_start.year+1, month=1)
+            else:
+                next_month = month_start.replace(month=month_start.month+1)
+            
+            month_end = next_month - datetime.timedelta(days=1)
+            count = qs.filter(admission_date__gte=month_start, admission_date__lte=month_end).count()
+            admission_trends.append({
+                "month": month_start.strftime("%b %Y"),
+                "admissions": count
+            })
+
+        return Response({
+            "kpis": {
+                "total_in_custody": total_in_custody,
+                "admissions_this_month": admissions_this_month,
+                "upcoming_courts": upcoming_courts,
+                "pending_admissions": pending_admissions
+            },
+            "status_distribution": status_distribution,
+            "classification_distribution": classification_distribution,
+            "gender_distribution": gender_distribution,
+            "offences_distribution": offences_distribution,
+            "sentences_distribution": sentences_distribution,
+            "admission_trends": admission_trends
+        })
+
+class UpcomingDischargesView(OrgUnitContextMixin, APIView):
+    """
+    Returns a list of upcoming discharges based on ReleaseHistory active_edr and active_odr.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .serializers import UpcomingDischargeSerializer
+        from .models import ReleaseHistory
+        
+        # We only care about inmates currently in custody who have an active release history
+        queryset = ReleaseHistory.objects.filter(
+            inmate__current_status__in=["IN_CUSTODY", "TRANSFERRED"],
+            active_edr__isnull=False
+        ).select_related("inmate").prefetch_related("inmate__offences").order_by("active_edr")
+
+        # Apply org unit filtering if needed
+        org_unit = getattr(request, 'org_unit', None)
+        if org_unit:
+            queryset = queryset.filter(inmate__owner_org_unit=org_unit)
+
+        serializer = UpcomingDischargeSerializer(queryset, many=True)
+        return Response(serializer.data)

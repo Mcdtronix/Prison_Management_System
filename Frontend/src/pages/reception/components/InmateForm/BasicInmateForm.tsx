@@ -43,7 +43,9 @@ export const basicInmateDetailsSchema = z.object({
   surname: z.string().min(1, "Surname is required"),
   other_names: optionalText,
   gender: z.enum(["Male", "Female"]),
-  date_of_birth: z.string().min(1, "Date of birth is required"),
+  date_of_birth: z.string().min(1, "Date of birth is required").refine((date) => {
+    return new Date(date) < new Date();
+  }, { message: "Date of birth must be in the past" }),
   nationality: z.string().min(1, "Nationality is required"),
   national_id: z.string().regex(/^[0-9]{2}-[0-9]{6,7}\s?[A-Za-z]\s?[0-9]{2}$/, "Invalid National ID format. Example: 12-345678 A 90").optional().or(z.literal('')),
   address: z.string().min(1, "Address is required"),
@@ -63,12 +65,6 @@ export const basicNextOfKinSchema = z.object({
   relationship: optionalText,
   address: optionalText,
   contact: optionalText,
-});
-
-export const basicClassificationSchema = z.object({
-  classification: z.enum(["A", "B", "C", "D", "COND", "PUSOD"]).optional(),
-  reason: optionalText,
-  authorizedBy: optionalText,
 });
 
 export const basicInmateValuablesSchema = z.object({
@@ -102,7 +98,6 @@ export const basicInmateValuablesSchema = z.object({
 const basicFormSchema = z.object({
   inmateDetails: basicInmateDetailsSchema,
   nextOfKin: basicNextOfKinSchema,
-  classification: basicClassificationSchema,
   inmateValuables: basicInmateValuablesSchema,
 });
 
@@ -338,11 +333,6 @@ const BasicInmateForm = () => {
         address: "",
         contact: "",
       },
-      classification: {
-        classification: undefined,
-        reason: "",
-        authorizedBy: "",
-      },
       inmateValuables: {
         bagNo: "",
         cash: "",
@@ -396,12 +386,45 @@ const BasicInmateForm = () => {
     setIsSubmitting(true);
 
     try {
+      // 1. Real-time unique validation for prison_number and national_id
+      const validationResponse = await receptionApi.validateInmateUnique({
+        prison_number: data.inmateDetails.prison_number,
+        national_id: data.inmateDetails.national_id,
+      });
+
+      if (validationResponse.error && validationResponse.errors) {
+        const errors = validationResponse.errors;
+        let hasError = false;
+        if (errors.prison_number) {
+          form.setError("inmateDetails.prison_number", { type: "manual", message: errors.prison_number[0] });
+          hasError = true;
+        }
+        if (errors.national_id) {
+          form.setError("inmateDetails.national_id", { type: "manual", message: errors.national_id[0] });
+          hasError = true;
+        }
+        if (hasError) {
+          setIsSubmitting(false);
+          toast({
+            title: "Validation Failed",
+            description: "Please check the form for errors.",
+            variant: "destructive",
+          });
+          // Focus the first field with error to smoothly redirect the user
+          if (errors.prison_number) {
+            form.setFocus("inmateDetails.prison_number");
+          } else if (errors.national_id) {
+            form.setFocus("inmateDetails.national_id");
+          }
+          return;
+        }
+      }
+
+      // 2. Submit the data
       const payload = {
         ...data,
         inmateDetails: {
           ...data.inmateDetails,
-          // The API currently accepts JSON. Keep photo selection out of the
-          // initial save until the edit flow supports multipart uploads.
           inmate_image: null,
         },
       };
@@ -413,8 +436,7 @@ const BasicInmateForm = () => {
 
       toast({
         title: "Registration Successful",
-        description:
-          "The required inmate details were saved. Other sections can be completed later.",
+        description: "The required inmate details were saved.",
       });
 
       const inmateId = response.data?.data?.id || response.data?.id;
@@ -426,8 +448,7 @@ const BasicInmateForm = () => {
     } catch (error) {
       toast({
         title: "Registration Failed",
-        description:
-          error instanceof Error ? error.message : "An unknown error occurred",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
         variant: "destructive",
       });
     } finally {
@@ -610,52 +631,6 @@ const BasicInmateForm = () => {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="classification" className="rounded-md border bg-white px-4">
-            <AccordionTrigger>Classification</AccordionTrigger>
-            <AccordionContent>
-              <div className="grid grid-cols-1 gap-5 pb-4 md:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="classification.classification"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Security Classification</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select classification" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="A">Class A</SelectItem>
-                          <SelectItem value="B">Class B</SelectItem>
-                          <SelectItem value="C">Class C</SelectItem>
-                          <SelectItem value="D">Class D</SelectItem>
-                          <SelectItem value="COND">Condemned</SelectItem>
-                          <SelectItem value="PUSOD">PUSOD</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FieldInput form={form} name="classification.authorizedBy" label="Authorised By" />
-                <FormField
-                  control={form.control}
-                  name="classification.reason"
-                  render={({ field }) => (
-                    <FormItem className="md:col-span-2">
-                      <FormLabel>Reason for Classification</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Optional at initial registration" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </AccordionContent>
-          </AccordionItem>
 
           <AccordionItem value="valuables" className="rounded-md border bg-white px-4">
             <AccordionTrigger>Inmate Valuables</AccordionTrigger>

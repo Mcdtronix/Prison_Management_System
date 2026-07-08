@@ -20,7 +20,10 @@ import ReceptionDashboard from "@/pages/reception/ReceptionDashboard";
 import InmateRegistration from "@/pages/reception/InmateRegistration";
 import OffenceRegistration from "@/pages/reception/OffenceRegistration";
 import InmateList from "@/pages/reception/InmateList";
+import RecordCourtOutcome from "@/pages/reception/RecordCourtOutcome";
 import Courts from "@/pages/reception/Courts";
+import Analysis from "@/pages/reception/Analysis";
+import Discharge from "@/pages/reception/Discharge";
 import HealthDashboard from "@/pages/health/HealthDashboard";
 import InmateHealth from "@/pages/health/InmateHealth";
 import InmateHealthList from "@/pages/health/InmateHealthList";
@@ -198,6 +201,14 @@ function App() {
             }
           />
           <Route
+            path="/reception/analysis"
+            element={
+              <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
+                <Analysis />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/reception/register"
             element={
               <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
@@ -214,6 +225,14 @@ function App() {
             }
           />
           <Route
+            path="/reception/record-court-outcome/:inmateId/:offenceId"
+            element={
+              <ProtectedRoute allowedRoles={["RECEPTION_OFFICER", "SUPER_ADMIN", "ADMIN_OFFICER"]}>
+                <RecordCourtOutcome />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/reception/inmates"
             element={
               <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
@@ -226,6 +245,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
                 <Courts />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reception/discharges"
+            element={
+              <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
+                <Discharge />
               </ProtectedRoute>
             }
           />

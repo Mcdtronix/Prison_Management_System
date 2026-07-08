@@ -242,11 +242,29 @@ class CourtSessionCreateSerializer(serializers.Serializer):
     remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     
     # Conviction fields
-    sentence_months = serializers.IntegerField(required=False, allow_null=True)
+    sentence_years = serializers.IntegerField(required=False, allow_null=True, default=0)
+    sentence_months = serializers.IntegerField(required=False, allow_null=True, default=0)
+    sentence_days = serializers.IntegerField(required=False, allow_null=True, default=0)
     sentence_date = serializers.DateField(required=False, allow_null=True)
+    has_fine = serializers.BooleanField(required=False, default=False)
+    fine_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
+
+    # Restitution fields
+    has_restitution = serializers.BooleanField(required=False, default=False)
+    restitution_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
+    restitution_date = serializers.DateField(required=False, allow_null=True)
+    restitution_sentence_years = serializers.IntegerField(required=False, allow_null=True, default=0)
+    restitution_sentence_months = serializers.IntegerField(required=False, allow_null=True, default=0)
+    restitution_sentence_days = serializers.IntegerField(required=False, allow_null=True, default=0)
 
     # Discharge fields
     discharge_reason = serializers.ChoiceField(choices=Discharged.DISCHARGE_REASON_CHOICES, required=False, allow_null=True)
+    
+    # Reclassification
+    reclassification = serializers.ChoiceField(
+        choices=[("A", "A"), ("B", "B"), ("C", "C"), ("D", "D"), ("COND", "Condemned"), ("PUSOD", "PUSOD")],
+        required=False, allow_null=True, allow_blank=True
+    )
 
     def validate(self, data):
         outcome = data.get("outcome")
@@ -414,12 +432,21 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
                         'restitution_sentence_days_total': restitution.restitution_sentence_days_total,
                         'restitution_status': restitution.status,
                     })
-            elif hasattr(offence, 'unconviction') and offence.unconviction:
+
+            if hasattr(offence, 'unconviction') and offence.unconviction:
                 unconvicted = offence.unconviction
                 offence_data.update({
                     'next_court_date': unconvicted.next_court_date,
                     'remand_start_date': unconvicted.remand_start_date,
                     'remand_end_date': unconvicted.remand_end_date,
+                })
+                
+            if hasattr(offence, 'discharge') and hasattr(offence.discharge, 'discharge_reason'):
+                discharge = offence.discharge
+                offence_data.update({
+                    'discharge_reason': discharge.discharge_reason,
+                    'discharge_date': discharge.discharge_date,
+                    'remarks': discharge.remarks,
                 })
             
             # Include court session history
@@ -445,8 +472,7 @@ class FlexibleDateField(serializers.DateField):
 class OffenceDataSerializer(serializers.Serializer):
     """Serializer for offence data during registration."""
     offence = serializers.CharField(max_length=1000)
-    convictionStatus = serializers.ChoiceField(choices=['convicted', 'unconvicted'])
-    furtherCharge = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    convictionStatus = serializers.ChoiceField(choices=['convicted', 'unconvicted', 'discharged'])
     court = serializers.CharField(max_length=100)
     sentence = serializers.CharField(max_length=50, required=False, allow_blank=True)
     sentenceYears = serializers.IntegerField(default=0, required=False)
@@ -460,6 +486,11 @@ class OffenceDataSerializer(serializers.Serializer):
     bailAmount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
     hasFine = serializers.BooleanField(default=False, required=False)
     fineAmount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
+    
+    # Discharged fields
+    dischargeReason = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    dischargeDate = FlexibleDateField(required=False, allow_null=True, input_formats=["%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "iso-8601"])
+    remarks = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, data):
         """Validate offence data based on conviction status."""
@@ -483,6 +514,26 @@ class OffenceDataSerializer(serializers.Serializer):
             data['remission'] = ''
             data['hasFine'] = False
             data['fineAmount'] = None
+            
+            # Clear discharged fields
+            data['dischargeReason'] = ''
+            data['dischargeDate'] = None
+            data['remarks'] = ''
+
+        elif conviction_status == 'discharged':
+            if not data.get('dischargeReason'):
+                raise serializers.ValidationError({'dischargeReason': 'This field is required for discharged offences.'})
+            if not data.get('dischargeDate'):
+                raise serializers.ValidationError({'dischargeDate': 'This field is required for discharged offences.'})
+            
+            # Clear convicted/unconvicted fields
+            data['sentence'] = ''
+            data['sentenceDate'] = None
+            data['remission'] = ''
+            data['hasFine'] = False
+            data['fineAmount'] = None
+            data['nextCourtDate'] = None
+            data['remandStartDate'] = None
 
         return data
 
@@ -764,6 +815,8 @@ class OffenceRegistrationSerializer(serializers.Serializer):
         default=list
     )
 
+    reclassification = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
     def validate(self, data):
         """Validation for offence registration."""
         import logging
@@ -788,10 +841,11 @@ class OffenceRegistrationSerializer(serializers.Serializer):
         # Validate offences
         convicted_count = sum(1 for offence in offences_data if offence.get('convictionStatus') == 'convicted')
         unconvicted_count = sum(1 for offence in offences_data if offence.get('convictionStatus') == 'unconvicted')
+        discharged_count = sum(1 for offence in offences_data if offence.get('convictionStatus') == 'discharged')
 
-        logger.info(f"Offence counts: Convicted={convicted_count}, Unconvicted={unconvicted_count}, Total={len(offences_data)}")
+        logger.info(f"Offence counts: Convicted={convicted_count}, Unconvicted={unconvicted_count}, Discharged={discharged_count}, Total={len(offences_data)}")
 
-        if convicted_count + unconvicted_count != len(offences_data):
+        if convicted_count + unconvicted_count + discharged_count != len(offences_data):
             logger.warning("Offence status validation failed: missing or invalid conviction statuses")
             raise serializers.ValidationError({
                 'offences': 'All offences must have a valid conviction status'
@@ -945,7 +999,7 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                     offence.offence_description = offence_data['offence']
                     offence.court = offence_data['court']
                     offence.date_charged = date_charged # Update date_charged as well
-                    offence.Offence_status = 'CONVICTED' if offence_data['convictionStatus'] == 'convicted' else 'UNCONVICTED'
+                    offence.Offence_status = offence_data['convictionStatus'].upper()
                     offence.has_bail = offence_data.get('hasBail', False)
                     offence.bail_amount = offence_data.get('bailAmount')
                     offence.save()
@@ -959,7 +1013,7 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                     offence_description=offence_data['offence'],
                     court=offence_data['court'],
                     date_charged=date_charged,
-                    Offence_status='CONVICTED' if offence_data['convictionStatus'] == 'convicted' else 'UNCONVICTED',
+                    Offence_status=offence_data['convictionStatus'].upper(),
                     has_bail=offence_data.get('hasBail', False),
                     bail_amount=offence_data.get('bailAmount')
                 )
@@ -998,10 +1052,13 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                     logger.error(f"Error processing convicted record: {e}")
                     raise
 
-                # Ensure no unconvicted record exists for this offence
-                Unconvicted.objects.filter(offence=offence).delete()
+                # Update remand_end_date if an unconvicted record exists
+                if hasattr(offence, 'unconviction') and offence.unconviction:
+                    if not offence.unconviction.remand_end_date:
+                        offence.unconviction.remand_end_date = sentence_date or timezone.now().date()
+                        offence.unconviction.save()
 
-            else:
+            elif offence_data['convictionStatus'] == 'unconvicted':
                 # Create or update unconvicted record
                 logger.info(f"Processing unconvicted record for offence {offence.id}")
                 try:
@@ -1027,8 +1084,38 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                     logger.error(f"Error processing unconvicted record: {e}")
                     raise
 
-                # Ensure no convicted record exists for this offence
-                Convicted.objects.filter(offence=offence).delete()
+            elif offence_data['convictionStatus'] == 'discharged':
+                logger.info(f"Processing discharged record for offence {offence.id}")
+                try:
+                    discharged, created = Discharged.objects.update_or_create(
+                        offence=offence,
+                        defaults={
+                            'prison_number': inmate,
+                            'discharge_reason': offence_data.get('dischargeReason'),
+                            'discharge_date': parse_date(offence_data.get('dischargeDate')) or date_charged,
+                            'remarks': offence_data.get('remarks')
+                        }
+                    )
+                    action = "created" if created else "updated"
+                    logger.info(f"Discharged record {action} with ID: {discharged.pk}")
+                except Exception as e:
+                    logger.error(f"Error processing discharged record: {e}")
+                    raise
+
+                # Update remand_end_date if an unconvicted record exists
+                if hasattr(offence, 'unconviction') and offence.unconviction:
+                    if not offence.unconviction.remand_end_date:
+                        discharge_date = parse_date(offence_data.get('dischargeDate')) or date_charged
+                        offence.unconviction.remand_end_date = discharge_date or timezone.now().date()
+                        offence.unconviction.save()
+                
+            if is_update:
+                username = self.context.get('request').user.username if self.context.get('request') else 'System'
+                InmateAuditTrail.objects.create(
+                    inmate=inmate,
+                    action=f"Changed conviction status of offence '{offence.offence_description[:30]}' to {offence_data['convictionStatus'].upper()}",
+                    performed_by=username
+                )
 
         # Process restitutions (only for created/updated offences in this payload)
         # For simplicity, we delete old restitutions for updated offences and recreate them.
@@ -1080,6 +1167,24 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                 logger.warning(f"Invalid offence index for restitution: {offence_index}. Skipping.")
 
         # Note: Release History is automatically updated via post_save signals on Convicted and Restitution models.
+
+        reclassification = validated_data.get('reclassification')
+        if reclassification:
+            current_class = inmate.classification_history.order_by('-effective_date').first()
+            if not current_class or current_class.classification != reclassification:
+                InmateClassificationHistory.objects.create(
+                    inmate=inmate,
+                    classification=reclassification,
+                    effective_date=timezone.now().date(),
+                    approval_status='PENDING',
+                    remarks='Proposed based on new court outcome'
+                )
+                username = self.context.get('request').user.username if self.context.get('request') else 'System'
+                InmateAuditTrail.objects.create(
+                    inmate=inmate,
+                    action=f"Proposed reclassification to {reclassification}",
+                    performed_by=username
+                )
 
         # Return the inmate instance so the view can serialize and respond
         return inmate
@@ -1138,3 +1243,27 @@ class InmateListSerializer(serializers.ModelSerializer):
         latest_classification = obj.classification_history.order_by('-effective_date').first()
         return latest_classification.classification if latest_classification else 'N/A'
 
+class UpcomingDischargeSerializer(serializers.ModelSerializer):
+    inmate_name = serializers.SerializerMethodField()
+    prison_number = serializers.SerializerMethodField()
+    offence_description = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ReleaseHistory
+        fields = [
+            "id", "active_edr", "active_odr", "approval_status", 
+            "inmate_name", "prison_number", "offence_description"
+        ]
+
+    def get_inmate_name(self, obj):
+        return f"{obj.inmate.first_name} {obj.inmate.surname}"
+
+    def get_prison_number(self, obj):
+        return obj.inmate.prison_number
+
+    def get_offence_description(self, obj):
+        # Join active offences
+        offences = obj.inmate.offences.exclude(Offence_status='DISCHARGED')
+        if offences.exists():
+            return ", ".join([o.offence_description for o in offences])
+        return "No active offences"

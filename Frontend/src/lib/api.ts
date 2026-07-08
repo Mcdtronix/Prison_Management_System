@@ -694,6 +694,22 @@ export const messagingApi = {
 
 // Reception API endpoints
 export const receptionApi = {
+  validateInmateUnique: async (data: { prison_number?: string; national_id?: string }) => {
+    const token = localStorage.getItem("auth_token");
+    const response = await fetch("http://localhost:8000/api/reception/inmates/validate_unique/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Token ${token}` } : {}),
+      },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      return { error: true, errors: errorData };
+    }
+    return { error: false };
+  },
   registerBasicInmate: async (inmateData: any) => {
     console.log("=== FRONTEND: Sending basic inmate registration data ===");
     console.log("Inmate data structure:", Object.keys(inmateData));
@@ -830,6 +846,12 @@ export const receptionApi = {
       });
     }
   },
+  getReceptionAnalytics: async () => {
+    return fetchApi(`/reception/analytics/`);
+  },
+  getUpcomingDischarges: async () => {
+    return fetchApi(`/reception/discharges/upcoming/`);
+  },
 };
 
 // Health API endpoints
@@ -900,6 +922,13 @@ export const inmateApi = {
 
   getInmateTimeline: async (id: string) => {
     return fetchApi(`/reception/inmates/${id}/timeline/`);
+  },
+
+  recordCourtSession: async (offenceId: string | number, data: any) => {
+    return fetchApi(`/reception/offences/${offenceId}/record_court_session/`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
 };
 

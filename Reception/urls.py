@@ -12,6 +12,8 @@ from .views import (
     CourtSessionViewSet,
     UpcomingCourtSessionsView,
     ScheduleCourtSessionView,
+    ReceptionAnalyticsView,
+    UpcomingDischargesView,
     RestitutionViewSet,
     RestitutionExtensionViewSet,
     InmateRegistrationView,
@@ -55,5 +57,7 @@ urlpatterns = [
     path('pending-approval/', PendingAdminApprovalView.as_view(), name='pending-admin-approval'),
     path('pending-offences/', PendingOffenceRegistrationView.as_view(), name='pending-offence-registration'),
     path('inmate-list/', InmateListView.as_view(), name='inmate-list'),
+    path('analytics/', ReceptionAnalyticsView.as_view(), name='reception-analytics'),
+    path('discharges/upcoming/', UpcomingDischargesView.as_view(), name='upcoming-discharges'),
     path('', include(router.urls)),
 ]

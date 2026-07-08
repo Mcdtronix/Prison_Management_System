@@ -51,7 +51,6 @@ export const nextOfKinSchema = z.object({
 export const offenceSchema = z.object({
   offence: z.string().min(1, "Offence description is required"),
   convictionStatus: z.enum(["convicted", "unconvicted"]),
-  furtherCharge: z.string().optional(),
   court: z.string().min(1, "Court is required"),
   sentence: z.string().optional(),
   sentenceDate: z.string().optional(),

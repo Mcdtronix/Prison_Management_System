@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { FileText, Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { receptionApi } from "@/lib/api";
@@ -20,7 +21,6 @@ import Restitution from "./Restitution";
 
 const baseOffenceSchema = z.object({
   offence: z.string().min(1, "Offence description is required"),
-  furtherCharge: z.string().optional(),
   court: z.string().min(1, "Court is required"),
   hasRestitution: z.boolean().optional(),
   hasBail: z.boolean().optional(),
@@ -47,6 +47,12 @@ export const offenceDataSchema = z.discriminatedUnion("convictionStatus", [
     sentenceMonths: z.coerce.number().min(0).optional(),
     sentenceDays: z.coerce.number().min(0).optional(),
     sentenceDate: z.string().optional(),
+  }).merge(baseOffenceSchema),
+  z.object({
+    convictionStatus: z.literal("discharged"),
+    dischargeReason: z.string().min(1, "Discharge reason is required"),
+    dischargeDate: z.string().min(1, "Discharge date is required"),
+    remarks: z.string().optional(),
   }).merge(baseOffenceSchema),
 ]);
 
@@ -79,7 +85,8 @@ const offenceFormSchema = z.object({
     isGrouped: z.boolean().default(false),
     duration: z.string().optional(),
     date: z.string().optional()
-  }).optional()
+  }).optional(),
+  reclassification: z.string().optional()
 }).superRefine((data, ctx) => {
   const hasConvicted = data.offences?.some(o => o.convictionStatus === 'convicted');
 
@@ -175,7 +182,6 @@ const OffenceRegistrationForm = ({
   const [draftOffence, setDraftOffence] = useState<z.infer<typeof offenceDataSchema>>({
     offence: '',
     convictionStatus: 'unconvicted',
-    furtherCharge: '',
     court: '',
     sentenceYears: 0,
     sentenceMonths: 0,
@@ -200,7 +206,6 @@ const OffenceRegistrationForm = ({
       return {
         offence: '',
         convictionStatus: 'unconvicted',
-        furtherCharge: '',
         court: '',
         sentenceYears: 0,
         sentenceMonths: 0,
@@ -212,12 +217,15 @@ const OffenceRegistrationForm = ({
       };
     }
 
-    const convictionStatus =
-      o.conviction_status === "convicted" ? "convicted" : "unconvicted";
+    let convictionStatus: "convicted" | "unconvicted" | "discharged" = "unconvicted";
+    if (o.conviction_status === "convicted" || o.Offence_status === "CONVICTED") {
+      convictionStatus = "convicted";
+    } else if (o.conviction_status === "discharged" || o.Offence_status === "DISCHARGED") {
+      convictionStatus = "discharged";
+    }
     const mapped: any = {
       convictionStatus,
       offence: o.offence_description || o.description || "",
-      furtherCharge: o.further_charge || "",
       court: o.court || "",
       hasRestitution: Boolean(o.restitution_amount),
       hasBail: Boolean(o.has_bail),
@@ -234,6 +242,12 @@ const OffenceRegistrationForm = ({
       mapped.nextCourtDate = "";
       mapped.hasFine = Boolean(o.has_fine);
       mapped.fineAmount = o.fine_amount?.toString() || "";
+    } else if (convictionStatus === "discharged") {
+      mapped.dischargeReason = o.discharge_reason || "";
+      mapped.dischargeDate = o.discharge_date
+        ? new Date(o.discharge_date).toISOString().split('T')[0]
+        : "";
+      mapped.remarks = o.remarks || "";
     } else {
       mapped.nextCourtDate = o.next_court_date
         ? new Date(o.next_court_date).toISOString().split('T')[0]
@@ -282,6 +296,10 @@ const OffenceRegistrationForm = ({
           const mappedOffence = mapOffenceToForm(selected);
           setOffences([mappedOffence]);
           form.setValue("offences", [mappedOffence]);
+
+          if (location.state?.currentClass) {
+            form.setValue("reclassification", location.state.currentClass);
+          }
 
           // Pre-fill release dates if the selected offence is convicted
           if (mappedOffence.convictionStatus === 'convicted') {
@@ -786,6 +804,45 @@ const OffenceRegistrationForm = ({
           draftConvictionStatus === "convicted") && (
             <ReleaseDates form={form} />
           )}
+
+        {/* Reclassification (Optional) */}
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-medium">Reclassification</h3>
+              <p className="text-sm text-muted-foreground">
+                Optionally update the inmate's classification based on the court outcome.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="reclassification"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>New Class (Optional)</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value || ""}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select class..." />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="A">A</SelectItem>
+                      <SelectItem value="B">B</SelectItem>
+                      <SelectItem value="C">C</SelectItem>
+                      <SelectItem value="D">D</SelectItem>
+                      <SelectItem value="PUSOD">PUSOD</SelectItem>
+                      <SelectItem value="CONDEM">CONDEM</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </Card>
 
         <div className="flex justify-end gap-4">
           <Button

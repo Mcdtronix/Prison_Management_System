@@ -106,21 +106,17 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
     case "RECEPTION_OFFICER":
       navItems = [
         { title: "Dashboard", href: "/reception", icon: <Home size={18} /> },
+        { title: "Analysis", href: "/reception/analysis", icon: <Activity size={18} /> },
         { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
         {
-          title: "New Admission",
-          href: "/reception/register",
-          icon: <UserPlus size={18} />,
-        },
-        {
-          title: "Inmate Details",
-          href: "/reception/inmates",
+          title: "Inmates",
+          href: "/reception/inmates-management",
           icon: <Users size={18} />,
-        },
-        {
-          title: "Inmate Categories",
-          href: "/reception/categories",
-          icon: <Tag size={18} />,
+          subItems: [
+            { title: "Inmate List", href: "/reception/inmates" },
+            { title: "New Admission", href: "/reception/register" },
+            { title: "Discharges", href: "/reception/discharges" },
+          ]
         },
         {
           title: "Transfers",
@@ -131,11 +127,6 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           title: "Courts",
           href: "/reception/courts",
           icon: <Gavel size={18} />,
-        },
-        {
-          title: "Discharges",
-          href: "/reception/discharges",
-          icon: <LogOut size={18} />,
         },
         {
           title: "Escapes",
