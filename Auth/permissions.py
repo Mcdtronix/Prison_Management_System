@@ -6,6 +6,7 @@ Frontend restrictions are NOT sufficient - backend is the final authority.
 """
 
 from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
 
 from .utils import normalize_role_code
 
@@ -152,3 +153,49 @@ class IsReceptionOrHealthOrAdmin(BasePermission):
 
         return role_code in ["ADMIN_OFFICER", "RECEPTION_OFFICER", "HEALTH_OFFICER", "SUPER_ADMIN"]
 
+class IsStationDataOwner(BasePermission):
+    """
+    Object-level permission to ensure the user belongs to the same org_unit 
+    that owns the data record.
+    """
+    def has_object_permission(self, request, view, obj):
+        if not request.user.is_authenticated:
+            return False
+
+        user_org_unit = None
+        if hasattr(request, 'org_unit') and request.org_unit:
+            user_org_unit = request.org_unit
+        else:
+            try:
+                from .utils import get_primary_assignment
+                assignment = get_primary_assignment(request.user)
+                if assignment and assignment.is_active:
+                    user_org_unit = assignment.org_unit
+            except Exception:
+                pass
+            
+            if not user_org_unit and hasattr(request.user, 'userprofile') and request.user.userprofile.is_active:
+                user_org_unit = request.user.userprofile.station
+
+        if not user_org_unit:
+            return False
+
+        # Determine the object's organization unit
+        # In Reception module, this is usually owner_org_unit_id
+        # In other modules, it might be station_id
+        obj_org_id = getattr(obj, 'owner_org_unit_id', getattr(obj, 'station_id', None))
+        
+        # If the object is not tied to any org unit, we can allow access or deny by default.
+        # Assuming we allow access to global objects if they don't have an owner.
+        if obj_org_id is None:
+            return True
+            
+        if obj_org_id != user_org_unit.id:
+            raise PermissionDenied({
+                "error_code": "STATION_MISMATCH",
+                "message": "You do not have permission to access this record.",
+                "details": f"This record belongs to another organization unit. Your current session is locked to {user_org_unit.name}.",
+                "resolution": "If you require access, please contact the administrators."
+            })
+            
+        return True

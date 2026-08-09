@@ -825,6 +825,27 @@ class OffenceRegistrationSerializer(serializers.Serializer):
         logger.info("=== STARTING OFFENCE REGISTRATION VALIDATION ===")
 
         inmate_id = data.get('inmate_id')
+        try:
+            inmate = Inmate.objects.get(id=inmate_id)
+        except Inmate.DoesNotExist:
+            raise serializers.ValidationError({"inmate_id": "Inmate not found."})
+            
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            from Auth.utils import get_current_org_unit
+            user_org_unit = getattr(request, 'org_unit', None)
+            if not user_org_unit:
+                user_org_unit = get_current_org_unit(request.user)
+                
+            if inmate.owner_org_unit and user_org_unit and inmate.owner_org_unit.id != user_org_unit.id:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied({
+                    "error_code": "STATION_MISMATCH",
+                    "message": "You do not have permission to modify this record.",
+                    "details": f"This inmate belongs to {inmate.owner_org_unit.name}. Your session is locked to {user_org_unit.name}.",
+                    "resolution": "If you require access, please contact the administrators."
+                })
+
         offences_data = data.get('offences', [])
         restitutions_data = data.get('restitutions', [])
 

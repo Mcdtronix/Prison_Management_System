@@ -14,6 +14,9 @@ interface ApiResponse<T> {
   data?: T;
   error?: string;
   status?: number;
+  error_code?: string;
+  details?: string;
+  resolution?: string;
 }
 
 interface LoginRequest {
@@ -154,7 +157,15 @@ async function apiRequest<T>(
       let errorMessage = "An error occurred";
 
       if (typeof responseData === "object") {
-        if (responseData.detail) {
+        if (responseData.error_code) {
+          return {
+            error: responseData.message || errorMessage,
+            status: response.status,
+            error_code: responseData.error_code,
+            details: responseData.details,
+            resolution: responseData.resolution,
+          };
+        } else if (responseData.detail) {
           errorMessage = responseData.detail;
         } else if (
           responseData.non_field_errors &&

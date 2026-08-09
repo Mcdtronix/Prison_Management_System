@@ -57,12 +57,12 @@ from .serializers import (
 )
 
 
-from Auth.permissions import IsReceptionOrHealthOrAdmin, IsAdminOfficer
+from Auth.permissions import IsReceptionOrHealthOrAdmin, IsAdminOfficer, IsStationDataOwner
 
 class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Inmate.objects.all()
     serializer_class = InmateSerializer
-    permission_classes = [IsAuthenticated, IsReceptionOrHealthOrAdmin]
+    permission_classes = [IsAuthenticated, IsReceptionOrHealthOrAdmin, IsStationDataOwner]
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -71,7 +71,7 @@ class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         if self.action == 'retrieve':
-            return Inmate.objects.prefetch_related(
+            qs = Inmate.objects.prefetch_related(
                 'next_of_kin',
                 'classification_history',
                 'station_history',
@@ -79,7 +79,15 @@ class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
                 'offences__unconviction',
                 'property_history'
             )
-        return Inmate.objects.all()
+        else:
+            qs = Inmate.objects.all()
+            
+        visible_org_units = getattr(self.request, 'visible_org_units', None)
+        if visible_org_units is not None:
+            from django.db.models import Q
+            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
+            
+        return qs
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def validate_unique(self, request):
@@ -161,25 +169,25 @@ class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 class NextOfKinViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = NextOfKin.objects.all()
     serializer_class = NextOfKinSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStationDataOwner]
 
 
 class InmateStationHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = InmateStationHistory.objects.select_related("station", "inmate")
     serializer_class = InmateStationHistorySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStationDataOwner]
 
 
 class InmateClassificationHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = InmateClassificationHistory.objects.select_related("inmate")
     serializer_class = InmateClassificationHistorySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStationDataOwner]
 
 
 class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Offence.objects.select_related("inmate")
     serializer_class = OffenceSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStationDataOwner]
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def record_court_session(self, request, pk=None):
@@ -450,11 +458,11 @@ class PendingAdminApprovalView(APIView):
         """Get inmates pending admin approval."""
         visible_org_units = getattr(request, 'visible_org_units', None)
         
-        # Get inmates who have offences registered but are not yet confirmed
+        # Get inmates who have offences registered and are ready for admin approval
         inmates_with_offences = Inmate.objects.exclude(
             offences__isnull=True
-        ).exclude(
-            admission_status="ADMISSION_CONFIRMED"
+        ).filter(
+            admission_status="PENDING_ADMIN_APPROVAL"
         )
         
         if visible_org_units is not None:

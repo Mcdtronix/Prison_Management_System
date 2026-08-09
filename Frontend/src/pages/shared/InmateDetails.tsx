@@ -189,6 +189,7 @@ const InmateDetails = () => {
   const [healthRecord, setHealthRecord] = useState<HealthRecord | null>(null);
   const [opdVisits, setOPDVisits] = useState<OPDVisit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorState, setErrorState] = useState<{code?: string, message?: string, details?: string, resolution?: string} | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -201,6 +202,18 @@ const InmateDetails = () => {
     try {
       // Fetch inmate details
       const detailsResponse = await inmateApi.getInmateDetails(inmateId);
+      
+      if (detailsResponse.error) {
+        setErrorState({
+          code: detailsResponse.error_code,
+          message: detailsResponse.error,
+          details: detailsResponse.details,
+          resolution: detailsResponse.resolution
+        });
+        setIsLoading(false);
+        return;
+      }
+      
       if (detailsResponse.data) {
         const inmateData = detailsResponse.data as Inmate;
         setInmate(inmateData);
@@ -249,12 +262,25 @@ const InmateDetails = () => {
     if (!id) return;
 
     try {
-      await adminApi.approveInmate(id);
-      setInmate((prev) => (prev ? { ...prev, status: "active" } : null));
+      const response = await adminApi.approveInmate(id);
+      
+      if (response.error) {
+        toast({
+          title: "Error",
+          description: response.error,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setInmate((prev) => (prev ? { ...prev, admission_status: "ADMISSION_CONFIRMED" } : null));
       toast({
         title: "Success",
         description: "Inmate approved successfully",
       });
+      
+      // Refresh the inmate data to ensure all related fields are up to date
+      fetchInmateData(id);
     } catch (error) {
       console.error("Error approving inmate:", error);
       toast({
@@ -393,6 +419,28 @@ const InmateDetails = () => {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0b4f2a] mx-auto mb-4"></div>
             <p>Loading inmate information...</p>
           </div>
+        </div>
+      </PrisonLayout>
+    );
+  }
+
+  if (errorState) {
+    return (
+      <PrisonLayout
+        title="Inmate Details"
+        description="Access Denied"
+      >
+        <div className="flex flex-col justify-center items-center h-64 space-y-4 max-w-lg mx-auto text-center px-4">
+          <AlertCircle className="h-16 w-16 text-red-500" />
+          <h2 className="text-2xl font-bold">{errorState.message || "Access Denied"}</h2>
+          {errorState.details && <p className="text-gray-700">{errorState.details}</p>}
+          {errorState.resolution && <p className="text-sm text-gray-500 italic">{errorState.resolution}</p>}
+          {errorState.code === 'STATION_MISMATCH' && (
+            <Badge variant="destructive" className="mt-2 text-sm bg-red-100 text-red-800 border-red-200">
+              Station Data Restriction Enforced
+            </Badge>
+          )}
+          <Button variant="outline" className="mt-6" onClick={() => navigate(-1)}>Go Back</Button>
         </div>
       </PrisonLayout>
     );
