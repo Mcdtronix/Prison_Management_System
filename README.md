@@ -1,5 +1,5 @@
-What this is
 A full-stack Prison Management System built as a Django REST API (multi-app Django project) with a Vite + React + TypeScript frontend. It implements domain apps for Admissions, Health, HR, Stores, Farms, Messaging and Cases, with RBAC, audit logging, and an organizational (national → provincial → station) ownership/isolation model aimed at multi-tenant data separation and compliance.
+
 
 Stack
 Language(s): Python (backend) and TypeScript / JavaScript (frontend)
@@ -9,6 +9,8 @@ Django REST Framework + drf-yasg (API + OpenAPI/swagger)
 djangorestframework_simplejwt (JWT auth)
 psycopg2 (Postgres DB driver) and project-tailored DB config / connection pooling
 Tailwind + Radix UI + @tanstack/react-query (frontend UI and data fetching)
+
+
 How it's organized
 Code
 00_START_HERE_PHASE_0_SUMMARY.md        ← Phase 0 summary & kickoff notes
@@ -31,11 +33,15 @@ scripts/                                 ← dev / deployment scripts
 tests/                                   ← additional test harnesses; many test_*.py at repo root
 .github/                                 ← CI/issue templates (repo governance)
 misc Python scripts (patch_*.py, fix_*.py, debug_*.py) ← maintenance/debug helpers
+
+
 How it fits together:
 
 The Django project (Core) wires up REST API endpoints via app-level ViewSets and urls.py in each domain app (e.g., Reception/views.py and Reception/serializers.py). Core.settings.py configures DRF, JWT authentication, an OrgUnit-based access filter (Core.filters.OrgUnitAccessFilterBackend) and phase-1 middleware stubs (OrgContext, AccessScope, AuditLogging). Auth/ contains the user, RBAC, permissions, and JWT-related serializers/views used across the API. The frontend (Frontend/) is a Vite React app that calls the API endpoints (package.json scripts: dev/build/preview) and uses Tailwind + Radix components for UI.
 How to run it
 Shortest path from clone to a running development instance (backend API + frontend dev server):
+
+
 
 Backend (Django)
 
@@ -44,9 +50,12 @@ Ensure Python 3.10+ (match your environment)
 Provide env vars (see Core/settings.py and .env.example) and run migrations and server.
 Example commands:
 
+
+
 Code
 git clone https://github.com/Mcdtronix/Prison_Management_System.git
 cd Prison_Management_System
+
 
 # Python environment (example)
 python -m venv .venv
