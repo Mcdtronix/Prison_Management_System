@@ -124,7 +124,6 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           subItems: [
             { title: "Inmate List", href: "/reception/inmates" },
             { title: "New Admission", href: "/reception/register" },
-            { title: "Discharges", href: "/reception/discharges" },
             { title: "Reclassification", href: "/reception/reclassification" },
           ]
         },
@@ -137,6 +136,11 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           title: "Courts",
           href: "/reception/courts",
           icon: <Gavel size={18} />,
+        },
+        {
+          title: "Discharges",
+          href: "/reception/discharges",
+          icon: <LogOut size={18} />,
         },
         {
           title: "Escapes",

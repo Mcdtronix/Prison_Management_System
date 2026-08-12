@@ -707,6 +707,12 @@ export const messagingApi = {
 
 // Reception API endpoints
 export const receptionApi = {
+  recordRestitutionPayment: (restitutionId: string, data: FormData) =>
+    apiRequest(`/api/reception/restitution/${restitutionId}/record_payment/`, {
+      method: "POST",
+      body: data,
+    }),
+
   validateInmateUnique: async (data: { prison_number?: string; national_id?: string }) => {
     const token = localStorage.getItem("auth_token");
     const response = await fetch("http://localhost:8000/api/reception/inmates/validate_unique/", {
@@ -889,6 +895,21 @@ export const receptionApi = {
   },
   getUpcomingDischarges: async () => {
     return fetchApi(`/reception/discharges/upcoming/`);
+  },
+  proposeDischarge: async (data: FormData) => {
+    const token = localStorage.getItem("auth_token");
+    const res = await fetch(`${API_BASE_URL}/reception/discharges/propose/`, {
+      method: "POST",
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+      body: data,
+    });
+    const responseData = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { data: null, error: responseData.error || responseData.detail || "Error proposing discharge" };
+    }
+    return { data: responseData, error: null };
   },
 };
 

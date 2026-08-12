@@ -17,23 +17,14 @@ from .models import (
     InmateStationHistory,
     InmateClassificationHistory,
     Offence,
-    Convicted,
-    Unconvicted,
-    Restitution,
-    CourtSession,
-    RestitutionExtension,
-    ReleaseHistory,
-    # ReleaseHistory,
-    InmatePropertyHistory,
-    SentenceGroup,
-    Discharged,
-    ReleaseWorkflow,
-    ArchivedDischarge,
-    EscapeHistory,
-    InmateDisciplinaryHistory,
-    # InmateMedicalHistory,
+    Inmate, Offence, Unconvicted, Convicted, Discharged, CourtSession, 
+    SentenceGroup, ReleaseHistory, Restitution, RestitutionPayment, RestitutionExtension,
+    InmatePropertyHistory, EscapeHistory, InmateDisciplinaryHistory,
+    # InmateMedicalHistory, 
     InmateDocument,
     InmateAuditTrail,
+    ReleaseWorkflow,
+    ArchivedDischarge
 )
 
 
@@ -169,6 +160,11 @@ class UnconvictedSerializer(serializers.ModelSerializer):
         model = Unconvicted
         fields = "__all__"
 
+
+class RestitutionPaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RestitutionPayment
+        fields = '__all__'
 
 class RestitutionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -423,14 +419,21 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
                 # Add restitution if exists
                 restitution = offence.restitutions.first()
                 if restitution:
+                    payments = list(restitution.payments.all())
+                    total_paid = sum(p.amount_paid for p in payments) if payments else 0
+                    balance = max(0, float(restitution.restitution_amount) - float(total_paid)) if restitution.restitution_amount else 0
+
                     offence_data.update({
+                        'restitution_id': restitution.id,
                         'restitution_amount': restitution.restitution_amount,
+                        'restitution_balance': balance,
                         'restitution_date': restitution.restitution_date,
                         'restitution_sentence_years': restitution.restitution_sentence_years,
                         'restitution_sentence_months': restitution.restitution_sentence_months,
                         'restitution_sentence_days': restitution.restitution_sentence_days,
                         'restitution_sentence_days_total': restitution.restitution_sentence_days_total,
                         'restitution_status': restitution.status,
+                        'payments': RestitutionPaymentSerializer(payments, many=True).data
                     })
 
             if hasattr(offence, 'unconviction') and offence.unconviction:
@@ -1268,12 +1271,13 @@ class UpcomingDischargeSerializer(serializers.ModelSerializer):
     inmate_name = serializers.SerializerMethodField()
     prison_number = serializers.SerializerMethodField()
     offence_description = serializers.SerializerMethodField()
+    inmate_id = serializers.IntegerField(source='inmate.id', read_only=True)
 
     class Meta:
         model = ReleaseHistory
         fields = [
             "id", "active_edr", "active_odr", "approval_status", 
-            "inmate_name", "prison_number", "offence_description"
+            "inmate_name", "prison_number", "offence_description", "inmate_id"
         ]
 
     def get_inmate_name(self, obj):
@@ -1288,3 +1292,12 @@ class UpcomingDischargeSerializer(serializers.ModelSerializer):
         if offences.exists():
             return ", ".join([o.offence_description for o in offences])
         return "No active offences"
+
+
+class ProposeDischargeSerializer(serializers.Serializer):
+    inmate_id = serializers.IntegerField()
+    reception_reason = serializers.CharField(required=True, allow_blank=False, error_messages={
+        'required': "A reason for discharge must be stated.",
+        'blank': "A reason for discharge must be stated."
+    })
+    reception_receipt = serializers.FileField(required=False, allow_null=True)

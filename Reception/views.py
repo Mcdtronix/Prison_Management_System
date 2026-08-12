@@ -368,6 +368,73 @@ class RestitutionViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     serializer_class = RestitutionSerializer
     permission_classes = [IsAuthenticated]
 
+    @action(detail=True, methods=['post'])
+    def record_payment(self, request, pk=None):
+        from .models import CourtSession, InmateAuditTrail, calculate_inmate_release_dates, RestitutionPayment
+        from decimal import Decimal
+        restitution = self.get_object()
+        
+        amount_paid = request.data.get('amount')
+        receipt_number = request.data.get('receipt_number')
+        receipt_file = request.FILES.get('receipt')
+
+        if not amount_paid or not receipt_number:
+            return Response({"error": "Amount and Receipt Number are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            amount_paid = Decimal(amount_paid)
+        except:
+            return Response({"error": "Invalid amount format."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create RestitutionPayment record
+        RestitutionPayment.objects.create(
+            restitution=restitution,
+            amount_paid=amount_paid,
+            receipt_number=receipt_number,
+            receipt_file=receipt_file,
+            recorded_by=request.user.username if request.user else "System"
+        )
+
+        # Calculate new total paid
+        payments = restitution.payments.all()
+        total_paid = sum(p.amount_paid for p in payments)
+        
+        if total_paid >= restitution.restitution_amount:
+            status_update = 'paid'
+            # If fully paid, find the associated CourtSession and close it
+            court_sessions = CourtSession.objects.filter(
+                offence=restitution.offence, 
+                outcome='SCHEDULED',
+                session_date=restitution.restitution_date
+            )
+            for session in court_sessions:
+                session.outcome = 'RESTITUTION_SETTLED'
+                session.remarks = "Restitution fully paid before due date."
+                session.save()
+        else:
+            status_update = 'partial'
+
+        restitution.status = status_update
+        # Store the latest receipt file on the main record as well (optional, but good for quick access)
+        if receipt_file:
+            restitution.receipt = receipt_file
+        restitution.save()
+
+        # Recalculate remission based on updated restitution validity
+        if restitution.inmate:
+            calculate_inmate_release_dates(restitution.inmate)
+
+        # Log to Audit Trail
+        if restitution.inmate:
+            InmateAuditTrail.objects.create(
+                inmate=restitution.inmate,
+                action="Recorded Restitution Payment",
+                performed_by=request.user.username if request.user else "System",
+                remarks=f"Recorded payment of ${amount_paid}. New status: {status_update}. Receipt: {receipt_number}."
+            )
+
+        return Response({"message": f"Payment recorded successfully. Restitution is now {status_update}."}, status=status.HTTP_200_OK)
+
 
 class CourtSessionViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = CourtSession.objects.select_related("offence")
@@ -1039,3 +1106,45 @@ class ReclassificationViewSet(viewsets.ViewSet):
                 })
                 
         return Response(categories)
+
+
+class ProposeDischargeView(OrgUnitContextMixin, APIView):
+    """
+    Endpoint for Reception to propose an inmate's discharge.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .serializers import ProposeDischargeSerializer
+        from django.core.files.storage import default_storage
+        
+        serializer = ProposeDischargeSerializer(data=request.data)
+        if serializer.is_valid():
+            inmate_id = serializer.validated_data['inmate_id']
+            reception_reason = serializer.validated_data['reception_reason']
+            reception_receipt = request.FILES.get('reception_receipt')
+
+            try:
+                inmate = Inmate.objects.get(id=inmate_id)
+            except Inmate.DoesNotExist:
+                return Response({"error": "Inmate not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            # Update or create the release workflow
+            workflow, created = ReleaseWorkflow.objects.get_or_create(
+                inmate=inmate,
+                defaults={
+                    'status': 'PROPOSED_BY_RECEPTION',
+                    'reception_reason': reception_reason,
+                    'reception_receipt': reception_receipt
+                }
+            )
+            
+            if not created:
+                workflow.status = 'PROPOSED_BY_RECEPTION'
+                workflow.reception_reason = reception_reason
+                if reception_receipt:
+                    workflow.reception_receipt = reception_receipt
+                workflow.save()
+
+            return Response({"message": "Discharge proposed successfully."}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -14,6 +14,7 @@ from .views import (
     ScheduleCourtSessionView,
     ReceptionAnalyticsView,
     UpcomingDischargesView,
+    ProposeDischargeView,
     RestitutionViewSet,
     RestitutionExtensionViewSet,
     InmateRegistrationView,
@@ -61,5 +62,6 @@ urlpatterns = [
     path('inmate-list/', InmateListView.as_view(), name='inmate-list'),
     path('analytics/', ReceptionAnalyticsView.as_view(), name='reception-analytics'),
     path('discharges/upcoming/', UpcomingDischargesView.as_view(), name='upcoming-discharges'),
+    path('discharges/propose/', ProposeDischargeView.as_view(), name='propose-discharge'),
     path('', include(router.urls)),
 ]

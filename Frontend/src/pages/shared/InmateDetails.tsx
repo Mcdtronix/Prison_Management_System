@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Toaster } from "sonner";
+import RecordRestitutionPaymentModal from '../reception/components/RecordRestitutionPaymentModal';
 
 interface Inmate {
   id: string;
@@ -103,9 +104,18 @@ interface Inmate {
     effective_sentence_days?: number;
     remission_days?: number;
     sentence_date?: string;
+    restitution_id?: string;
     restitution_amount?: number;
+    restitution_balance?: number;
     restitution_date?: string;
     restitution_status?: string;
+    payments?: Array<{
+      id: number;
+      amount_paid: string;
+      receipt_number: string;
+      payment_date: string;
+      recorded_by: string;
+    }>;
     restitution_sentence_years?: number;
     restitution_sentence_months?: number;
     restitution_sentence_days?: number;
@@ -206,6 +216,10 @@ const InmateDetails = () => {
   const [opdVisits, setOPDVisits] = useState<OPDVisit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorState, setErrorState] = useState<{code?: string, message?: string, details?: string, resolution?: string} | null>(null);
+
+  const [restitutionModalOpen, setRestitutionModalOpen] = useState(false);
+  const [selectedRestitutionId, setSelectedRestitutionId] = useState<string | null>(null);
+  const [selectedRestitutionBalance, setSelectedRestitutionBalance] = useState<number>(0);
 
   useEffect(() => {
     if (id) {
@@ -923,7 +937,7 @@ const InmateDetails = () => {
                                     Next Court Date:
                                   </p>
                                   <p className="text-sm mb-3">
-                                    {offense.restitution_date
+                                    {offense.restitution_date && offense.restitution_status !== 'paid'
                                       ? `${new Date(offense.restitution_date).toLocaleDateString()} (Restitution)`
                                       : "Closed"}
                                   </p>
@@ -945,8 +959,42 @@ const InmateDetails = () => {
                                       </p>
                                       <p className="text-sm">
                                         Amount: ${offense.restitution_amount}
-                                        <br/>Status: <Badge variant="outline">{offense.restitution_status}</Badge>
+                                        <br/>Status: <Badge variant="outline" className={offense.restitution_status === 'paid' ? 'bg-green-100 text-green-800' : ''}>{offense.restitution_status}</Badge>
+                                        <br/>Balance Left: <span className="font-semibold text-red-600">${offense.restitution_balance?.toFixed(2)}</span>
                                       </p>
+                                      
+                                      {offense.payments && offense.payments.length > 0 && (
+                                        <div className="mt-3 bg-gray-50 p-2 rounded-md border text-xs">
+                                          <p className="font-semibold mb-1 text-gray-700">Payment Trail</p>
+                                          <ul className="space-y-1">
+                                            {offense.payments.map(payment => (
+                                              <li key={payment.id} className="flex justify-between border-b pb-1 last:border-0 last:pb-0">
+                                                <span>{new Date(payment.payment_date).toLocaleDateString()} - <b>${payment.amount_paid}</b></span>
+                                                <span className="text-gray-500 text-[10px]">Receipt: {payment.receipt_number}</span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+
+                                      {(user?.role === "RECEPTION_OFFICER" ||
+                                        user?.role === "ADMIN_OFFICER" ||
+                                        user?.role === "SUPER_ADMIN" ||
+                                        user?.role === "admin" ||
+                                        user?.role === "reception") && offense.restitution_status !== 'paid' && offense.restitution_id && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="mt-2 text-[#0b4f2a] border-[#0b4f2a] hover:bg-[#0b4f2a] hover:text-white"
+                                          onClick={() => {
+                                            setSelectedRestitutionId(offense.restitution_id!);
+                                            setSelectedRestitutionBalance(offense.restitution_balance || 0);
+                                            setRestitutionModalOpen(true);
+                                          }}
+                                        >
+                                          Record Payment
+                                        </Button>
+                                      )}
                                     </div>
                                     <div>
                                       <p className="text-sm font-medium mb-1">
@@ -1313,6 +1361,16 @@ const InmateDetails = () => {
           </Tabs>
         </div>
       </div>
+
+      <RecordRestitutionPaymentModal 
+        isOpen={restitutionModalOpen}
+        onClose={() => setRestitutionModalOpen(false)}
+        onSuccess={() => {
+          if (id) fetchInmateData(id);
+        }}
+        restitutionId={selectedRestitutionId}
+        balanceLeft={selectedRestitutionBalance}
+      />
       <Toaster />
     </PrisonLayout>
   );

@@ -5,9 +5,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { receptionApi } from '@/lib/api';
 import { format, isSameDay } from 'date-fns';
-import { Download, Calendar as CalendarIcon, UserMinus } from 'lucide-react';
+import { Download, Calendar as CalendarIcon, UserMinus, FileUp } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { Calendar } from '@/components/ui/calendar';
+import ProposeDischargeModal from './components/ProposeDischargeModal';
 
 interface DischargeSession {
   id: number;
@@ -24,6 +25,8 @@ const Discharge = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [selectedSession, setSelectedSession] = useState<DischargeSession | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const { toast } = useToast();
 
   const fetchSessions = async () => {
@@ -80,27 +83,33 @@ const Discharge = () => {
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         {/* Calendar Section */}
         <div className="md:col-span-4 flex flex-col gap-4">
-          <Card className="flex-1 shadow-sm border-t-4 border-t-[#0b4f2a]">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2 text-[#0b4f2a]">
-                <CalendarIcon className="w-5 h-5" />
-                Calendar View
+          <Card className="flex-1 shadow-sm border-t-4 border-t-red-600">
+            <CardHeader className="bg-gradient-to-r from-red-50 to-white pb-4 border-b">
+              <CardTitle className="text-lg flex items-center gap-2 text-red-900">
+                <CalendarIcon className="w-5 h-5 text-red-600" />
+                Discharge Schedule
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex justify-center pb-6">
+            <CardContent className="flex flex-col items-center pt-6 pb-6 bg-white">
               <Calendar
                 mode="single"
                 selected={selectedDate}
                 onSelect={setSelectedDate}
-                captionLayout="dropdown-buttons"
-                fromYear={2000}
-                toYear={2050}
                 className="rounded-md border shadow-sm p-4 bg-white"
                 modifiers={{ booked: bookedDates }}
                 modifiersClassNames={{
-                  booked: "bg-red-100 text-red-900 font-bold border-2 border-red-300"
+                  booked: "bg-red-100 text-red-900 font-bold border-2 border-red-300 rounded-full"
                 }}
               />
+              <div className="w-full mt-6 space-y-3 px-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 text-gray-600">
+                    <div className="w-3 h-3 rounded-full bg-red-100 border-2 border-red-300"></div>
+                    Scheduled Discharges
+                  </span>
+                  <span className="font-semibold text-gray-900">{bookedDates.length} Days</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -121,15 +130,19 @@ const Discharge = () => {
               ) : error ? (
                 <p className="text-red-500 bg-red-50 p-4 rounded-md">{error}</p>
               ) : filteredSessions.length === 0 ? (
-                <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed">
-                  <UserMinus className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+                <div className="text-center py-16 bg-gray-50/50 rounded-lg border border-dashed flex flex-col items-center">
+                  <div className="bg-white p-4 rounded-full shadow-sm border mb-4">
+                    <UserMinus className="h-8 w-8 text-gray-300" />
+                  </div>
                   <h3 className="text-lg font-medium text-gray-900">No Discharges Scheduled</h3>
-                  <p className="text-muted-foreground mt-1">There are no inmates scheduled for discharge on this date.</p>
+                  <p className="text-muted-foreground mt-1 max-w-sm">
+                    There are no inmates scheduled for release on {selectedDate ? format(selectedDate, 'MMMM do, yyyy') : 'this date'}.
+                  </p>
                 </div>
               ) : (
-                <div className="rounded-md border overflow-hidden">
+                <div className="rounded-md border shadow-sm overflow-hidden">
                   <Table>
-                    <TableHeader className="bg-gray-100">
+                    <TableHeader className="bg-gray-50/80">
                       <TableRow>
                         <TableHead>Prison No.</TableHead>
                         <TableHead>Name</TableHead>
@@ -137,6 +150,7 @@ const Discharge = () => {
                         <TableHead>Approval Status</TableHead>
                         <TableHead>EDR</TableHead>
                         <TableHead>ODR</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -158,6 +172,21 @@ const Discharge = () => {
                           <TableCell className="text-gray-500">
                             {session.active_odr ? format(new Date(session.active_odr + 'T12:00:00'), 'PP') : 'N/A'}
                           </TableCell>
+                          <TableCell className="text-right">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="text-[#0b4f2a] border-[#0b4f2a] hover:bg-[#0b4f2a] hover:text-white"
+                              onClick={() => {
+                                setSelectedSession(session);
+                                setIsModalOpen(true);
+                              }}
+                              disabled={session.approval_status !== 'APPROVED'}
+                            >
+                              <FileUp className="w-4 h-4 mr-1" />
+                              Propose
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -168,6 +197,13 @@ const Discharge = () => {
           </Card>
         </div>
       </div>
+
+      <ProposeDischargeModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={fetchSessions}
+        session={selectedSession}
+      />
     </PrisonLayout>
   );
 };

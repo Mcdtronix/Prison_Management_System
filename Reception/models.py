@@ -243,7 +243,8 @@ class CourtSession(models.Model):
         ("SCHEDULED", "Scheduled / Pending"),
         ("REMANDED", "Remanded (Next Court Date Set)"),
         ("CONVICTED", "Convicted / Sentenced"),
-        ("DISCHARGED", "Discharged")
+        ("DISCHARGED", "Discharged"),
+        ("RESTITUTION_SETTLED", "Restitution Settled (Closed)")
     ]
     outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, default="SCHEDULED", help_text="Outcome of the session")
     next_court_date = models.DateField(null=True, blank=True, help_text="The new court date set during this session (required if remanded or scheduled)")
@@ -296,6 +297,18 @@ class Restitution(models.Model):
     def clean(self):
         if self.restitution_date < self.offence.date_charged:
             raise ValidationError("Restitution date cannot be before offence date")
+
+class RestitutionPayment(models.Model):
+    restitution = models.ForeignKey(Restitution, on_delete=models.CASCADE, related_name="payments")
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    receipt_number = models.CharField(max_length=100)
+    receipt_file = models.FileField(upload_to='inmate/restitution_receipts/', blank=True, null=True)
+    payment_date = models.DateTimeField(auto_now_add=True)
+    recorded_by = models.CharField(max_length=100)
+
+    class Meta:
+        db_table = "restitution_payment"
+        ordering = ["-payment_date"]
 
 class RestitutionExtension(models.Model):
     """
@@ -488,6 +501,8 @@ class ReleaseWorkflow(models.Model):
     ]
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="PROPOSED_BY_RECEPTION")
     proposed_date = models.DateTimeField(auto_now_add=True)
+    reception_reason = models.TextField(null=True, blank=True)
+    reception_receipt = models.FileField(upload_to="discharge_receipts/", null=True, blank=True)
     health_assessment_date = models.DateTimeField(null=True, blank=True)
     health_remarks = models.TextField(null=True, blank=True)
     approved_date = models.DateTimeField(null=True, blank=True)
@@ -705,7 +720,7 @@ def calculate_inmate_release_dates(inmate):
     if restitutions.exists():
         restitution_valid = True
         for r in restitutions:
-            if r.status != 'paid' or not r.receipt or timezone.now().date() <= r.restitution_date:
+            if r.status != 'paid' or not r.receipt:
                 restitution_valid = False
                 break
     
