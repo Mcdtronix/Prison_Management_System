@@ -40,20 +40,45 @@ class MailboxContextMiddleware(MiddlewareMixin):
         request.mailbox = None
         request.message_recipients = {}
         
+        # Inject Superadmin fallback context
+        is_super = False
+        if hasattr(request, 'user') and request.user.is_authenticated:
+            if getattr(request.user, 'is_superuser', False) or getattr(request, 'role', '') == 'SUPER_ADMIN':
+                is_super = True
+                
         # Skip if no org context (not authenticated or no assignment)
         if not hasattr(request, 'org_unit') or not request.org_unit:
-            return None
+            if is_super:
+                from Auth.models import OrgUnit
+                request.org_unit = OrgUnit.objects.filter(unit_type='NATIONAL_HQ').first()
+                if not request.org_unit:
+                    return None
+            else:
+                return None
         
         if not hasattr(request, 'department') or not request.department:
-            return None
+            if is_super:
+                from Auth.models import Department
+                request.department = Department.objects.filter(code='ADMINISTRATION').first()
+                if not request.department:
+                    return None
+            else:
+                return None
         
         try:
-            # Get mailbox for user's org_unit/department
+            # Get or create mailbox for user's org_unit/department
             mailbox = OrgUnitDepartment.objects.filter(
                 org_unit=request.org_unit,
                 department=request.department,
                 active=True
             ).first()
+            
+            if not mailbox:
+                mailbox = OrgUnitDepartment.objects.create(
+                    org_unit=request.org_unit,
+                    department=request.department,
+                    active=True
+                )
             
             if mailbox:
                 # Ensure there is a Mailbox model record for the OrgUnitDepartment
@@ -101,25 +126,23 @@ class MailboxContextMiddleware(MiddlewareMixin):
         try:
             if org_unit.unit_type == 'STATION':
                 # Station can send to:
-                # 1. Parent province's same department
+                # 1. Parent province's departments
                 if org_unit.parent:
-                    parent_mailbox = OrgUnitDepartment.objects.filter(
+                    parent_mailboxes = OrgUnitDepartment.objects.filter(
                         org_unit=org_unit.parent,
-                        department=department,
                         active=True
-                    ).first()
-                    if parent_mailbox:
-                        recipients[parent_mailbox.mailbox_address] = parent_mailbox
+                    )
+                    for mailbox in parent_mailboxes:
+                        recipients[mailbox.mailbox_address] = mailbox
                 
-                # 2. National HQ's same department
+                # 2. National HQ's departments
                 national = org_unit.get_root()  # Get National HQ
-                national_mailbox = OrgUnitDepartment.objects.filter(
+                national_mailboxes = OrgUnitDepartment.objects.filter(
                     org_unit=national,
-                    department=department,
                     active=True
-                ).first()
-                if national_mailbox:
-                    recipients[national_mailbox.mailbox_address] = national_mailbox
+                )
+                for mailbox in national_mailboxes:
+                    recipients[mailbox.mailbox_address] = mailbox
                 
                 # 3. Peer stations (same province)
                 if org_unit.parent:
@@ -130,6 +153,14 @@ class MailboxContextMiddleware(MiddlewareMixin):
                     ).exclude(org_unit=org_unit)
                     for mailbox in peer_mailboxes:
                         recipients[mailbox.mailbox_address] = mailbox
+                        
+                # 4. Other departments at the SAME station
+                same_station = OrgUnitDepartment.objects.filter(
+                    org_unit=org_unit,
+                    active=True
+                )
+                for mailbox in same_station:
+                    recipients[mailbox.mailbox_address] = mailbox
             
             elif org_unit.unit_type == 'PROVINCIAL_HQ':
                 # Province can send to:
@@ -142,15 +173,14 @@ class MailboxContextMiddleware(MiddlewareMixin):
                 for mailbox in child_mailboxes:
                     recipients[mailbox.mailbox_address] = mailbox
                 
-                # 2. National HQ
+                # 2. National HQ's departments
                 national = org_unit.parent
-                national_mailbox = OrgUnitDepartment.objects.filter(
+                national_mailboxes = OrgUnitDepartment.objects.filter(
                     org_unit=national,
-                    department=department,
                     active=True
-                ).first()
-                if national_mailbox:
-                    recipients[national_mailbox.mailbox_address] = national_mailbox
+                )
+                for mailbox in national_mailboxes:
+                    recipients[mailbox.mailbox_address] = mailbox
                 
                 # 3. Peer provinces
                 peer_mailboxes = OrgUnitDepartment.objects.filter(
@@ -160,6 +190,14 @@ class MailboxContextMiddleware(MiddlewareMixin):
                     unit_type='PROVINCIAL_HQ'
                 ).exclude(org_unit=org_unit)
                 for mailbox in peer_mailboxes:
+                    recipients[mailbox.mailbox_address] = mailbox
+                    
+                # 4. Other departments at the SAME province
+                same_province = OrgUnitDepartment.objects.filter(
+                    org_unit=org_unit,
+                    active=True
+                )
+                for mailbox in same_province:
                     recipients[mailbox.mailbox_address] = mailbox
             
             elif org_unit.unit_type == 'NATIONAL_HQ':

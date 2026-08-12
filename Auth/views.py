@@ -92,14 +92,61 @@ def current_user_view(request):
         data = dict(serializer.data)
         # Legacy UserProfile corresponds to a Station-level account
         data["org_unit_unit_type"] = "STATION"
+        
+        from .models import OrgUnit, Department, OrgUnitDepartment
+        try:
+            ou = OrgUnit.objects.filter(name=profile.station.name).first() if profile.station else None
+            role_code_mapping = {
+                'R.O': 'RECEPTION',
+                'H.O': 'HEALTH',
+                'S.O': 'SECURITY'
+            }
+            mapped_role = role_code_mapping.get(profile.role.code, profile.role.code)
+            dept = Department.objects.filter(code=mapped_role).first()
+            
+            if ou and dept:
+                oud = OrgUnitDepartment.objects.filter(org_unit=ou, department=dept).first()
+                if oud:
+                    data["mailbox_address"] = oud.mailbox_address
+        except Exception:
+            pass
+            
         return Response(data, status=status.HTTP_200_OK)
     except AttributeError:
         from .utils import get_primary_assignment
         assignment = get_primary_assignment(request.user)
         if not assignment:
+            if getattr(request.user, 'is_superuser', False):
+                from .models import OrgUnit, Department
+                org_unit = OrgUnit.objects.filter(unit_type='NATIONAL_HQ').first()
+                department = Department.objects.filter(code='ADMINISTRATION').first()
+                return Response({
+                    "user_id": request.user.id,
+                    "username": request.user.username,
+                    "role": "SUPER_ADMIN",
+                    "role_name": "System Administrator",
+                    "org_unit_id": org_unit.id if org_unit else None,
+                    "org_unit_code": org_unit.code if org_unit else None,
+                    "org_unit_unit_type": org_unit.unit_type if org_unit else None,
+                    "department_id": department.id if department else None,
+                    "department_code": department.code if department else None,
+                    "department_name": department.name if department else None,
+                    "mailbox_address": "administration@nat-hq.pms.local",
+                    "is_active": True,
+                }, status=status.HTTP_200_OK)
+
             return Response({
                 "error": "User profile not found"
             }, status=status.HTTP_404_NOT_FOUND)
+
+        from .models import OrgUnitDepartment
+        mailbox_address = None
+        if assignment.org_unit and assignment.department:
+            try:
+                oud = OrgUnitDepartment.objects.get(org_unit=assignment.org_unit, department=assignment.department)
+                mailbox_address = oud.mailbox_address
+            except OrgUnitDepartment.DoesNotExist:
+                pass
 
         return Response({
             "user_id": request.user.id,
@@ -112,6 +159,7 @@ def current_user_view(request):
             "department_id": assignment.department.id if assignment.department else None,
             "department_code": assignment.department.code if assignment.department else None,
             "department_name": assignment.department.name if assignment.department else None,
+            "mailbox_address": mailbox_address,
             "is_active": assignment.is_active,
         }, status=status.HTTP_200_OK)
 

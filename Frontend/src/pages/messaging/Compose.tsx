@@ -58,7 +58,15 @@ export default function Compose() {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (recipients.length === 0) {
+    
+    let finalRecipients = [...recipients];
+    if (query.trim() && !finalRecipients.includes(query.trim())) {
+      finalRecipients.push(query.trim());
+      setRecipients(finalRecipients);
+      setQuery('');
+    }
+
+    if (finalRecipients.length === 0) {
       toast({ title: "Recipient required", description: "Please add at least one recipient.", variant: "destructive" });
       return;
     }
@@ -71,7 +79,7 @@ export default function Compose() {
     const form = new FormData();
     form.append('subject', subject);
     form.append('initial_body', body);
-    form.append('participants', recipients.join(','));
+    form.append('participants', finalRecipients.join(','));
     files.forEach(f => form.append('attachments', f));
 
     const res = await messagingApi.createThread(form);
@@ -124,6 +132,14 @@ export default function Compose() {
                     placeholder={recipients.length === 0 ? "Type mailbox address..." : ""}
                     value={query}
                     onChange={e => setQuery(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ',') {
+                        e.preventDefault();
+                        if (query.trim()) {
+                          addRecipient(query.trim());
+                        }
+                      }
+                    }}
                   />
                 </div>
                 
@@ -186,8 +202,8 @@ export default function Compose() {
 
             {/* Bottom Actions */}
             <div className="pt-4 pb-8 flex items-center justify-between border-t mt-auto shrink-0">
-              <div className="flex items-center gap-4">
-                <Button type="submit" disabled={isSending || recipients.length === 0} className="bg-[#0b4f2a] hover:bg-[#063f20] px-6 rounded-full">
+              <div className="flex items-center gap-4 relative z-20">
+                <Button type="submit" disabled={isSending || (recipients.length === 0 && !query.trim())} className="bg-[#0b4f2a] hover:bg-[#063f20] px-6 rounded-full">
                   {isSending ? 'Sending...' : (
                     <>
                       Send <Send className="ml-2 h-4 w-4" />

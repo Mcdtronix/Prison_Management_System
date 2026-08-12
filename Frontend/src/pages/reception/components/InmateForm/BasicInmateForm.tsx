@@ -37,7 +37,7 @@ const optionalText = z.string().optional();
 
 export const basicInmateDetailsSchema = z.object({
   admission_type: z.enum(["NEW_ADMISSION", "TRANSFER"]),
-  prison_number: z.string().regex(/^\d{4}\/\d{2}$/, "Prison number must be in the format 0001/25 (4 digits, slash, 2 digits)"),
+  prison_number: z.string().regex(/^\d{4}\/\d{2}$/, "Prison number must be in the format 0001/25 (4 digits, slash, 2 digits)").optional().or(z.literal('')),
   crb_number: optionalText,
   first_name: z.string().min(1, "Name is required"),
   surname: z.string().min(1, "Surname is required"),
@@ -109,19 +109,24 @@ const FieldInput = ({
   label,
   placeholder,
   type = "text",
+  required = false,
 }: {
   form: UseFormReturn<BasicFormValues>;
   name: any;
   label: string;
   placeholder?: string;
   type?: string;
+  required?: boolean;
 }) => (
   <FormField
     control={form.control}
     name={name}
     render={({ field }) => (
       <FormItem>
-        <FormLabel>{label}</FormLabel>
+        <FormLabel>
+          {label}
+          {required && <span className="text-red-500 ml-1">*</span>}
+        </FormLabel>
         <FormControl>
           <Input type={type} placeholder={placeholder} {...field} />
         </FormControl>
@@ -263,19 +268,24 @@ const FieldSelect = ({
   label,
   options,
   placeholder,
+  required = false,
 }: {
   form: UseFormReturn<BasicFormValues>;
   name: any;
   label: string;
   options: string[];
   placeholder?: string;
+  required?: boolean;
 }) => (
   <FormField
     control={form.control}
     name={name}
     render={({ field }) => (
       <FormItem>
-        <FormLabel>{label}</FormLabel>
+        <FormLabel>
+          {label}
+          {required && <span className="text-red-500 ml-1">*</span>}
+        </FormLabel>
         <Select onValueChange={field.onChange} value={field.value || ""}>
           <FormControl>
             <SelectTrigger>
@@ -469,7 +479,7 @@ const BasicInmateForm = () => {
                   name="inmateDetails.admission_type"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Admission Type</FormLabel>
+                      <FormLabel>Admission Type <span className="text-red-500 ml-1">*</span></FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -507,15 +517,15 @@ const BasicInmateForm = () => {
             <AccordionTrigger>Personal Details</AccordionTrigger>
             <AccordionContent>
               <div className="grid grid-cols-1 gap-5 pb-4 md:grid-cols-2 lg:grid-cols-3">
-                <FieldInput form={form} name="inmateDetails.first_name" label="Name" />
-                <FieldInput form={form} name="inmateDetails.surname" label="Surname" />
+                <FieldInput form={form} name="inmateDetails.first_name" label="Name" required />
+                <FieldInput form={form} name="inmateDetails.surname" label="Surname" required />
                 <FieldInput form={form} name="inmateDetails.other_names" label="Other Names" placeholder="Optional" />
                 <FormField
                   control={form.control}
                   name="inmateDetails.gender"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Gender</FormLabel>
+                      <FormLabel>Gender <span className="text-red-500 ml-1">*</span></FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -531,21 +541,22 @@ const BasicInmateForm = () => {
                     </FormItem>
                   )}
                 />
-                <FieldInput form={form} name="inmateDetails.date_of_birth" label="Date of Birth" type="date" />
+                <FieldInput form={form} name="inmateDetails.date_of_birth" label="Date of Birth" type="date" required />
                 <FieldSelect
                   form={form}
                   name="inmateDetails.nationality"
                   label="Nationality"
                   options={nationalityOptions}
+                  required
                 />
                 <FieldInput form={form} name="inmateDetails.national_id" label="National ID" placeholder="Optional" />
-                <FieldInput form={form} name="inmateDetails.address" label="Address" />
+                <FieldInput form={form} name="inmateDetails.address" label="Address" required />
                 <FormField
                   control={form.control}
                   name="inmateDetails.marital_status"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Marital Status</FormLabel>
+                      <FormLabel>Marital Status <span className="text-red-500 ml-1">*</span></FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -568,6 +579,7 @@ const BasicInmateForm = () => {
                   name="inmateDetails.educational_level"
                   label="Educational Level"
                   options={educationalLevelOptions}
+                  required
                 />
               </div>
             </AccordionContent>

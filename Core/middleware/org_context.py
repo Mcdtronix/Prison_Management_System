@@ -102,6 +102,25 @@ class OrgContextMiddleware(MiddlewareMixin):
                         if org_unit:
                             request.org_unit = org_unit
                             request.role = request.user.userprofile.role
+                            
+                            # Map legacy role to department
+                            role_code = getattr(request.role, 'code', '')
+                            dept_map = {
+                                'RECEPTION_OFFICER': 'RECEPTION',
+                                'R.O': 'RECEPTION',
+                                'HEALTH_OFFICER': 'HEALTH',
+                                'H.O': 'HEALTH',
+                                'ADMIN_OFFICER': 'ADMINISTRATION',
+                                'Admin': 'ADMINISTRATION',
+                                'STORES_OFFICER': 'STORES',
+                                'FARMS_OFFICER': 'FARMS',
+                                'SUPER_ADMIN': 'ADMINISTRATION',
+                            }
+                            mapped_dept = dept_map.get(role_code)
+                            if mapped_dept:
+                                from Auth.models import Department
+                                request.department = Department.objects.filter(code=mapped_dept).first()
+                                
                             request.has_org_context = True
                             logger.debug(
                                 f'User {request.user.username} attached to org {org_unit.code} via UserProfile fallback'

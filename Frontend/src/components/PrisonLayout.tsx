@@ -80,7 +80,12 @@ export const PrisonLayout = ({
                 <DropdownMenuLabel>
                   <div className="flex flex-col">
                     <span className="font-medium">{getUserDisplayName()}</span>
-                    <span className="text-xs text-gray-500">{getUserRoleDisplay()}</span>
+                    <span className="text-xs text-gray-500 mb-1">{getUserRoleDisplay()}</span>
+                    {user?.mailboxAddress && (
+                      <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1 py-0.5 rounded w-max mt-1">
+                        {user.mailboxAddress}
+                      </span>
+                    )}
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />

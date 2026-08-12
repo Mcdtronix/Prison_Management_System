@@ -4,7 +4,9 @@ import MailLayout from './MailLayout';
 import { messagingApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, MoreVertical, Reply, CornerUpLeft } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { useAuth } from '@/contexts/AuthContext';
+import { ArrowLeft, MoreVertical, Archive, Trash2, Mail } from 'lucide-react';
 import { format } from 'date-fns';
 
 const ThreadView = () => {
@@ -14,6 +16,9 @@ const ThreadView = () => {
   const [body, setBody] = useState('');
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  const { user } = useAuth();
+  const currentMailbox = user?.mailboxAddress;
 
   useEffect(() => {
     const load = async () => {
@@ -36,16 +41,18 @@ const ThreadView = () => {
   const send = async () => {
     if (!thread || !body.trim()) return;
     setIsSending(true);
+    
     await messagingApi.createMessage({ thread: thread.id, body });
     setBody('');
     const res = await messagingApi.getThread(thread.id);
     if (res.data) setThread(res.data);
+    
     setIsSending(false);
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return format(date, 'MMM d, yyyy, h:mm a');
+    return format(date, 'EEE, d MMM, HH:mm');
   };
 
   return (
@@ -58,8 +65,14 @@ const ThreadView = () => {
               <ArrowLeft className="h-4 w-4 text-gray-600" />
             </Button>
             <div className="h-6 w-px bg-gray-200 mx-2"></div>
-            <Button variant="ghost" size="icon" title="Reply">
-              <CornerUpLeft className="h-4 w-4 text-gray-600" />
+            <Button variant="ghost" size="icon" title="Archive">
+              <Archive className="h-4 w-4 text-gray-600" />
+            </Button>
+            <Button variant="ghost" size="icon" title="Delete">
+              <Trash2 className="h-4 w-4 text-gray-600" />
+            </Button>
+            <Button variant="ghost" size="icon" title="Mark Unread">
+              <Mail className="h-4 w-4 text-gray-600" />
             </Button>
           </div>
           <Button variant="ghost" size="icon">
@@ -73,31 +86,38 @@ const ThreadView = () => {
             <div className="max-w-4xl mx-auto pb-8">
               <h1 className="text-2xl font-normal text-gray-900 mb-8">{thread.subject}</h1>
               
-              <div className="space-y-6">
+              <div className="space-y-0">
                 {thread.messages.map((m: any, index: number) => {
                   const isLast = index === thread.messages.length - 1;
+                  const senderName = m.sender?.mailbox_address?.split('@')[0] || 'System';
+                  const recipients = thread.participants
+                    ?.filter((p: any) => p.mailbox?.mailbox_address !== m.sender?.mailbox_address)
+                    .map((p: any) => p.mailbox?.mailbox_address?.split('@')[0])
+                    .join(', ') || 'everyone';
+
                   return (
-                    <div key={m.id} className={`bg-white rounded-lg border shadow-sm overflow-hidden ${isLast ? 'ring-1 ring-blue-100' : ''}`}>
-                      {/* Message Header */}
-                      <div className="bg-gray-50/50 px-4 py-3 flex justify-between items-start border-b">
+                    <div key={m.id} className={`py-6 ${!isLast ? 'border-b border-gray-100' : ''}`}>
+                      <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-[#d7a928]/20 flex items-center justify-center text-blue-700 font-bold text-lg">
-                            {(m.sender?.mailbox_address || '?')[0].toUpperCase()}
+                          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-lg">
+                            {(senderName)[0].toUpperCase()}
                           </div>
                           <div>
-                            <div className="font-semibold text-sm text-gray-900">
-                              {m.sender?.mailbox_address || 'System'}
+                            <div className="font-semibold text-[15px] text-gray-900">
+                              {senderName}
                             </div>
-                            <div className="text-xs text-gray-500">to everyone</div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              To: me, {recipients} {'>'}
+                            </div>
                           </div>
                         </div>
-                        <div className="text-xs text-gray-500 whitespace-nowrap pt-1">
+                        <div className="flex items-center gap-4 text-xs text-gray-500">
                           {formatDate(m.created_at)}
+                          <MoreVertical className="h-4 w-4 cursor-pointer hover:text-gray-900" />
                         </div>
                       </div>
                       
-                      {/* Message Body */}
-                      <div className="px-5 py-4 text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                      <div className="text-[14px] text-gray-800 whitespace-pre-wrap leading-relaxed">
                         {m.body}
                       </div>
                     </div>
@@ -107,22 +127,38 @@ const ThreadView = () => {
               </div>
 
               {/* Inline Reply Box */}
-              <div className="mt-8 bg-white border rounded-lg shadow-sm overflow-hidden">
-                <div className="px-4 py-3 bg-gray-50 border-b flex items-center gap-2 text-sm text-gray-600">
-                  <Reply className="h-4 w-4" /> Reply
+              <div className="mt-6 border rounded-xl overflow-hidden shadow-sm bg-white">
+                <div className="px-4 py-3 bg-gray-50/50 flex items-center gap-3 text-sm text-gray-800">
+                  <div className="w-8 h-8 rounded-full bg-[#d7a928]/20 flex items-center justify-center text-blue-700 font-bold text-sm">
+                    {currentMailbox?.[0].toUpperCase() || 'U'}
+                  </div>
+                  <span className="font-semibold">{currentMailbox?.split('@')[0] || 'You'}</span>
                 </div>
-                <div className="p-4">
+                <div className="p-0">
                   <Textarea 
                     value={body} 
                     onChange={(e) => setBody(e.target.value)} 
-                    placeholder="Write your reply here..." 
-                    className="min-h-[120px] resize-y border-none shadow-none focus-visible:ring-0 p-0 text-sm"
+                    placeholder="Reply..." 
+                    className="min-h-[150px] resize-y border-none shadow-none focus-visible:ring-0 px-4 py-2 text-[14px] text-gray-800"
                   />
-                  <div className="flex justify-between items-center mt-4">
-                    <div className="text-xs text-gray-400">Attachments are not supported in quick reply.</div>
-                    <Button onClick={send} disabled={isSending || !body.trim()} className="bg-[#0b4f2a] hover:bg-[#063f20]">
-                      {isSending ? 'Sending...' : 'Send'}
-                    </Button>
+                  <div className="flex justify-between items-center px-4 py-3 bg-white">
+                    <div className="flex items-center gap-4 text-gray-400 select-none">
+                       <Button variant="outline" size="sm" className="text-gray-600 font-normal h-8 rounded-md flex gap-2 items-center border-gray-200">
+                         <span className="text-purple-600">✨</span> Use AI <span className="text-gray-300 ml-1">v</span>
+                       </Button>
+                       <span className="text-xs">Text</span>
+                       <span className="text-xs">10pt</span>
+                       <span className="font-bold cursor-pointer hover:text-gray-800">B</span>
+                       <span className="italic cursor-pointer hover:text-gray-800">I</span>
+                       <span className="underline cursor-pointer hover:text-gray-800">U</span>
+                       <span className="line-through cursor-pointer hover:text-gray-800">S</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Button variant="ghost" onClick={() => setBody('')} className="text-gray-500 hover:text-gray-700 font-medium">Cancel</Button>
+                      <Button onClick={send} disabled={isSending || !body.trim()} className="bg-gray-900 hover:bg-gray-800 text-white rounded-[10px] px-6 font-medium">
+                        {isSending ? 'Sending...' : 'Send'}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>

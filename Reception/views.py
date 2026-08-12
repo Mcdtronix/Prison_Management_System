@@ -122,6 +122,44 @@ class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Validate and apply classification
+        proposed_class = request.data.get("classification")
+        if proposed_class:
+            pending_class = inmate.classification_history.filter(approval_status="PENDING").first()
+            if pending_class:
+                pending_class.classification = proposed_class
+                pending_class.approval_status = "APPROVED"
+                pending_class.save(update_fields=['classification', 'approval_status'])
+            else:
+                from Reception.models import InmateClassificationHistory
+                from django.utils import timezone
+                InmateClassificationHistory.objects.create(
+                    inmate=inmate,
+                    classification=proposed_class,
+                    effective_date=timezone.now().date(),
+                    approval_status="APPROVED",
+                    remarks="Approved on admission"
+                )
+        else:
+            # If no classification is explicitly provided, just approve any pending ones
+            pending_classes = inmate.classification_history.filter(approval_status="PENDING")
+            if pending_classes.exists():
+                for pc in pending_classes:
+                    pc.approval_status = "APPROVED"
+                    pc.save(update_fields=['approval_status'])
+            else:
+                # Fallback: automatically assign the engine's computed class
+                computed_class = inmate.get_computed_classification()
+                from Reception.models import InmateClassificationHistory
+                from django.utils import timezone
+                InmateClassificationHistory.objects.create(
+                    inmate=inmate,
+                    classification=computed_class,
+                    effective_date=timezone.now().date(),
+                    approval_status="APPROVED",
+                    remarks="Auto-assigned on admission via system rules"
+                )
+        
         inmate.admission_status = "ADMISSION_CONFIRMED"
         inmate.save(update_fields=['admission_status'])
         return Response({"status": "Admission confirmed successfully."})
@@ -134,9 +172,14 @@ class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
             return Response({"error": "No pending reclassifications found for this inmate."}, status=status.HTTP_400_BAD_REQUEST)
         
         # Approve the most recent pending classification
-        classification = pending_classifications.latest('effective_date')
-        classification.approval_status = "APPROVED"
-        classification.save(update_fields=['approval_status'])
+        classification_obj = pending_classifications.latest('effective_date')
+        
+        proposed_class = request.data.get("classification")
+        if proposed_class:
+            classification_obj.classification = proposed_class
+            
+        classification_obj.approval_status = "APPROVED"
+        classification_obj.save(update_fields=['classification', 'approval_status'])
         return Response({"status": "Reclassification approved successfully."})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminOfficer])
@@ -857,3 +900,142 @@ class UpcomingDischargesView(OrgUnitContextMixin, APIView):
 
         serializer = UpcomingDischargeSerializer(queryset, many=True)
         return Response(serializer.data)
+from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from Reception.models import Inmate, InmateClassificationHistory
+
+class ReclassificationViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['get'])
+    def due(self, request):
+        visible_org_units = getattr(request, 'visible_org_units', None)
+        qs = Inmate.objects.filter(current_status="IN_CUSTODY")
+        
+        if visible_org_units is not None:
+            from django.db.models import Q
+            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
+
+        due_inmates = []
+        for inmate in qs:
+            latest_class_history = inmate.classification_history.filter(approval_status="APPROVED").order_by('-effective_date').first()
+            current_class = latest_class_history.classification if latest_class_history else "Unclassified"
+            
+            # Skip if they already have a pending proposal
+            if inmate.classification_history.filter(approval_status="PENDING").exists():
+                continue
+            
+            # If they are currently COND or PUSOD, we don't automatically flag them
+            if current_class in ["COND", "PUSOD"]:
+                continue
+                
+            computed_class = inmate.get_computed_classification()
+            if current_class != computed_class:
+                due_inmates.append({
+                    "id": inmate.id,
+                    "prison_number": inmate.prison_number,
+                    "name": f"{inmate.first_name} {inmate.surname}",
+                    "current_class": current_class,
+                    "required_class": computed_class,
+                    "admission_date": inmate.admission_date,
+                    "offense": inmate.offences.first().offence_description[:50] if inmate.offences.exists() else 'N/A'
+                })
+                
+        return Response(due_inmates)
+        
+    @action(detail=False, methods=['get'])
+    def pending_approvals(self, request):
+        visible_org_units = getattr(request, 'visible_org_units', None)
+        qs = Inmate.objects.filter(current_status="IN_CUSTODY", classification_history__approval_status="PENDING").distinct()
+        
+        if visible_org_units is not None:
+            from django.db.models import Q
+            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
+
+        pending = []
+        for inmate in qs:
+            pending_class = inmate.classification_history.filter(approval_status="PENDING").latest('effective_date')
+            computed_class = inmate.get_computed_classification()
+            
+            # Get their most recent APPROVED classification to show as "current"
+            current_history = inmate.classification_history.filter(approval_status="APPROVED").order_by('-effective_date').first()
+            current_class = current_history.classification if current_history else "Unclassified"
+            
+            pending.append({
+                "id": inmate.id,
+                "prison_number": inmate.prison_number,
+                "name": f"{inmate.first_name} {inmate.surname}",
+                "current_class": current_class,
+                "proposed_class": pending_class.classification,
+                "required_class": computed_class,
+                "date_proposed": pending_class.effective_date,
+            })
+            
+        return Response(pending)
+        
+    @action(detail=True, methods=['post'])
+    def propose(self, request, pk=None):
+        from django.utils import timezone
+        try:
+            inmate = Inmate.objects.get(pk=pk)
+        except Inmate.DoesNotExist:
+            return Response({"error": "Inmate not found"}, status=status.HTTP_404_NOT_FOUND)
+            
+        proposed_class = request.data.get("classification")
+        if not proposed_class:
+            return Response({"error": "classification is required"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Check if they already have a pending one
+        if inmate.classification_history.filter(approval_status="PENDING").exists():
+            return Response({"error": "Inmate already has a pending reclassification."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        InmateClassificationHistory.objects.create(
+            inmate=inmate,
+            classification=proposed_class,
+            effective_date=timezone.now().date(),
+            approval_status="PENDING",
+            remarks="Manually proposed by Reception"
+        )
+        return Response({"status": "Reclassification proposed successfully."})
+        
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        try:
+            inmate = Inmate.objects.get(pk=pk)
+        except Inmate.DoesNotExist:
+            return Response({"error": "Inmate not found"}, status=status.HTTP_404_NOT_FOUND)
+            
+        pending_classifications = inmate.classification_history.filter(approval_status="PENDING")
+        if not pending_classifications.exists():
+            return Response({"error": "No pending reclassifications found."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        for pc in pending_classifications:
+            pc.approval_status = "REJECTED"
+            pc.save(update_fields=['approval_status'])
+            
+        return Response({"status": "Reclassification rejected successfully."})
+
+    @action(detail=False, methods=['get'])
+    def categories(self, request):
+        visible_org_units = getattr(request, 'visible_org_units', None)
+        qs = Inmate.objects.filter(current_status="IN_CUSTODY")
+        
+        if visible_org_units is not None:
+            from django.db.models import Q
+            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
+            
+        categories = {"A": [], "B": [], "C": [], "D": [], "COND": [], "PUSOD": []}
+        
+        for inmate in qs:
+            latest_class = inmate.classification_history.filter(approval_status="APPROVED").order_by('-effective_date').first()
+            if latest_class and latest_class.classification in categories:
+                categories[latest_class.classification].append({
+                    "id": inmate.id,
+                    "prison_number": inmate.prison_number,
+                    "name": f"{inmate.first_name} {inmate.surname}",
+                    "admission_date": inmate.admission_date,
+                    "offense": inmate.offences.first().offence_description[:50] if inmate.offences.exists() else 'N/A'
+                })
+                
+        return Response(categories)

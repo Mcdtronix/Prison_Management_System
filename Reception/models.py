@@ -110,6 +110,43 @@ class Inmate(models.Model):
     def __str__(self):
         return f"{self.prison_number} - {self.surname} {self.first_name}"
 
+    def get_computed_classification(self):
+        """
+        Compute the expected classification based on unconvicted offences and remaining sentence term.
+        - Unconvicted or >= 84 months (7 yrs) remaining -> D
+        - 36 to < 84 months remaining -> C
+        - 18 to < 36 months remaining -> B
+        - < 18 months remaining -> A
+        """
+        from django.utils import timezone
+        
+        # Check for unconvicted offences
+        if self.offences.filter(Offence_status="UNCONVICTED").exists():
+            return "D"
+            
+        # Calculate total net sentence
+        total_net_sentence_days = 0
+        for conviction in self.convictions.all():
+            total_net_sentence_days += (conviction.effective_sentence_days - conviction.remission_days)
+            
+        # Calculate days served
+        today = timezone.now().date()
+        days_served = (today - self.admission_date).days
+        if days_served < 0:
+            days_served = 0
+            
+        remaining_days = max(0, total_net_sentence_days - days_served)
+        remaining_months = remaining_days / 30.44
+        
+        if remaining_months >= 84:
+            return "D"
+        elif remaining_months >= 36:
+            return "C"
+        elif remaining_months >= 18:
+            return "B"
+        else:
+            return "A"
+
 
 # -----------------------------
 # NEXT OF KIN (HISTORICAL)

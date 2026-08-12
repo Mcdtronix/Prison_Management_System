@@ -21,7 +21,7 @@ import InmateValuables from "./InmateValuables";
 
 // Define the schema for each section
 export const inmateDetailsSchema = z.object({
-  prison_number: z.string().min(1, "Prison number is required"),
+  prison_number: z.string().optional().or(z.literal('')),
   first_name: z.string().min(1, "First name is required"),
   surname: z.string().min(1, "Surname is required"),
   other_names: z.string().optional(),

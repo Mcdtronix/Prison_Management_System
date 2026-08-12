@@ -24,6 +24,7 @@ import RecordCourtOutcome from "@/pages/reception/RecordCourtOutcome";
 import Courts from "@/pages/reception/Courts";
 import Analysis from "@/pages/reception/Analysis";
 import Discharge from "@/pages/reception/Discharge";
+import Reclassification from "@/pages/reception/Reclassification";
 import HealthDashboard from "@/pages/health/HealthDashboard";
 import InmateHealth from "@/pages/health/InmateHealth";
 import InmateHealthList from "@/pages/health/InmateHealthList";
@@ -253,6 +254,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
                 <Discharge />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reception/reclassification"
+            element={
+              <ProtectedRoute allowedRoles={["RECEPTION_OFFICER", "ADMIN_OFFICER", "SUPER_ADMIN"]}>
+                <Reclassification />
               </ProtectedRoute>
             }
           />

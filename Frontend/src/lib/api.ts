@@ -616,9 +616,10 @@ export const adminApi = {
     return fetchApi("/reception/inmate-list/");
   },
 
-  approveInmate: async (id: string) => {
+  approveInmate: async (id: string, classification?: string) => {
     return fetchApi(`/reception/inmates/${id}/approve_admission/`, {
       method: "POST",
+      body: classification ? JSON.stringify({ classification }) : undefined,
     });
   },
 
@@ -636,10 +637,10 @@ export const adminApi = {
     });
   },
 
-  classifyInmate: async (id: string, classification: string) => {
-    return fetchApi(`/admin/inmates/${id}/classify`, {
+  approveReclassification: async (id: string, classification?: string) => {
+    return fetchApi(`/reception/inmates/${id}/approve_reclassification/`, {
       method: "POST",
-      body: JSON.stringify({ classification }),
+      body: classification ? JSON.stringify({ classification }) : undefined,
     });
   },
 };
@@ -649,8 +650,9 @@ export const messagingApi = {
   listMailboxes: async () => {
     return apiRequest('/messaging/mailboxes/');
   },
-  listThreads: async () => {
-    return apiRequest('/messaging/threads/');
+  listThreads: async (folder?: string) => {
+    const qs = folder ? `?folder=${folder}` : '';
+    return apiRequest(`/messaging/threads/${qs}`);
   },
   getThread: async (id: number) => {
     return apiRequest(`/messaging/threads/${id}/`);
@@ -784,6 +786,31 @@ export const receptionApi = {
 
   getPendingOffenceInmates: async () => {
     return fetchApi("/reception/pending-offences");
+  },
+
+  getDueReclassifications: async () => {
+    return fetchApi("/reception/reclassifications/due/");
+  },
+
+  getReclassificationCategories: async () => {
+    return fetchApi("/reception/reclassifications/categories/");
+  },
+
+  getPendingReclassifications: async () => {
+    return fetchApi("/reception/reclassifications/pending_approvals/");
+  },
+
+  proposeReclassification: async (id: string, classification: string) => {
+    return fetchApi(`/reception/reclassifications/${id}/propose/`, {
+      method: "POST",
+      body: JSON.stringify({ classification })
+    });
+  },
+
+  rejectReclassification: async (id: string) => {
+    return fetchApi(`/reception/reclassifications/${id}/reject/`, {
+      method: "POST"
+    });
   },
 
   getInmate: async (id: string) => {

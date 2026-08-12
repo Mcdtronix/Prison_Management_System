@@ -68,6 +68,31 @@ class ThreadViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Thread.objects.all()
     serializer_class = ThreadSerializer
     permission_classes = (IsAuthenticated, MessagingPermission)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        mailbox = getattr(self.request, 'mailbox', None)
+        user = self.request.user
+
+        if not user or not user.is_authenticated:
+            return qs.none()
+
+        if not mailbox:
+            if getattr(user, 'is_superuser', False):
+                return qs.order_by('-created_at')
+            return qs.none()
+
+        qs = qs.filter(participants__mailbox=mailbox)
+
+        folder = self.request.query_params.get('folder')
+        if folder == 'inbox':
+            qs = qs.distinct()
+        elif folder == 'sent':
+            qs = qs.filter(messages__sender=mailbox).distinct()
+        else:
+            qs = qs.distinct()
+
+        return qs.order_by('-created_at')
     def create(self, request, *args, **kwargs):
         """Create a thread optionally with an initial message and attachments.
 
@@ -98,11 +123,38 @@ class ThreadViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
             try:
                 mb = Mailbox.objects.select_related('org_unit_department').get(mailbox_address=addr)
             except Mailbox.DoesNotExist:
+                from Auth.models import OrgUnitDepartment
+                try:
+                    oud = OrgUnitDepartment.objects.get(mailbox_address=addr)
+                    mb = Mailbox.objects.create(org_unit_department=oud, mailbox_address=addr)
+                except OrgUnitDepartment.DoesNotExist:
+                    # Attempt to parse and auto-create the OrgUnitDepartment
+                    parts = addr.split('@')
+                    created_oud = None
+                    if len(parts) == 2 and parts[1].endswith('.pms.local'):
+                        dept_code = parts[0].upper()
+                        domain_prefix = parts[1][:-10]
+                        from Auth.models import OrgUnit, Department
+                        dept = Department.objects.filter(code=dept_code).first()
+                        if dept:
+                            for ou in OrgUnit.objects.all():
+                                if ou.unit_type == 'NATIONAL_HQ' and domain_prefix == 'nat-hq':
+                                    created_oud, _ = OrgUnitDepartment.objects.get_or_create(org_unit=ou, department=dept, defaults={'active': True})
+                                    break
+                                elif ou.code.lower().replace('_', '-') == domain_prefix or ou.code.lower() == domain_prefix:
+                                    created_oud, _ = OrgUnitDepartment.objects.get_or_create(org_unit=ou, department=dept, defaults={'active': True})
+                                    break
+                    if created_oud:
+                        mb, _ = Mailbox.objects.get_or_create(
+                            org_unit_department=created_oud,
+                            defaults={'mailbox_address': created_oud.mailbox_address}
+                        )
+                    else:
+                        thread.delete()
+                        raise ValidationError(f'Unknown mailbox: {addr}')
+            if allowed and mb.mailbox_address not in allowed:
                 thread.delete()
-                raise ValidationError(f'Unknown mailbox: {addr}')
-            if allowed and addr not in allowed:
-                thread.delete()
-                raise PermissionDenied(f'Recipient not allowed: {addr}')
+                raise PermissionDenied(f'Recipient not allowed: {mb.mailbox_address}')
             ThreadParticipant.objects.get_or_create(thread=thread, mailbox=mb)
 
         # Optionally create initial message
@@ -119,6 +171,7 @@ class ThreadViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
             # Create message
             created_message = Message.objects.create(thread=thread, sender=mailbox, body=initial_body)
+            created_message.read_by.add(mailbox)
 
             # Save attachments from request.FILES
             files = request.FILES.getlist('attachments') if hasattr(request.FILES, 'getlist') else []
@@ -134,6 +187,35 @@ class ThreadViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
         headers = self.get_success_headers(serializer.data)
         return Response(output, status=status.HTTP_201_CREATED, headers=headers)
+
+    def retrieve(self, request, *args, **kwargs):
+        """Retrieve a thread and mark messages as read for the requesting mailbox."""
+        instance = self.get_object()
+        mailbox = getattr(request, 'mailbox', None)
+        # Update last_read_at for participant
+        if mailbox:
+            tp, _ = ThreadParticipant.objects.get_or_create(thread=instance, mailbox=mailbox)
+            tp.last_read_at = timezone.now()
+            tp.save()
+            # Mark existing messages as read by this mailbox
+            for m in instance.messages.exclude(read_by=mailbox):
+                m.read_by.add(mailbox)
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def mark_read(self, request, pk=None):
+        """Mark all messages in this thread as read for the requesting mailbox."""
+        thread = self.get_object()
+        mailbox = getattr(request, 'mailbox', None)
+        if mailbox is None:
+            raise PermissionDenied('Missing mailbox context')
+        tp, _ = ThreadParticipant.objects.get_or_create(thread=thread, mailbox=mailbox)
+        tp.last_read_at = timezone.now()
+        tp.save()
+        for m in thread.messages.exclude(read_by=mailbox):
+            m.read_by.add(mailbox)
+        return Response({'status': 'ok'})
 
 
 class MessageViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
@@ -168,36 +250,8 @@ class MessageViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
         # Save message and handle attachments
         msg = serializer.save(sender=mailbox)
+        msg.read_by.add(mailbox)
         files = self.request.FILES.getlist('attachments') if hasattr(self.request.FILES, 'getlist') else []
         for f in files:
             Attachment.objects.create(message=msg, file=f)
         return msg
-
-    def retrieve(self, request, *args, **kwargs):
-        """Retrieve a thread and mark messages as read for the requesting mailbox."""
-        instance = self.get_object()
-        mailbox = getattr(request, 'mailbox', None)
-        # Update last_read_at for participant
-        if mailbox:
-            tp, _ = ThreadParticipant.objects.get_or_create(thread=instance, mailbox=mailbox)
-            tp.last_read_at = timezone.now()
-            tp.save()
-            # Mark existing messages as read by this mailbox
-            for m in instance.messages.all():
-                m.read_by.add(mailbox)
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
-
-    @action(detail=True, methods=['post'])
-    def mark_read(self, request, pk=None):
-        """Mark all messages in this thread as read for the requesting mailbox."""
-        thread = self.get_object()
-        mailbox = getattr(request, 'mailbox', None)
-        if mailbox is None:
-            raise PermissionDenied('Missing mailbox context')
-        tp, _ = ThreadParticipant.objects.get_or_create(thread=thread, mailbox=mailbox)
-        tp.last_read_at = timezone.now()
-        tp.save()
-        for m in thread.messages.all():
-            m.read_by.add(mailbox)
-        return Response({'status': 'ok'})

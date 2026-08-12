@@ -28,6 +28,7 @@ from .views import (
     InmateDocumentViewSet,
     InmateAuditTrailViewSet,
     InmateListView,
+    ReclassificationViewSet,
 )
 
 router = DefaultRouter()
@@ -48,6 +49,7 @@ router.register(r'disciplinary-history', InmateDisciplinaryHistoryViewSet)
 # router.register(r'medical-history', InmateMedicalHistoryViewSet)
 router.register(r'documents', InmateDocumentViewSet)
 router.register(r'audit-trail', InmateAuditTrailViewSet)
+router.register(r'reclassifications', ReclassificationViewSet, basename='reclassifications')
 
 urlpatterns = [
     path('court-sessions/upcoming/', UpcomingCourtSessionsView.as_view(), name='upcoming-court-sessions'),

@@ -13,6 +13,17 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { 
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import { Separator } from "@/components/ui/separator";
 import {
   Home,
@@ -185,6 +196,11 @@ const InmateDetails = () => {
   const { toast } = useToast();
 
   const [inmate, setInmate] = useState<Inmate | null>(null);
+
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
+  const [approvalType, setApprovalType] = useState<"admission" | "reclassification">("admission");
+  const [selectedClass, setSelectedClass] = useState<string>("C");
+  const [pendingReclass, setPendingReclass] = useState(false); // Can be checked if needed
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [healthRecord, setHealthRecord] = useState<HealthRecord | null>(null);
   const [opdVisits, setOPDVisits] = useState<OPDVisit[]>([]);
@@ -216,6 +232,24 @@ const InmateDetails = () => {
       
       if (detailsResponse.data) {
         const inmateData = detailsResponse.data as Inmate;
+        
+        // Compute fields
+        if (inmateData.date_of_birth) {
+          const dob = new Date(inmateData.date_of_birth);
+          const ageDifMs = Date.now() - dob.getTime();
+          const ageDate = new Date(ageDifMs);
+          inmateData.age = Math.abs(ageDate.getUTCFullYear() - 1970);
+          inmateData.dob = inmateData.date_of_birth;
+        }
+        inmateData.name = `${inmateData.first_name} ${inmateData.surname}`;
+        if (inmateData.next_of_kin) {
+          inmateData.address = inmateData.next_of_kin.address;
+          inmateData.emergency_contact = `${inmateData.next_of_kin.full_name} (${inmateData.next_of_kin.contact})`;
+        } else {
+          inmateData.address = 'N/A';
+          inmateData.emergency_contact = 'N/A';
+        }
+
         setInmate(inmateData);
 
         if (inmateData.timeline) {
@@ -258,34 +292,55 @@ const InmateDetails = () => {
     navigate("/login");
   };
 
-  const handleApproveInmate = async () => {
-    if (!id) return;
+  
+  const handleApproveInmateClick = () => {
+    setApprovalType("admission");
+    setSelectedClass(inmate?.classification || "C");
+    setApprovalDialogOpen(true);
+  };
 
+  const handleReclassificationClick = () => {
+    setApprovalType("reclassification");
+    setSelectedClass(inmate?.classification || "C");
+    setApprovalDialogOpen(true);
+  };
+
+  const handleConfirmApproval = async () => {
+    if (!id) return;
     try {
-      const response = await adminApi.approveInmate(id);
-      
+      let response;
+      if (approvalType === "admission") {
+        response = await adminApi.approveInmate(id, selectedClass);
+      } else {
+        response = await adminApi.approveReclassification(id, selectedClass);
+      }
+
       if (response.error) {
         toast({
-          title: "Error",
+          title: "Validation Error",
           description: response.error,
           variant: "destructive",
         });
         return;
       }
       
-      setInmate((prev) => (prev ? { ...prev, admission_status: "ADMISSION_CONFIRMED" } : null));
+      setInmate((prev) => (prev ? { 
+        ...prev, 
+        admission_status: approvalType === "admission" ? "ADMISSION_CONFIRMED" : prev.admission_status,
+        classification: selectedClass as any 
+      } : null));
+      
       toast({
         title: "Success",
-        description: "Inmate approved successfully",
+        description: `Inmate ${approvalType} approved successfully as Class ${selectedClass}`,
       });
-      
-      // Refresh the inmate data to ensure all related fields are up to date
+      setApprovalDialogOpen(false);
       fetchInmateData(id);
-    } catch (error) {
-      console.error("Error approving inmate:", error);
+    } catch (error: any) {
+      console.error("Error approving:", error);
       toast({
         title: "Error",
-        description: "Failed to approve inmate",
+        description: error.message || "Failed to approve inmate",
         variant: "destructive",
       });
     }
@@ -531,10 +586,13 @@ const InmateDetails = () => {
                     </span>
                   </div>
                 )}
-                <Separator />
                 <div className="flex justify-between">
-                  <span className="text-sm font-medium">Primary Offense:</span>
-                  <span className="text-sm">{inmate.offense}</span>
+                  <span className="text-sm font-medium">Address:</span>
+                  <span className="text-sm text-right truncate max-w-[150px]" title={inmate.address}>{inmate.address}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium">Emergency Contact:</span>
+                  <span className="text-sm text-right truncate max-w-[150px]" title={inmate.emergency_contact}>{inmate.emergency_contact}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm font-medium">Sentence:</span>
@@ -554,12 +612,12 @@ const InmateDetails = () => {
                       Awaiting Health Assessment
                     </Button>
                   )}
-                  {inmate.status === "pending" && inmate.admission_status !== "PENDING_HEALTH_ASSESSMENT" && (
+                                    {inmate.status === "pending" && inmate.admission_status !== "PENDING_HEALTH_ASSESSMENT" && (
                     <Button
                       className="w-full bg-green-500 hover:bg-green-600"
-                      onClick={handleApproveInmate}
+                      onClick={handleApproveInmateClick}
                     >
-                      Approve Admission
+                      Approve Admission & Class
                     </Button>
                   )}
                   {inmate.status === "active" && (
@@ -586,30 +644,12 @@ const InmateDetails = () => {
                       >
                         Transfer Inmate
                       </Button>
-                      <div className="mt-4">
-                        <p className="text-sm font-medium mb-2">
-                          Change Classification:
-                        </p>
-                        <div className="grid grid-cols-3 gap-2">
-                          {["A", "B", "C", "D", "PUSOD", "CONDEM"].map(
-                            (cls) => (
-                              <Button
-                                key={cls}
-                                variant="outline"
-                                size="sm"
-                                className={
-                                  inmate.classification === cls
-                                    ? "bg-[#0b4f2a] text-white"
-                                    : ""
-                                }
-                                onClick={() => handleClassifyInmate(cls)}
-                              >
-                                {cls}
-                              </Button>
-                            ),
-                          )}
-                        </div>
-                      </div>
+                                            <Button
+                        className="w-full bg-[#0b4f2a] hover:bg-[#0b4f2a]"
+                        onClick={handleReclassificationClick}
+                      >
+                        Approve Pending Reclassification
+                      </Button>
                     </>
                   )}
                 </div>
@@ -648,65 +688,36 @@ const InmateDetails = () => {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
                     <div>
-                      <h3 className="font-medium mb-2">Personal Details</h3>
-                      <div className="space-y-2">
-                        <div className="flex items-start">
-                          <User className="h-4 w-4 mr-2 mt-0.5" />
-                          <div>
-                            <p className="text-sm font-medium">Full Name</p>
-                            <p className="text-sm">{inmate.name}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start">
-                          <Calendar className="h-4 w-4 mr-2 mt-0.5" />
-                          <div>
-                            <p className="text-sm font-medium">Date of Birth</p>
-                            <p className="text-sm">
-                              {new Date(inmate.dob).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-start">
-                          <Home className="h-4 w-4 mr-2 mt-0.5" />
-                          <div>
-                            <p className="text-sm font-medium">Address</p>
-                            <p className="text-sm">{inmate.address}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start">
-                          <AlertCircle className="h-4 w-4 mr-2 mt-0.5" />
-                          <div>
-                            <p className="text-sm font-medium">
-                              Emergency Contact
-                            </p>
-                            <p className="text-sm">
-                              {inmate.emergency_contact}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="font-medium mb-2">
+                      <h3 className="font-medium mb-4 text-lg">
                         Incarceration Details
                       </h3>
-                      <div className="space-y-2">
+                      <div className="space-y-4">
                         <div className="flex items-start">
-                          <Gavel className="h-4 w-4 mr-2 mt-0.5" />
+                          <Gavel className="h-5 w-5 mr-3 mt-0.5 text-gray-500" />
                           <div>
-                            <p className="text-sm font-medium">
-                              Primary Offense
+                            <p className="text-sm font-semibold text-gray-700">
+                              Primary Offenses
                             </p>
-                            <p className="text-sm">{inmate.offense}</p>
+                            <div className="text-sm mt-1">
+                              {inmate.offences && inmate.offences.length > 0 ? (
+                                <ul className="list-disc pl-4 space-y-1">
+                                  {inmate.offences.map(o => (
+                                    <li key={o.id}>{o.offence_description} ({o.conviction_status})</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                "No offenses recorded"
+                              )}
+                            </div>
                           </div>
                         </div>
                         <div className="flex items-start">
-                          <Clock className="h-4 w-4 mr-2 mt-0.5" />
+                          <Clock className="h-5 w-5 mr-3 mt-0.5 text-gray-500" />
                           <div>
-                            <p className="text-sm font-medium">Total Sentence</p>
-                            <p className="text-sm">
+                            <p className="text-sm font-semibold text-gray-700">Total Sentence</p>
+                            <p className="text-sm mt-1">
                               {inmate.release_history 
                                 ? `${inmate.release_history.total_effective_sentence} months (${inmate.release_history.total_sentences_days} days)` 
                                 : inmate.sentence || "N/A"}
@@ -715,22 +726,22 @@ const InmateDetails = () => {
                         </div>
                         {inmate.release_history && (
                           <div className="flex items-start">
-                            <Clock className="h-4 w-4 mr-2 mt-0.5" />
+                            <Clock className="h-5 w-5 mr-3 mt-0.5 text-gray-500" />
                             <div>
-                              <p className="text-sm font-medium">Remission</p>
-                              <p className="text-sm">
+                              <p className="text-sm font-semibold text-gray-700">Remission</p>
+                              <p className="text-sm mt-1">
                                 {inmate.release_history.total_remission_days} days
                               </p>
                             </div>
                           </div>
                         )}
                         <div className="flex items-start">
-                          <Calendar className="h-4 w-4 mr-2 mt-0.5" />
+                          <Calendar className="h-5 w-5 mr-3 mt-0.5 text-gray-500" />
                           <div>
-                            <p className="text-sm font-medium">
+                            <p className="text-sm font-semibold text-gray-700">
                               Admission Date
                             </p>
-                            <p className="text-sm">
+                            <p className="text-sm mt-1">
                               {new Date(
                                 inmate.admission_date,
                               ).toLocaleDateString()}
@@ -739,12 +750,12 @@ const InmateDetails = () => {
                         </div>
                         {(inmate.release_history?.active_edr || inmate.expected_release_date) && (
                           <div className="flex items-start">
-                            <Calendar className="h-4 w-4 mr-2 mt-0.5" />
+                            <Calendar className="h-5 w-5 mr-3 mt-0.5 text-blue-600" />
                             <div>
-                              <p className="text-sm font-medium">
-                                Active Earliest Date of Release (EDR)
-                              </p>
                               <p className="text-sm font-semibold text-blue-700">
+                                Earliest Date of Release (EDR)
+                              </p>
+                              <p className="text-sm font-bold text-blue-800 mt-1">
                                 {new Date(
                                   inmate.release_history?.active_edr || inmate.expected_release_date || "",
                                 ).toLocaleDateString()}
@@ -754,12 +765,12 @@ const InmateDetails = () => {
                         )}
                         {inmate.release_history?.active_odr && (
                           <div className="flex items-start">
-                            <Calendar className="h-4 w-4 mr-2 mt-0.5" />
+                            <Calendar className="h-5 w-5 mr-3 mt-0.5 text-gray-500" />
                             <div>
-                              <p className="text-sm font-medium">
-                                Active Oldest Date of Release (ODR)
+                              <p className="text-sm font-semibold text-gray-700">
+                                Official Date of Release (ODR)
                               </p>
-                              <p className="text-sm">
+                              <p className="text-sm mt-1">
                                 {new Date(
                                   inmate.release_history.active_odr,
                                 ).toLocaleDateString()}

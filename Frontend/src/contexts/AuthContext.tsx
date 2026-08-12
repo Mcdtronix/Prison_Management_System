@@ -14,6 +14,7 @@ interface User {
     name: string;
   };
   orgUnitType?: string | null;
+  mailboxAddress?: string | null;
 }
 
 interface AuthContextType {
@@ -73,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               name: station?.name || orgUnit?.name || '',
             },
             orgUnitType: (response.data as any).org_unit_unit_type || undefined,
+            mailboxAddress: (response.data as any).mailbox_address || undefined,
           };
           setUser(userData);
           localStorage.setItem('user_role', normalizedRole);

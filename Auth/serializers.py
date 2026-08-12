@@ -62,6 +62,15 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             data["department_id"] = department.id if department else None
             data["department_code"] = department.code if department else None
             data["department_name"] = department.name if department else None
+            
+            # Fetch mailbox address
+            from .models import OrgUnitDepartment
+            if org_unit and department:
+                try:
+                    oud = OrgUnitDepartment.objects.get(org_unit=org_unit, department=department)
+                    data["mailbox_address"] = oud.mailbox_address
+                except OrgUnitDepartment.DoesNotExist:
+                    data["mailbox_address"] = None
         else:
             try:
                 profile = self.user.userprofile

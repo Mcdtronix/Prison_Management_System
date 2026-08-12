@@ -5,15 +5,18 @@ import { useNavigate } from 'react-router-dom';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Star, MoreVertical, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Inbox = () => {
   const [threads, setThreads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const currentMailbox = user?.mailboxAddress;
 
   const load = async () => {
     setLoading(true);
-    const res = await messagingApi.listThreads();
+    const res = await messagingApi.listThreads('inbox');
     if (res.data) {
       if (Array.isArray(res.data)) {
         setThreads(res.data);
@@ -63,8 +66,7 @@ const Inbox = () => {
             <table className="w-full text-sm text-left">
               <tbody className="divide-y divide-gray-100">
                 {threads.map((t) => {
-                  // Basic heuristic for unread status: we might need a real 'is_read' flag
-                  const isUnread = t.is_read === false || !t.is_read; 
+                  const isUnread = t.is_unread;
                   
                   return (
                     <tr 
@@ -82,14 +84,18 @@ const Inbox = () => {
                           <Star className="h-4 w-4" />
                         </Button>
                       </td>
-                      <td className="px-2 py-3 truncate max-w-[150px]">
-                        {/* If we have participants, show them. Otherwise just a placeholder. */}
-                        {t.subject.split(' ')[0] || 'System'}
+                      <td className="px-2 py-3 truncate max-w-[150px] font-medium text-gray-700">
+                        {(() => {
+                          const others = t.participants?.filter((p: any) => p.mailbox?.mailbox_address !== currentMailbox) || [];
+                          if (others.length === 0) return t.participants?.[0]?.mailbox?.mailbox_address.split('@')[0] || 'Unknown';
+                          return others.map((p: any) => p.mailbox?.mailbox_address.split('@')[0]).join(', ');
+                        })()}
                       </td>
                       <td className="px-2 py-3 truncate w-full max-w-[400px]">
-                        <span className="mr-2">{t.subject}</span>
-                        {/* Snippet placeholder */}
-                        <span className="font-normal text-gray-400">- Click to view the conversation...</span>
+                        <span className="mr-2">{t.subject || '(No Subject)'}</span>
+                        <span className="font-normal text-gray-400">
+                          - {t.messages && t.messages.length > 0 ? (t.messages[t.messages.length - 1].body.split(' ').slice(0, 5).join(' ') + '...') : 'No messages'}
+                        </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right font-medium text-xs w-24">
                         {formatDate(t.created_at)}

@@ -37,6 +37,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "./ui/button";
 import { getDefaultRouteForRole, normalizeRole } from "@/lib/auth";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface SidebarProps {
   userRole: string;
@@ -71,7 +72,15 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
       navItems = [
         { title: "Dashboard", href: "/admin", icon: <Home size={18} /> },
         { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
-        { title: "Inmates", href: "/admin/inmates", icon: <Users size={18} /> },
+        {
+          title: "Inmates",
+          href: "/admin/inmates",
+          icon: <Users size={18} />,
+          subItems: [
+            { title: "Overview", href: "/admin/inmates" },
+            { title: "Reclassification", href: "/reception/reclassification" },
+          ]
+        },
         {
           title: "Officers",
           href: "/admin/officers",
@@ -116,6 +125,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
             { title: "Inmate List", href: "/reception/inmates" },
             { title: "New Admission", href: "/reception/register" },
             { title: "Discharges", href: "/reception/discharges" },
+            { title: "Reclassification", href: "/reception/reclassification" },
           ]
         },
         {
@@ -262,6 +272,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
   );
 
   const dashboardUrl = getDefaultRouteForRole(normalizedRole);
+  const { user } = useAuth();
   const [openDropdowns, setOpenDropdowns] = useState<Record<string, boolean>>({});
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
@@ -422,6 +433,23 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
               )
             })}
           </nav>
+          
+          {/* User Mailbox Address at the bottom */}
+          <div className="p-4 border-t border-[#063f20] bg-[#0b4f2a] shrink-0">
+            <div className={cn("flex items-center gap-3", !isOpen && "justify-center")}>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d7a928] text-[#0b4f2a] font-bold">
+                {user?.mailboxAddress ? user.mailboxAddress[0].toUpperCase() : <UserCheck size={16} />}
+              </div>
+              {isOpen && (
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-xs text-gray-300 font-medium truncate">Mailbox</span>
+                  <span className="text-sm text-white font-semibold truncate" title={user?.mailboxAddress || 'None'}>
+                    {user?.mailboxAddress || 'Not Assigned'}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
       {/* Content spacer - always present */}
