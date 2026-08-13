@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { PrisonLayout } from '@/components/PrisonLayout';
 import OfficerManagement from './OfficerManagement';
 import InmateOverview from './InmateOverview';
+import DischargeApprovals from './DischargeApprovals';
 import { useToast } from '@/hooks/use-toast';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
@@ -187,6 +188,7 @@ const AdminDashboard = () => {
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="inmates">Inmate Management</TabsTrigger>
             <TabsTrigger value="officers">Officer Management</TabsTrigger>
+            <TabsTrigger value="discharges">Discharge Approvals</TabsTrigger>
           </TabsList>
           <TabsContent value="overview" className="space-y-4">
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mt-6">
@@ -339,6 +341,9 @@ const AdminDashboard = () => {
           </TabsContent>
           <TabsContent value="officers">
             <OfficerManagement />
+          </TabsContent>
+          <TabsContent value="discharges">
+            <DischargeApprovals />
           </TabsContent>
         </Tabs>
       </div>

@@ -719,7 +719,7 @@ export const receptionApi = {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Token ${token}` } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(data),
     });
@@ -858,6 +858,34 @@ export const receptionApi = {
     }
     return fetchApi(`/reception/inmate-list/?${params.toString()}`);
   },
+  
+  rejectProposeDischarge: (id: number) =>
+    apiRequest(`/api/reception/discharges/${id}/reject_proposal/`, {
+      method: "POST",
+    }),
+
+  getPendingDischargeApprovals: async () => {
+    return fetchApi('/reception/discharge_approvals/pending/');
+  },
+  
+  approvePendingDischarge: async (id: number, remarks: string) => {
+    return fetchApi(`/reception/discharge_approvals/${id}/approve/`, {
+      method: 'POST',
+      body: JSON.stringify({ remarks })
+    });
+  },
+
+  rejectPendingDischarge: async (id: number, remarks: string) => {
+    return fetchApi(`/reception/discharge_approvals/${id}/reject/`, {
+      method: 'POST',
+      body: JSON.stringify({ remarks })
+    });
+  },
+
+  archiveDischarge: (id: string, data: any) =>
+    apiRequest(`/api/reception/inmates/${id}/archive_discharge/`, {
+      method: "POST",
+    }),
   approveDischarge: async (id: string) => {
     return fetchApi(`/reception/inmates/${id}/approve_discharge/`, {
       method: 'POST',

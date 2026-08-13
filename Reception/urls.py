@@ -30,14 +30,16 @@ from .views import (
     InmateAuditTrailViewSet,
     InmateListView,
     ReclassificationViewSet,
+    DischargeApprovalViewSet,
 )
 
 router = DefaultRouter()
-router.register(r'inmates', InmateViewSet)
-router.register(r'next-of-kin', NextOfKinViewSet)
-router.register(r'station-history', InmateStationHistoryViewSet)
-router.register(r'classification-history', InmateClassificationHistoryViewSet)
-router.register(r'offences', OffenceViewSet)
+router.register(r'inmates', InmateViewSet, basename='inmate')
+router.register(r'next-of-kin', NextOfKinViewSet, basename='next-of-kin')
+router.register(r'station-history', InmateStationHistoryViewSet, basename='station-history')
+router.register(r'classification-history', InmateClassificationHistoryViewSet, basename='classification-history')
+router.register(r'offences', OffenceViewSet, basename='offence')
+router.register(r'discharge_approvals', DischargeApprovalViewSet, basename='discharge-approvals')
 router.register(r'convicted', ConvictedViewSet)
 router.register(r'court-appearances', UnconvictedViewSet)
 router.register(r'restitution', RestitutionViewSet)

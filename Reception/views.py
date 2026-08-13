@@ -1148,3 +1148,51 @@ class ProposeDischargeView(OrgUnitContextMixin, APIView):
 
             return Response({"message": "Discharge proposed successfully."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class DischargeApprovalViewSet(OrgUnitContextMixin, viewsets.ViewSet):
+    permission_classes = [IsAuthenticated, IsAdminOfficer]
+
+    @action(detail=False, methods=['get'])
+    def pending(self, request):
+        from .serializers import ReleaseWorkflowSerializer
+        
+        workflows = ReleaseWorkflow.objects.filter(status='PROPOSED_BY_RECEPTION')
+        
+        visible_org_units = getattr(request, 'visible_org_units', None)
+        if visible_org_units is not None:
+            workflows = workflows.filter(inmate__owner_org_unit__in=visible_org_units)
+            
+        serializer = ReleaseWorkflowSerializer(workflows, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        try:
+            workflow = ReleaseWorkflow.objects.get(pk=pk, status='PROPOSED_BY_RECEPTION')
+        except ReleaseWorkflow.DoesNotExist:
+            return Response({"error": "Pending proposal not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        workflow.status = 'APPROVED_BY_ADMIN'
+        workflow.approved_date = timezone.now()
+        workflow.admin_remarks = request.data.get('remarks', '')
+        workflow.save()
+
+        # Execute discharge
+        inmate = workflow.inmate
+        inmate.current_status = 'DISCHARGED'
+        inmate.save(update_fields=['current_status'])
+
+        return Response({"message": "Discharge approved successfully."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        try:
+            workflow = ReleaseWorkflow.objects.get(pk=pk, status='PROPOSED_BY_RECEPTION')
+        except ReleaseWorkflow.DoesNotExist:
+            return Response({"error": "Pending proposal not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        workflow.status = 'REJECTED'
+        workflow.admin_remarks = request.data.get('remarks', '')
+        workflow.save()
+
+        return Response({"message": "Discharge rejected."}, status=status.HTTP_200_OK)

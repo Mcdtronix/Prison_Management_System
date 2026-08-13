@@ -35,6 +35,16 @@ class InmateSerializer(serializers.ModelSerializer):
     admission_date = serializers.DateField(default=timezone.now().date())
     has_discharge_assessment = serializers.SerializerMethodField()
 
+    def validate_national_id(self, value):
+        if value == "":
+            return None
+        return value
+
+    def validate_prison_number(self, value):
+        if value and Inmate.objects.filter(prison_number=value).exists():
+            raise serializers.ValidationError("This prison number already exists.")
+        return value
+
     class Meta:
         model = Inmate
         fields = [
@@ -1301,3 +1311,28 @@ class ProposeDischargeSerializer(serializers.Serializer):
         'blank': "A reason for discharge must be stated."
     })
     reception_receipt = serializers.FileField(required=False, allow_null=True)
+
+class ReleaseWorkflowSerializer(serializers.ModelSerializer):
+    inmate_name = serializers.SerializerMethodField()
+    prison_number = serializers.SerializerMethodField()
+    active_edr = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ReleaseWorkflow
+        fields = [
+            'id', 'inmate_name', 'prison_number', 'status', 'proposed_date',
+            'reception_reason', 'reception_receipt', 'active_edr',
+            'admin_remarks', 'approved_date'
+        ]
+
+    def get_inmate_name(self, obj):
+        return f"{obj.inmate.first_name} {obj.inmate.surname}"
+
+    def get_prison_number(self, obj):
+        return obj.inmate.prison_number
+        
+    def get_active_edr(self, obj):
+        release_history = obj.inmate.release_history.last()
+        if release_history and release_history.active_edr:
+            return release_history.active_edr.isoformat()
+        return None

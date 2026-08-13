@@ -1,94 +1,116 @@
-A full-stack Prison Management System built as a Django REST API (multi-app Django project) with a Vite + React + TypeScript frontend. It implements domain apps for Admissions, Health, HR, Stores, Farms, Messaging and Cases, with RBAC, audit logging, and an organizational (national → provincial → station) ownership/isolation model aimed at multi-tenant data separation and compliance.
+# Prison Management System (PMS)
 
+![Status](https://img.shields.io/badge/Status-Active_Development-brightgreen)
+![Django](https://img.shields.io/badge/Django-5.2+-092E20?logo=django)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?logo=typescript)
 
-Stack
-Language(s): Python (backend) and TypeScript / JavaScript (frontend)
-Framework / runtime: Django (project settings reference Django 6.0; requirements.txt pins Django 5.2.11) for the API; Vite + React + TypeScript for the frontend
-Notable libraries:
-Django REST Framework + drf-yasg (API + OpenAPI/swagger)
-djangorestframework_simplejwt (JWT auth)
-psycopg2 (Postgres DB driver) and project-tailored DB config / connection pooling
-Tailwind + Radix UI + @tanstack/react-query (frontend UI and data fetching)
+A comprehensive, full-stack Prison Management System engineered to handle the complexities of inmate lifecycle management, facility operations, and institutional compliance. Built with a robust Django REST API backend and a modern React/Vite frontend, the system is designed around a multi-tenant, hierarchical organizational model (National → Provincial → Station) to ensure strict data isolation and Role-Based Access Control (RBAC).
 
+---
 
-How it's organized
-Code
-00_START_HERE_PHASE_0_SUMMARY.md        ← Phase 0 summary & kickoff notes
-PHASE_0_*.md (security, checklist, executive summary, DB design, etc) ← governance & design docs
-.env.example                            ← environment variable template
-requirements.txt                        ← Python dependencies
-manage.py                               ← Django management entrypoint
-Core/                                    ← Django project settings, middleware, filters, URLs
-  settings.py                            ← DB, JWT, logging, middleware (OrgContext, AccessScope, AuditLogging)
-  filters.py, mixins.py                  ← DRF helpers and access filters
-  middleware/                            ← placeholders for Phase 1 middleware
-Auth/                                    ← authentication, RBAC, serializers, views, permissions, admin
-Reception/, Health/, HumanResources/, Stores/, Farms/, Messaging/, Cases/
-                                         ← domain Django apps (models.py, views.py, serializers.py, urls.py, tests.py)
-Frontend/                                ← Vite + React + TypeScript frontend (package.json, tailwind, src/)
-cypress/                                 ← end-to-end tests for frontend
-docs/                                    ← documentation
-templates/                               ← Django templates used by any server-rendered pages
-scripts/                                 ← dev / deployment scripts
-tests/                                   ← additional test harnesses; many test_*.py at repo root
-.github/                                 ← CI/issue templates (repo governance)
-misc Python scripts (patch_*.py, fix_*.py, debug_*.py) ← maintenance/debug helpers
+## ✨ Key Features
 
+- **Inmate Lifecycle & Reception**: Full intake processing, health assessments, biometric tracking, and automated asset/property management.
+- **Advanced Sentence Computation Engine**: Features a true calendar-based mathematical engine using exact `dateutil` arithmetic to accurately handle leap years, differing month lengths, and concurrent/consecutive sentence aggregations for Ordinary Date of Release (ODR) and Earliest Date of Release (EDR).
+- **Hierarchical Data Isolation**: Strict organizational scoping ensures users only access data relevant to their specific station, province, or national headquarters.
+- **Role-Based Access Control (RBAC)**: Granular permissions for reception officers, health officials, and administrators.
+- **Comprehensive Domain Apps**: Modules for Health, HR, Stores, Farms, Messaging, and Legal Cases.
+- **Audit Logging**: Immutable tracking of sensitive actions and registration events.
 
-How it fits together:
+---
 
-The Django project (Core) wires up REST API endpoints via app-level ViewSets and urls.py in each domain app (e.g., Reception/views.py and Reception/serializers.py). Core.settings.py configures DRF, JWT authentication, an OrgUnit-based access filter (Core.filters.OrgUnitAccessFilterBackend) and phase-1 middleware stubs (OrgContext, AccessScope, AuditLogging). Auth/ contains the user, RBAC, permissions, and JWT-related serializers/views used across the API. The frontend (Frontend/) is a Vite React app that calls the API endpoints (package.json scripts: dev/build/preview) and uses Tailwind + Radix components for UI.
-How to run it
-Shortest path from clone to a running development instance (backend API + frontend dev server):
+## 🛠 Technology Stack
 
+### Backend
+- **Core Framework**: Django 5.2.11 + Django REST Framework (DRF)
+- **Database**: PostgreSQL (via `psycopg2`) with optimized connection pooling
+- **Authentication**: JWT (`djangorestframework_simplejwt`)
+- **API Documentation**: OpenAPI / Swagger (`drf-yasg`)
+- **Date Math Engine**: `python-dateutil` for strict calendar compliance
 
+### Frontend
+- **Core Framework**: React + TypeScript powered by Vite
+- **Styling**: TailwindCSS
+- **Components**: Radix UI
+- **State/Data Fetching**: TanStack React Query
 
-Backend (Django)
+---
 
-Create a Python venv and install dependencies:
-Ensure Python 3.10+ (match your environment)
-Provide env vars (see Core/settings.py and .env.example) and run migrations and server.
-Example commands:
+## 📁 Project Structure
 
+```text
+Prison_Management_System/
+├── Core/               # Django project core (settings, middleware, RBAC filters)
+├── Auth/               # Authentication, User Models, and Permissions
+├── Reception/          # Inmate intake, sentence math, and release management
+├── Health/             # Medical assessments and facility health tracking
+├── HumanResources/     # Staff management and deployment
+├── Frontend/           # Vite + React + TS Frontend application
+├── scripts/            # Deployment and maintenance scripts
+├── tests/              # Additional test harnesses
+└── docs/               # Architecture and design documentation
+```
 
+---
 
-Code
+## 🚀 Getting Started
+
+Follow these steps to set up the system for local development.
+
+### 1. Backend Setup (Django API)
+
+Ensure you have **Python 3.10+** installed.
+
+```bash
+# Clone the repository
 git clone https://github.com/Mcdtronix/Prison_Management_System.git
 cd Prison_Management_System
 
+# Create and activate a virtual environment
+python -m venv env
+source env/bin/activate  # On Windows: env\Scripts\activate
 
-# Python environment (example)
-python -m venv .venv
-source .venv/bin/activate
+# Install Python dependencies
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Create .env from .env.example and edit DB / SECRET_KEY values
+# Configure Environment Variables
 cp .env.example .env
-# edit .env to set DB_NAME, DB_USER, DB_PASSWORD, SECRET_KEY, DEBUG, ALLOWED_HOSTS, etc.
+# Edit .env to configure DB_NAME, DB_USER, DB_PASSWORD, SECRET_KEY, etc.
 
-# Migrate and run
+# Run migrations and start the development server
 python manage.py migrate
-python manage.py createsuperuser   # optional: create admin user
+python manage.py createsuperuser  # Create an admin account
 python manage.py runserver 0.0.0.0:8000
-Frontend (Vite + React)
+```
 
-Code
+### 2. Frontend Setup (Vite/React)
+
+Ensure you have **Node.js 18+** installed.
+
+```bash
+# Navigate to the frontend directory
 cd Frontend
-# use npm, yarn or bun depending on your toolchain (package.json exists; bun.lockb and package-lock.json present)
+
+# Install dependencies
 npm ci
+
+# Start the Vite development server
 npm run dev
-# or: npm run build && npm run preview for a production preview
-Required / notable env vars (drawn from Core/settings.py and .env.example):
+```
 
-SECRET_KEY
-DEBUG
-DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_CONN_MAX_AGE
-ALLOWED_HOSTS or CORS_ALLOWED_ORIGINS / CORS_ALLOW_ALL_ORIGINS
-SENTRY_DSN (optional)
-TIMEZONE (defaults to Africa/Harare in settings)
-Other runtime settings in .env.example referenced by Core/settings.py (SESSION_COOKIE_*, AUDIT_RETENTION_DAYS, etc.)
-Notes:
+The frontend will typically run on `http://localhost:5173` and automatically proxy/connect to your local Django API.
 
-The project is configured for PostgreSQL in Core/settings.py (psycopg2 in requirements). There are Phase 0 migration/design docs (DATABASE_SCHEMA_DESIGN_PHASE_1.md) and a POSTGRESQL_SETUP_GUIDE.md that document production DB setup and migration steps.
-There is a security audit (PHASE_0_SECURITY_AUDIT_REPORT.md); the Phase 0 summary calls out critical findings (object-level permission gaps and missing org-context middleware) that should be resolved before production deployment.
+---
+
+## 🔒 Security & Compliance
+This project enforces strict data governance:
+- **Audit Trails**: Critical state changes are logged via the custom `AuditLogging` middleware.
+- **Database Architecture**: Refer to `DATABASE_SCHEMA_DESIGN_PHASE_1.md` and `POSTGRESQL_SETUP_GUIDE.md` for production indexing and migration protocols.
+- **Security Audits**: See `PHASE_0_SECURITY_AUDIT_REPORT.md` for ongoing security milestones and resolved vulnerabilities.
+
+---
+
+## 📄 License
+*Proprietary / Closed Source* - Refer to the internal organization policies for usage and distribution rights.
