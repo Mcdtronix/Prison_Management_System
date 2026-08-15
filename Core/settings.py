@@ -36,12 +36,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 #SECRET_KEY = 'django-insecure-&@j7sauie)^w-$0#jjr%j6e$k^3@2#!*!mbs1_10ykbva+bewt'
-SECRET_KEY =config('SECRET_KEY')
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-pms-local-dev-key-change-in-production')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=False, cast=bool)
+DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=Csv())
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,127.0.0.1:8000', cast=Csv())
 
 
 
@@ -117,32 +117,31 @@ WSGI_APPLICATION = 'Core.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+DB_ENGINE = config('DB_ENGINE', default='django.db.backends.sqlite3')
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#         # For PostgreSQL in production, use:
-#         # 'ENGINE': 'django.db.backends.postgresql',
-#         # 'CONN_MAX_AGE': 60,  # Connection pooling
-#     }
-# }
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME':     config('DB_NAME'),
-        'USER':     config('DB_USER'),
-        'PASSWORD': config('DB_PASSWORD'),
-        'HOST':     config('DB_HOST', default='localhost'),
-        'PORT':     config('DB_PORT', default='5432'),
-        # Connection pooling
-        'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=600, cast=int),
-        'OPTIONS': {
-            'connect_timeout': 10,
+if DB_ENGINE == 'django.db.backends.sqlite3':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': DB_ENGINE,
+            'NAME':     config('DB_NAME', default='prison_pms'),
+            'USER':     config('DB_USER', default='postgres'),
+            'PASSWORD': config('DB_PASSWORD', default='postgres'),
+            'HOST':     config('DB_HOST', default='localhost'),
+            'PORT':     config('DB_PORT', default='5432'),
+            # Connection pooling
+            'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=600, cast=int),
+            'OPTIONS': {
+                'connect_timeout': 10,
+            }
+        }
+    }
 
 
 
@@ -256,9 +255,9 @@ SIMPLE_JWT = {
 #     "http://127.0.0.1:5173",
 #     "http://127.0.0.1:3000",
 #     "http://127.0.0.1:8080",
-# ]
+DEFAULT_CORS_ORIGINS = 'http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000'
 CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=False, cast=bool)
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', cast=Csv(), default='')
+CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', cast=Csv(), default=DEFAULT_CORS_ORIGINS)
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_HEADERS = [

@@ -17,3 +17,4 @@ typing_extensions==4.15.0
 uritemplate==4.2.0
 sentry-sdk==2.8.0
 python-dateutil
+whitenoise
