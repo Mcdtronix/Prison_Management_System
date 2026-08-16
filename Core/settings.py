@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     'Stores',
     'Messaging',
     'Cases',
+    'Reports',
 ]
 
 MIDDLEWARE = [
@@ -117,7 +118,7 @@ WSGI_APPLICATION = 'Core.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
-DB_ENGINE = config('DB_ENGINE', default='django.db.backends.sqlite3')
+DB_ENGINE = config('DB_ENGINE', default='django.db.backends.postgresql')
 
 if DB_ENGINE == 'django.db.backends.sqlite3':
     DATABASES = {

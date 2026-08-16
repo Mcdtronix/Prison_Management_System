@@ -1287,7 +1287,8 @@ class UpcomingDischargeSerializer(serializers.ModelSerializer):
         model = ReleaseHistory
         fields = [
             "id", "active_edr", "active_odr", "approval_status", 
-            "inmate_name", "prison_number", "offence_description", "inmate_id"
+            "inmate_name", "prison_number", "offence_description", "inmate_id",
+            "offences_list", "workflow_status"
         ]
 
     def get_inmate_name(self, obj):
@@ -1303,6 +1304,26 @@ class UpcomingDischargeSerializer(serializers.ModelSerializer):
             return ", ".join([o.offence_description for o in offences])
         return "No active offences"
 
+    offences_list = serializers.SerializerMethodField()
+
+    def get_offences_list(self, obj):
+        offences = obj.inmate.offences.exclude(Offence_status='DISCHARGED')
+        return [
+            {
+                "description": o.offence_description,
+                "status": o.Offence_status
+            }
+            for o in offences
+        ]
+
+    workflow_status = serializers.SerializerMethodField()
+
+    def get_workflow_status(self, obj):
+        workflow = obj.inmate.release_workflows.last()
+        if workflow:
+            return workflow.status
+        return None
+
 
 class ProposeDischargeSerializer(serializers.Serializer):
     inmate_id = serializers.IntegerField()
@@ -1312,17 +1333,54 @@ class ProposeDischargeSerializer(serializers.Serializer):
     })
     reception_receipt = serializers.FileField(required=False, allow_null=True)
 
+    def validate(self, data):
+        from .models import Inmate
+        from django.utils import timezone
+        
+        inmate_id = data.get('inmate_id')
+        try:
+            inmate = Inmate.objects.get(id=inmate_id)
+        except Inmate.DoesNotExist:
+            raise serializers.ValidationError({"inmate_id": "Inmate not found."})
+
+        # Guardrail 1: Check for any unconvicted (remand) offences
+        if inmate.offences.filter(Offence_status='UNCONVICTED').exists():
+            raise serializers.ValidationError(
+                "This inmate has active unconvicted offences (remand/pending court cases). They cannot be discharged until all court matters are concluded or bail is officially recorded."
+            )
+
+        # Guardrail 2: Ensure all sentences are fully served (EDR reached)
+        # Exceptions allowed for non-sentence-expiry discharges like Amnesty, Bail, or Acquittals.
+        reason = data.get('reception_reason', '').upper()
+        special_reasons = ['AMNESTY', 'BAIL', 'ACQUITTED', 'WITHDRAWN', 'COMMUNITY_SERVICE']
+        
+        # Check if the reason is one of the special ones (we check if any special reason is substring of the reception_reason)
+        is_special_reason = any(sr in reason for sr in special_reasons)
+
+        if not is_special_reason:
+            release_history = inmate.release_history.last()
+            if release_history and release_history.active_edr:
+                if release_history.active_edr > timezone.now().date():
+                    raise serializers.ValidationError(
+                        f"This inmate has not yet finished serving their sentence. Earliest Date of Release (EDR) is {release_history.active_edr.strftime('%Y-%m-%d')}."
+                    )
+        
+        return data
+
 class ReleaseWorkflowSerializer(serializers.ModelSerializer):
     inmate_name = serializers.SerializerMethodField()
     prison_number = serializers.SerializerMethodField()
     active_edr = serializers.SerializerMethodField()
+    active_odr = serializers.SerializerMethodField()
+    date_of_admission = serializers.SerializerMethodField()
+    offences_list = serializers.SerializerMethodField()
 
     class Meta:
         model = ReleaseWorkflow
         fields = [
             'id', 'inmate_name', 'prison_number', 'status', 'proposed_date',
-            'reception_reason', 'reception_receipt', 'active_edr',
-            'admin_remarks', 'approved_date'
+            'reception_reason', 'reception_receipt', 'active_edr', 'active_odr',
+            'admin_remarks', 'approved_date', 'date_of_admission', 'offences_list'
         ]
 
     def get_inmate_name(self, obj):
@@ -1336,3 +1394,31 @@ class ReleaseWorkflowSerializer(serializers.ModelSerializer):
         if release_history and release_history.active_edr:
             return release_history.active_edr.isoformat()
         return None
+
+    def get_active_odr(self, obj):
+        release_history = obj.inmate.release_history.last()
+        if release_history and release_history.active_odr:
+            return release_history.active_odr.isoformat()
+        return None
+
+    def get_date_of_admission(self, obj):
+        return obj.inmate.admission_date.isoformat() if obj.inmate.admission_date else None
+
+    def get_offences_list(self, obj):
+        offences = obj.inmate.offences.all()
+        result = []
+        for o in offences:
+            sentence_text = "N/A"
+            date_of_sentence = None
+            if o.Offence_status == "CONVICTED" and hasattr(o, "conviction"):
+                c = o.conviction
+                sentence_text = f"{c.sentence_years} years, {c.sentence_months} months, {c.sentence_days} days"
+                if c.date_of_sentence:
+                    date_of_sentence = c.date_of_sentence.isoformat()
+            result.append({
+                "description": o.offence_description,
+                "status": o.Offence_status,
+                "sentence": sentence_text,
+                "date_of_sentence": date_of_sentence
+            })
+        return result

@@ -7,8 +7,7 @@
 
 import { getRoleDisplayName, normalizeRole } from "./auth";
 
-const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000') + '/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
 interface ApiResponse<T> {
   data?: T;
@@ -901,7 +900,7 @@ export const receptionApi = {
       const res = await fetch(`${API_BASE_URL}/reception/court-sessions/schedule/`, {
         method: "POST",
         headers: {
-          Authorization: `Token ${token}`,
+          Authorization: `Bearer ${token}`,
           // Don't set Content-Type for FormData, browser will set it with boundary
         },
         body: data,
@@ -929,13 +928,31 @@ export const receptionApi = {
     const res = await fetch(`${API_BASE_URL}/reception/discharges/propose/`, {
       method: "POST",
       headers: {
-        Authorization: `Token ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: data,
     });
     const responseData = await res.json().catch(() => ({}));
     if (!res.ok) {
-      return { data: null, error: responseData.error || responseData.detail || "Error proposing discharge" };
+      let errorMessage = "Error proposing discharge";
+      if (Array.isArray(responseData) && responseData.length > 0) {
+        errorMessage = responseData[0];
+      } else if (responseData.non_field_errors && Array.isArray(responseData.non_field_errors)) {
+        errorMessage = responseData.non_field_errors[0];
+      } else if (responseData.error) {
+        errorMessage = responseData.error;
+      } else if (responseData.detail) {
+        errorMessage = responseData.detail;
+      } else if (typeof responseData === 'object' && Object.keys(responseData).length > 0) {
+        // Just grab the first field error if it's a dict
+        const firstKey = Object.keys(responseData)[0];
+        if (Array.isArray(responseData[firstKey])) {
+           errorMessage = responseData[firstKey][0];
+        } else {
+           errorMessage = responseData[firstKey];
+        }
+      }
+      return { data: null, error: errorMessage };
     }
     return { data: responseData, error: null };
   },
@@ -1050,4 +1067,37 @@ export const rbacApi = {
   createDataExposureRecord: async (data: any) => fetchApi('/auth/data-exposure-records/', { method: 'POST', body: JSON.stringify(data) }),
   updateDataExposureRecord: async (id: number, data: any) => fetchApi(`/auth/data-exposure-records/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteDataExposureRecord: async (id: number) => fetchApi(`/auth/data-exposure-records/${id}/`, { method: 'DELETE' }),
+};
+
+// Reports API endpoints
+export const reportsApi = {
+  getAvailableFields: async () => {
+    return apiRequest('/api/reports/available-fields/');
+  },
+  getTemplates: async () => {
+    return apiRequest('/api/reports/templates/');
+  },
+  createTemplate: async (payload: any) => {
+    return apiRequest('/api/reports/templates/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  updateTemplate: async (id: number, payload: any) => {
+    return apiRequest(`/api/reports/templates/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteTemplate: async (id: number) => {
+    return apiRequest(`/api/reports/templates/${id}/`, {
+      method: 'DELETE',
+    });
+  },
+  generateReport: async (templateId: number) => {
+    return apiRequest('/api/reports/generate/', {
+      method: 'POST',
+      body: JSON.stringify({ template_id: templateId }),
+    });
+  },
 };

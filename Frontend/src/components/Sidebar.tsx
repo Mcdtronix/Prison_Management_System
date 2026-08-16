@@ -79,6 +79,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           subItems: [
             { title: "Overview", href: "/admin/inmates" },
             { title: "Reclassification", href: "/reception/reclassification" },
+            { title: "Discharges", href: "/admin/inmates/discharges" },
           ]
         },
         {
@@ -104,6 +105,11 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           title: "Audit Trail",
           href: "/admin/audit-trail",
           icon: <Activity size={18} />,
+        },
+        {
+          title: "Report Builder",
+          href: "/reports",
+          icon: <FileText size={18} />,
         },
         {
           title: "Settings",
@@ -156,6 +162,11 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           title: "Unlock",
           href: "/reception/unlock",
           icon: <Unlock size={18} />,
+        },
+        {
+          title: "Report Builder",
+          href: "/reception/reports",
+          icon: <FileText size={18} />,
         },
         {
           title: "Settings",
@@ -213,6 +224,11 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           icon: <Wrench size={18} />,
         },
         {
+          title: "Report Builder",
+          href: "/reports",
+          icon: <FileText size={18} />,
+        },
+        {
           title: "Settings",
           href: "/settings",
           icon: <Settings size={18} />,
@@ -234,6 +250,11 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           icon: <Warehouse size={18} />,
         },
         {
+          title: "Report Builder",
+          href: "/reports",
+          icon: <FileText size={18} />,
+        },
+        {
           title: "Settings",
           href: "/settings",
           icon: <Settings size={18} />,
@@ -253,6 +274,11 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           title: "Livestock",
           href: "/farms/livestock",
           icon: <Tractor size={18} />,
+        },
+        {
+          title: "Report Builder",
+          href: "/reports",
+          icon: <FileText size={18} />,
         },
         {
           title: "Settings",

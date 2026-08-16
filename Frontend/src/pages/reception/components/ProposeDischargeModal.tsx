@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { receptionApi } from '@/lib/api';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 
 interface ProposeDischargeModalProps {
@@ -115,19 +116,40 @@ const ProposeDischargeModal: React.FC<ProposeDischargeModalProps> = ({
               </div>
             </div>
 
+            <div className="grid gap-2 p-4 bg-white rounded-lg border">
+              <Label className="text-sm font-semibold text-gray-700">List of Offences</Label>
+              {session.offences_list && session.offences_list.length > 0 ? (
+                <ul className="space-y-2 mt-2">
+                  {session.offences_list.map((offence: any, idx: number) => (
+                    <li key={idx} className="text-sm flex justify-between items-start border-b pb-2 last:border-0 last:pb-0">
+                      <span className="text-gray-800 pr-4">{offence.description}</span>
+                      <span className={`inline-flex whitespace-nowrap items-center px-2 py-0.5 rounded text-xs font-medium ${offence.status === 'CONVICTED' ? 'bg-red-100 text-red-800' : offence.status === 'UNCONVICTED' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>
+                        {offence.status}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="text-sm text-gray-500 mt-1">No active offences</div>
+              )}
+            </div>
+
             <div className="grid gap-2">
               <Label htmlFor="reason">Reason for Discharge <span className="text-red-500">*</span></Label>
-              <Textarea
-                id="reason"
-                value={reason}
-                onChange={(e) => {
-                  setReason(e.target.value);
-                  if (error) setError(null);
-                }}
-                placeholder="State the reason for proposing this discharge..."
-                rows={3}
-                className={error ? 'border-red-500' : ''}
-              />
+              <Select value={reason} onValueChange={(val) => { setReason(val); if (error) setError(null); }}>
+                <SelectTrigger className={error ? 'border-red-500' : ''}>
+                  <SelectValue placeholder="Select a reason for discharge" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Sentence Expires">Sentence Expires</SelectItem>
+                  <SelectItem value="Community Service">Community Service</SelectItem>
+                  <SelectItem value="Bail">Bail</SelectItem>
+                  <SelectItem value="Not guilty and Acquitted">Not guilty and Acquitted</SelectItem>
+                  <SelectItem value="Guilty and acquitted">Guilty and acquitted</SelectItem>
+                  <SelectItem value="Withdrawn before/after Plea">Withdrawn before/after Plea</SelectItem>
+                  <SelectItem value="Amnesty">Amnesty</SelectItem>
+                </SelectContent>
+              </Select>
               {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
             </div>
 

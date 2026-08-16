@@ -17,6 +17,9 @@ interface DischargeApproval {
   reception_reason: string;
   reception_receipt: string | null;
   active_edr: string | null;
+  active_odr: string | null;
+  date_of_admission: string | null;
+  offences_list: Array<{ description: string; status: string; sentence: string; date_of_sentence: string | null }>;
 }
 
 const DischargeApprovals = () => {
@@ -24,7 +27,7 @@ const DischargeApprovals = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  const [selectedAction, setSelectedAction] = useState<{ type: 'approve' | 'reject', approval: DischargeApproval } | null>(null);
+  const [selectedApproval, setSelectedApproval] = useState<DischargeApproval | null>(null);
   const [remarks, setRemarks] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const { toast } = useToast();
@@ -53,13 +56,13 @@ const DischargeApprovals = () => {
     fetchApprovals();
   }, []);
 
-  const handleAction = async () => {
-    if (!selectedAction) return;
+  const handleAction = async (type: 'approve' | 'reject') => {
+    if (!selectedApproval) return;
     
     try {
       setActionLoading(true);
-      if (selectedAction.type === 'approve') {
-        await receptionApi.approvePendingDischarge(selectedAction.approval.id, remarks);
+      if (type === 'approve') {
+        await receptionApi.approvePendingDischarge(selectedApproval.id, remarks);
         toast({ title: "Success", description: "Discharge approved successfully." });
       } else {
         if (!remarks.trim()) {
@@ -67,17 +70,17 @@ const DischargeApprovals = () => {
           setActionLoading(false);
           return;
         }
-        await receptionApi.rejectPendingDischarge(selectedAction.approval.id, remarks);
+        await receptionApi.rejectPendingDischarge(selectedApproval.id, remarks);
         toast({ title: "Success", description: "Discharge rejected." });
       }
       
-      setSelectedAction(null);
+      setSelectedApproval(null);
       setRemarks('');
       fetchApprovals();
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || `Failed to ${selectedAction.type} discharge`,
+        description: error.message || `Failed to ${type} discharge`,
         variant: "destructive",
       });
     } finally {
@@ -132,21 +135,13 @@ const DischargeApprovals = () => {
                       <TableCell className="max-w-[200px] truncate" title={approval.reception_reason}>
                         {approval.reception_reason}
                       </TableCell>
-                      <TableCell className="text-right space-x-2">
+                      <TableCell className="text-right">
                         <Button 
                           size="sm" 
                           className="bg-[#0b4f2a] hover:bg-[#0b4f2a]/90 text-white"
-                          onClick={() => setSelectedAction({ type: 'approve', approval })}
+                          onClick={() => setSelectedApproval(approval)}
                         >
-                          <CheckCircle className="w-4 h-4 mr-1" /> Approve
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="text-red-600 border-red-200 hover:bg-red-50"
-                          onClick={() => setSelectedAction({ type: 'reject', approval })}
-                        >
-                          <XCircle className="w-4 h-4 mr-1" /> Reject
+                          <FileUp className="w-4 h-4 mr-1" /> Review
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -158,42 +153,125 @@ const DischargeApprovals = () => {
         </CardContent>
       </Card>
 
-      <Dialog open={!!selectedAction} onOpenChange={(open) => !open && setSelectedAction(null)}>
-        <DialogContent>
+      <Dialog open={!!selectedApproval} onOpenChange={(open) => !open && setSelectedApproval(null)}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>
-              {selectedAction?.type === 'approve' ? 'Approve Discharge' : 'Reject Discharge'}
-            </DialogTitle>
+            <DialogTitle>Review Discharge Proposal</DialogTitle>
             <DialogDescription>
-              {selectedAction?.type === 'approve' 
-                ? `You are about to approve the discharge for ${selectedAction?.approval?.inmate_name} (${selectedAction?.approval?.prison_number}). This action will officially release the inmate.`
-                : `You are rejecting the discharge proposal for ${selectedAction?.approval?.inmate_name} (${selectedAction?.approval?.prison_number}).`
-              }
+              Review the inmate's details carefully before approving or rejecting this discharge.
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Remarks (Optional for approval, required for rejection)</label>
-              <Textarea 
-                placeholder="Enter any notes or remarks regarding this decision..." 
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-              />
+          {selectedApproval && (
+            <div className="space-y-6 py-2">
+              <div className="grid grid-cols-2 gap-4 text-sm bg-gray-50 p-4 rounded-md border">
+                <div>
+                  <span className="text-gray-500 block text-xs uppercase font-semibold">Name</span>
+                  <span className="font-medium">{selectedApproval.inmate_name}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block text-xs uppercase font-semibold">Prison Number</span>
+                  <span className="font-medium">{selectedApproval.prison_number}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block text-xs uppercase font-semibold">Admission Date</span>
+                  <span className="font-medium">
+                    {selectedApproval.date_of_admission ? new Date(selectedApproval.date_of_admission).toLocaleDateString() : 'N/A'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block text-xs uppercase font-semibold">Proposed Reason</span>
+                  <span className="font-medium text-[#0b4f2a]">{selectedApproval.reception_reason}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block text-xs uppercase font-semibold">EDR</span>
+                  <span className="font-medium text-green-700">
+                    {selectedApproval.active_edr ? new Date(selectedApproval.active_edr).toLocaleDateString() : 'N/A'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block text-xs uppercase font-semibold">ODR</span>
+                  <span className="font-medium">
+                    {selectedApproval.active_odr ? new Date(selectedApproval.active_odr).toLocaleDateString() : 'N/A'}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold mb-2">Offences & Sentences</h4>
+                {selectedApproval.offences_list && selectedApproval.offences_list.length > 0 ? (
+                  <div className="border rounded-md overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-gray-50 text-xs">
+                        <TableRow>
+                          <TableHead>Offence</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Sentence</TableHead>
+                          <TableHead>Date of Sentence</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody className="text-sm">
+                        {selectedApproval.offences_list.map((offence, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="font-medium max-w-[200px] truncate" title={offence.description}>
+                              {offence.description}
+                            </TableCell>
+                            <TableCell>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                offence.status === 'CONVICTED' ? 'bg-red-100 text-red-800' :
+                                offence.status === 'UNCONVICTED' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-green-100 text-green-800'
+                              }`}>
+                                {offence.status}
+                              </span>
+                            </TableCell>
+                            <TableCell>{offence.sentence}</TableCell>
+                            <TableCell>
+                              {offence.date_of_sentence ? new Date(offence.date_of_sentence).toLocaleDateString() : 'N/A'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 italic">No offences recorded.</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Admin Remarks (Optional for approval, required for rejection)</label>
+                <Textarea 
+                  placeholder="Enter any notes or remarks regarding this decision..." 
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  className="min-h-[80px]"
+                />
+              </div>
             </div>
-          </div>
+          )}
           
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedAction(null)} disabled={actionLoading}>
+          <DialogFooter className="gap-2 sm:gap-0 mt-4">
+            <Button variant="outline" onClick={() => setSelectedApproval(null)} disabled={actionLoading}>
               Cancel
             </Button>
-            <Button 
-              className={selectedAction?.type === 'reject' ? "bg-red-600 hover:bg-red-700 text-white" : "bg-[#0b4f2a] hover:bg-[#0b4f2a]/90 text-white"}
-              onClick={handleAction} 
-              disabled={actionLoading || (selectedAction?.type === 'reject' && !remarks.trim())}
-            >
-              {actionLoading ? "Processing..." : selectedAction?.type === 'approve' ? "Confirm Approval" : "Confirm Rejection"}
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline"
+                className="text-red-600 border-red-200 hover:bg-red-50"
+                onClick={() => handleAction('reject')} 
+                disabled={actionLoading || !remarks.trim()}
+              >
+                <XCircle className="w-4 h-4 mr-1" /> Reject
+              </Button>
+              <Button 
+                className="bg-[#0b4f2a] hover:bg-[#0b4f2a]/90 text-white"
+                onClick={() => handleAction('approve')} 
+                disabled={actionLoading}
+              >
+                <CheckCircle className="w-4 h-4 mr-1" /> Approve
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

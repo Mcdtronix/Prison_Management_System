@@ -58,7 +58,7 @@ const Discharge = () => {
     const dates: Date[] = [];
     sessions.forEach(session => {
       if (session.active_edr) {
-        const dateObj = new Date(session.active_edr + 'T12:00:00'); 
+        const dateObj = new Date(session.active_edr + 'T12:00:00');
         dates.push(dateObj);
       }
     });
@@ -173,15 +173,14 @@ const Discharge = () => {
                             {session.active_odr ? format(new Date(session.active_odr + 'T12:00:00'), 'PP') : 'N/A'}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
+                            <Button
+                              size="sm"
+                              variant="outline"
                               className="text-[#0b4f2a] border-[#0b4f2a] hover:bg-[#0b4f2a] hover:text-white"
                               onClick={() => {
                                 setSelectedSession(session);
                                 setIsModalOpen(true);
                               }}
-                              disabled={session.approval_status !== 'APPROVED'}
                             >
                               <FileUp className="w-4 h-4 mr-1" />
                               Propose
@@ -198,7 +197,7 @@ const Discharge = () => {
         </div>
       </div>
 
-      <ProposeDischargeModal 
+      <ProposeDischargeModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSuccess={fetchSessions}

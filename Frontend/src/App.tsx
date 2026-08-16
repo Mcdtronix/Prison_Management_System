@@ -10,6 +10,7 @@ import AdminWizard from "@/pages/admin/AdminWizard";
 import OfficerManagement from "@/pages/admin/OfficerManagement";
 import OfficerDetails from "@/pages/admin/OfficerDetails";
 import InmateOverview from "@/pages/admin/InmateOverview";
+import DischargeApprovals from "@/pages/admin/DischargeApprovals";
 import RoleManagement from "@/pages/admin/RoleManagement";
 import DepartmentManagement from "@/pages/admin/DepartmentManagement";
 import UserAssignmentManagement from "@/pages/admin/UserAssignmentManagement";
@@ -25,6 +26,7 @@ import Courts from "@/pages/reception/Courts";
 import Analysis from "@/pages/reception/Analysis";
 import Discharge from "@/pages/reception/Discharge";
 import Reclassification from "@/pages/reception/Reclassification";
+import ReportBuilder from "@/pages/reception/ReportBuilder";
 import HealthDashboard from "@/pages/health/HealthDashboard";
 import InmateHealth from "@/pages/health/InmateHealth";
 import InmateHealthList from "@/pages/health/InmateHealthList";
@@ -137,6 +139,16 @@ function App() {
               <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
                 <PrisonLayout title="Inmate Overview">
                   <InmateOverview />
+                </PrisonLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/inmates/discharges"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
+                <PrisonLayout title="Discharge Approvals">
+                  <DischargeApprovals />
                 </PrisonLayout>
               </ProtectedRoute>
             }
@@ -262,6 +274,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={["RECEPTION_OFFICER", "ADMIN_OFFICER", "SUPER_ADMIN"]}>
                 <Reclassification />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reception/reports"
+            element={
+              <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
+                <ReportBuilder />
               </ProtectedRoute>
             }
           />

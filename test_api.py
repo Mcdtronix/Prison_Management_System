@@ -1,16 +1,24 @@
-import os, django
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "Mcdtronix.settings")
+import os
+import django
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "Prison_Management_System.settings")
 django.setup()
-from django.test import Client
-from Auth.models import User
-c = Client()
-u = User.objects.first()
-c.force_login(u)
-res = c.get('/api/hr/officers/')
-print("Status:", res.status_code)
-if res.status_code == 200:
-    data = res.json()
-    if isinstance(data, dict):
-        print("Keys:", data.keys())
-    else:
-        print("List length:", len(data))
+
+from Reports.models import ReportTemplate
+from Reports.views import GenerateReportAPIView
+from django.test import RequestFactory
+
+template = ReportTemplate.objects.first()
+if not template:
+    print("No templates found")
+else:
+    factory = RequestFactory()
+    request = factory.post('/api/reports/generate/', {'template_id': template.id}, format='json')
+    request.user = template.created_by
+    # Mock org_context
+    request.org_context = None
+    
+    view = GenerateReportAPIView.as_view()
+    response = view(request)
+    print("STATUS:", response.status_code)
+    print("DATA:", response.data)
