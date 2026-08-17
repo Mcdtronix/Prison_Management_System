@@ -6,7 +6,7 @@ class ReportTemplateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ReportTemplate
-        fields = ['id', 'name', 'description', 'created_by', 'created_by_name', 'base_model', 'selected_fields', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'description', 'created_by', 'created_by_name', 'base_model', 'selected_fields', 'filters', 'created_at', 'updated_at']
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
     def get_created_by_name(self, obj):

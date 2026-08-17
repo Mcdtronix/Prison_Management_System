@@ -108,7 +108,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
         },
         {
           title: "Report Builder",
-          href: "/reports",
+          href: "/admin/reports",
           icon: <FileText size={18} />,
         },
         {
@@ -225,7 +225,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
         },
         {
           title: "Report Builder",
-          href: "/reports",
+          href: "/health/reports",
           icon: <FileText size={18} />,
         },
         {
@@ -251,7 +251,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
         },
         {
           title: "Report Builder",
-          href: "/reports",
+          href: "/stores/reports",
           icon: <FileText size={18} />,
         },
         {
@@ -277,7 +277,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
         },
         {
           title: "Report Builder",
-          href: "/reports",
+          href: "/farms/reports",
           icon: <FileText size={18} />,
         },
         {

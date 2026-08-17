@@ -203,6 +203,14 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/admin/reports"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN_OFFICER"]}>
+                <ReportBuilder />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Reception routes */}
           <Route
@@ -351,6 +359,14 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/health/reports"
+            element={
+              <ProtectedRoute allowedRoles={["HEALTH_OFFICER"]}>
+                <ReportBuilder />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Stores routes */}
           <Route
@@ -361,6 +377,14 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/stores/reports"
+            element={
+              <ProtectedRoute allowedRoles={["STORES_OFFICER"]}>
+                <ReportBuilder />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Farms routes */}
           <Route
@@ -368,6 +392,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={["FARMS_OFFICER"]}>
                 <FarmsDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/farms/reports"
+            element={
+              <ProtectedRoute allowedRoles={["FARMS_OFFICER"]}>
+                <ReportBuilder />
               </ProtectedRoute>
             }
           />

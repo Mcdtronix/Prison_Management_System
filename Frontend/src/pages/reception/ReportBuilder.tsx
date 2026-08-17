@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { reportsApi } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
@@ -11,6 +12,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { PrisonLayout } from '@/components/PrisonLayout';
+import { QueryBuilder, FilterGroup } from './components/QueryBuilder';
 
 function SortableItem({ id, label, onRemove }: { id: string, label: string, onRemove: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
@@ -32,42 +34,85 @@ function SortableItem({ id, label, onRemove }: { id: string, label: string, onRe
 }
 
 export default function ReportBuilder() {
-  const [fieldsSchema, setFieldsSchema] = useState<any>({});
+  const [fieldsSchema, setFieldsSchema] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [view, setView] = useState<'list' | 'create' | 'report'>('list');
 
   // Create Template State
   const [newTemplateName, setNewTemplateName] = useState('');
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
+  const [filters, setFilters] = useState<FilterGroup>({ operator: 'AND', conditions: [] });
   const [creating, setCreating] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [baseModel, setBaseModel] = useState('Inmate');
+  const { user } = useAuth();
+
+  const getAvailableBaseModels = () => {
+    if (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN_OFFICER') {
+      return [
+        { value: 'Inmate', label: 'Inmate Report' },
+        { value: 'Officer', label: 'Officer Report' },
+        { value: 'Patient', label: 'Health - Patients' },
+        { value: 'OutPatientVisit', label: 'Health - OPD Visits' },
+        { value: 'ChronicPatient', label: 'Health - Chronic Patients' },
+        { value: 'Medicine', label: 'Health - Medicine Inventory' },
+      ];
+    }
+    if (user?.role === 'HEALTH_OFFICER') {
+      return [
+        { value: 'Patient', label: 'Patients Report' },
+        { value: 'OutPatientVisit', label: 'OPD Visits Report' },
+        { value: 'ChronicPatient', label: 'Chronic Patients Report' },
+        { value: 'Medicine', label: 'Medicine Inventory Report' },
+      ];
+    }
+    // Default for Reception, etc.
+    return [
+      { value: 'Inmate', label: 'Inmate Report' }
+    ];
+  };
+
+  const availableBaseModels = getAvailableBaseModels();
+
+  useEffect(() => {
+    if (availableBaseModels.length > 0 && !availableBaseModels.find(m => m.value === baseModel)) {
+      setBaseModel(availableBaseModels[0].value);
+    }
+  }, [user?.role]);
 
   // Report View State
   const [currentReport, setCurrentReport] = useState<any[]>([]);
   const [currentTemplate, setCurrentTemplate] = useState<any>(null);
   const [generating, setGenerating] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  const [excludedIds, setExcludedIds] = useState<number[]>([]);
 
   useEffect(() => {
     fetchTemplates();
-    fetchFieldsSchema();
   }, []);
+
+  useEffect(() => {
+    fetchFieldsSchema(baseModel);
+    setSelectedFields([]); // Clear fields when changing base model
+  }, [baseModel]);
 
   const fetchTemplates = async () => {
     try {
       const res = await reportsApi.getTemplates();
-      const data = (res.data as any)?.results || res.data || [];
+      const data = (res as any)?.results || (res as any)?.data?.results || res.data || [];
       setTemplates(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("Failed to fetch templates", e);
     }
   };
 
-  const fetchFieldsSchema = async () => {
+  const fetchFieldsSchema = async (model: string) => {
     try {
-      const res = await reportsApi.getAvailableFields();
-      setFieldsSchema(res.data);
+      const res = await reportsApi.getAvailableFields(model);
+      setFieldsSchema(res.fields || res.data?.fields || []);
     } catch (e) {
       console.error("Failed to fetch fields schema", e);
+      setFieldsSchema([]);
     }
   };
 
@@ -80,13 +125,15 @@ export default function ReportBuilder() {
     try {
       await reportsApi.createTemplate({
         name: newTemplateName,
-        base_model: "Inmate",
+        base_model: baseModel,
         selected_fields: selectedFields,
+        filters: filters,
       });
       await fetchTemplates();
       setView('list');
       setNewTemplateName('');
       setSelectedFields([]);
+      setFilters({ operator: 'AND', conditions: [] });
     } catch (e) {
       console.error("Failed to create template", e);
       alert("Failed to create template");
@@ -109,12 +156,13 @@ export default function ReportBuilder() {
     setGenerating(true);
     setCurrentTemplate(template);
     setView('report');
+    setExcludedIds([]);
     try {
       const res = await reportsApi.generateReport(template.id);
       if (res.error) {
         throw new Error(res.error);
       }
-      setCurrentReport(res.data.data);
+      setCurrentReport(Array.isArray(res.data) ? res.data : (res.data?.data || []));
     } catch (e: any) {
       console.error("Failed to generate report", e);
       alert(`Failed to generate report: ${e.message || 'Unknown error'}`);
@@ -124,43 +172,33 @@ export default function ReportBuilder() {
     }
   };
 
+  const handleExport = async (format: 'csv' | 'excel' | 'pdf') => {
+    if (!currentTemplate) return;
+    setExportingFormat(format);
+    try {
+      const blob = await reportsApi.generateReport(currentTemplate.id, format, excludedIds);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.setAttribute('hidden', '');
+      a.setAttribute('href', url);
+      const ext = format === 'excel' ? 'xlsx' : format;
+      a.setAttribute('download', `${currentTemplate?.name || 'report'}.${ext}`);
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      console.error(`Failed to export ${format}`, e);
+      alert(`Failed to export: ${e.message || 'Unknown error'}`);
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
   const activeColumns = React.useMemo(() => {
     if (!currentTemplate || !currentReport || currentReport.length === 0) return [];
-    return currentTemplate.selected_fields.filter((field: string) => {
-      return currentReport.some(row => {
-        const val = row[field];
-        return val !== null && val !== undefined && val !== '';
-      });
-    });
+    return currentTemplate.selected_fields;
   }, [currentTemplate, currentReport]);
-
-  const handleExportCSV = () => {
-    if (!currentReport || currentReport.length === 0) return;
-    
-    const headers = activeColumns.length > 0 ? activeColumns : Object.keys(currentReport[0]);
-    const csvRows = [];
-    csvRows.push(headers.join(','));
-
-    for (const row of currentReport) {
-      const values = headers.map((header: string) => {
-        const val = row[header];
-        const escaped = ('' + (val || '')).replace(/"/g, '""');
-        return `"${escaped}"`;
-      });
-      csvRows.push(values.join(','));
-    }
-
-    const csvData = csvRows.join('\n');
-    const blob = new Blob([csvData], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.setAttribute('hidden', '');
-    a.setAttribute('href', url);
-    a.setAttribute('download', `${currentTemplate?.name || 'report'}.csv`);
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
 
   const toggleFieldSelection = (fieldName: string) => {
     setSelectedFields(prev => 
@@ -184,19 +222,21 @@ export default function ReportBuilder() {
     }
   };
 
-  // Helper to get verbose name for a field key
   const getFieldVerboseName = (fieldName: string) => {
-    for (const modelKey in fieldsSchema) {
-      const field = fieldsSchema[modelKey].fields.find((f: any) => f.name === fieldName);
-      if (field) return field.verbose_name || field.name;
-    }
-    return fieldName;
+    const field = fieldsSchema.find(f => f.key === fieldName);
+    return field ? `${field.group}: ${field.label}` : fieldName;
   };
+
+  const groupedFields = fieldsSchema.reduce((acc: any, field: any) => {
+    if (!acc[field.group]) acc[field.group] = [];
+    acc[field.group].push(field);
+    return acc;
+  }, {});
 
   return (
     <PrisonLayout
       title="Report Builder"
-      description="Create and generate custom reports from available data."
+      description="Create and generate custom reports from available data using a visual query builder."
     >
       <div className="space-y-6">
         <div className="flex justify-end items-center">
@@ -267,18 +307,44 @@ export default function ReportBuilder() {
             <Card className="border-t-4 border-t-[#0b4f2a] shrink-0">
               <CardHeader>
                 <CardTitle>Report Details</CardTitle>
-                <CardDescription>Name your report and arrange your selected columns.</CardDescription>
+                <CardDescription>Name your report and select the base data model.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2 max-w-md">
-                  <Label>Template Name</Label>
-                  <Input 
-                    value={newTemplateName} 
-                    onChange={e => setNewTemplateName(e.target.value)} 
-                    placeholder="e.g., Monthly Inmate Admissions" 
-                    className="border-gray-300 focus-visible:ring-[#0b4f2a]"
-                  />
+                <div className="space-y-4 max-w-md">
+                  {availableBaseModels.length > 1 && (
+                    <div className="space-y-2">
+                      <Label>Report Type (Base Data)</Label>
+                      <select 
+                        value={baseModel}
+                        onChange={(e) => setBaseModel(e.target.value)}
+                        className="flex h-10 w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0b4f2a] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {availableBaseModels.map(model => (
+                          <option key={model.value} value={model.value}>{model.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label>Template Name</Label>
+                    <Input 
+                      value={newTemplateName} 
+                      onChange={e => setNewTemplateName(e.target.value)} 
+                      placeholder="e.g., Monthly Inmate Admissions" 
+                      className="border-gray-300 focus-visible:ring-[#0b4f2a]"
+                    />
+                  </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-t-4 border-t-[#0b4f2a] shrink-0">
+              <CardHeader>
+                <CardTitle>Filters (Where Clause)</CardTitle>
+                <CardDescription>Visually construct conditions using AND/OR groups.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <QueryBuilder group={filters} onChange={setFilters} fieldsSchema={fieldsSchema} />
               </CardContent>
             </Card>
 
@@ -336,25 +402,25 @@ export default function ReportBuilder() {
                 </Button>
               </CardHeader>
               <CardContent className="flex-1 overflow-y-auto p-4 space-y-6">
-                {Object.entries(fieldsSchema).map(([modelKey, modelInfo]: any) => (
-                  <div key={modelKey} className="space-y-3">
-                    <h4 className="font-bold text-sm text-[#0b4f2a] uppercase tracking-wider">{modelInfo.verbose_name}</h4>
+                {Object.entries(groupedFields).map(([groupName, fields]: any) => (
+                  <div key={groupName} className="space-y-3">
+                    <h4 className="font-bold text-sm text-[#0b4f2a] uppercase tracking-wider">{groupName}</h4>
                     <div className="space-y-2">
-                      {modelInfo.fields.map((field: any) => {
-                        const isSelected = selectedFields.includes(field.name);
+                      {fields.map((field: any) => {
+                        const isSelected = selectedFields.includes(field.key);
                         return (
                           <label 
-                            key={field.name} 
+                            key={field.key} 
                             className={`flex items-start space-x-3 p-2 rounded-md cursor-pointer transition-colors ${isSelected ? 'bg-[#0b4f2a]/5 border border-[#0b4f2a]/20' : 'hover:bg-gray-50'}`}
                           >
                             <Checkbox 
                               checked={isSelected}
-                              onCheckedChange={() => toggleFieldSelection(field.name)}
+                              onCheckedChange={() => toggleFieldSelection(field.key)}
                               className="mt-0.5"
                             />
                             <div className="grid gap-1 leading-none">
-                              <span className="text-sm font-medium">{field.verbose_name || field.name}</span>
-                              <span className="text-[0.7rem] text-muted-foreground">{field.type.replace('Field', '')}</span>
+                              <span className="text-sm font-medium">{field.label}</span>
+                              <span className="text-[0.7rem] text-muted-foreground">{field.type}</span>
                             </div>
                           </label>
                         )
@@ -370,14 +436,22 @@ export default function ReportBuilder() {
 
       {view === 'report' && (
         <Card className="border-t-4 border-t-[#0b4f2a]">
-          <CardHeader className="flex flex-row items-center justify-between bg-gray-50/50 border-b">
+          <CardHeader className="flex flex-row items-center justify-between bg-gray-50/50 border-b flex-wrap gap-4">
             <div>
               <CardTitle className="text-xl text-[#0b4f2a]">{currentTemplate?.name}</CardTitle>
-              <CardDescription>Generated Report Data ({currentReport.length} rows)</CardDescription>
+              <CardDescription>Generated Report Data ({currentReport.filter(r => !excludedIds.includes(r._id)).length} records shown)</CardDescription>
             </div>
-            <Button onClick={handleExportCSV} disabled={generating || currentReport.length === 0} className="bg-[#d7a928] hover:bg-[#c29620] text-[#0b4f2a] font-bold">
-              <Download className="mr-2 h-4 w-4" /> Export CSV
-            </Button>
+            <div className="flex gap-2 flex-wrap">
+              <Button onClick={() => handleExport('csv')} disabled={generating || currentReport.length === 0 || exportingFormat !== null} variant="outline" className="border-[#0b4f2a] text-[#0b4f2a]">
+                {exportingFormat === 'csv' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />} CSV
+              </Button>
+              <Button onClick={() => handleExport('excel')} disabled={generating || currentReport.length === 0 || exportingFormat !== null} variant="outline" className="border-[#0b4f2a] text-[#0b4f2a]">
+                {exportingFormat === 'excel' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />} Excel
+              </Button>
+              <Button onClick={() => handleExport('pdf')} disabled={generating || currentReport.length === 0 || exportingFormat !== null} className="bg-[#d7a928] hover:bg-[#c29620] text-[#0b4f2a] font-bold">
+                {exportingFormat === 'pdf' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />} PDF
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="pt-6">
             {generating ? (
@@ -386,7 +460,7 @@ export default function ReportBuilder() {
                 <p className="font-medium text-lg text-gray-700">Crunching data...</p>
                 <p className="text-sm">Please wait while we generate your report.</p>
               </div>
-            ) : currentReport.length === 0 ? (
+            ) : currentReport.filter(r => !excludedIds.includes(r._id)).length === 0 ? (
               <div className="text-center py-16 bg-gray-50 rounded-lg border border-dashed">
                 <FileText className="mx-auto h-12 w-12 text-gray-300 mb-4" />
                 <h3 className="text-lg font-medium text-gray-900">No data available</h3>
@@ -402,16 +476,22 @@ export default function ReportBuilder() {
                           {getFieldVerboseName(field)}
                         </TableHead>
                       ))}
+                      <TableHead className="whitespace-nowrap font-bold text-gray-700 w-[50px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {currentReport.map((row, idx) => (
+                    {currentReport.filter(row => !excludedIds.includes(row._id)).map((row, idx) => (
                       <TableRow key={idx} className="hover:bg-gray-50 transition-colors">
                         {activeColumns.map((field: string) => (
                           <TableCell key={field} className="whitespace-nowrap">
                             {row[field] !== null && row[field] !== undefined && row[field] !== '' ? String(row[field]) : '-'}
                           </TableCell>
                         ))}
+                        <TableCell>
+                          <Button variant="ghost" size="sm" onClick={() => setExcludedIds([...excludedIds, row._id])} className="text-gray-400 hover:text-red-600 h-8 w-8 p-0" title="Remove from report">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

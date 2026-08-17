@@ -7,6 +7,7 @@ class ReportTemplate(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='report_templates')
     base_model = models.CharField(max_length=100)
     selected_fields = models.JSONField(help_text="List of fields selected for the report")
+    filters = models.JSONField(blank=True, null=True, default=list, help_text="List of filter conditions (Where clause)")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

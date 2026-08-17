@@ -1071,8 +1071,8 @@ export const rbacApi = {
 
 // Reports API endpoints
 export const reportsApi = {
-  getAvailableFields: async () => {
-    return apiRequest('/api/reports/available-fields/');
+  getAvailableFields: async (baseModel: string = 'Inmate') => {
+    return apiRequest(`/api/reports/available-fields/?base_model=${baseModel}&_t=${Date.now()}`);
   },
   getTemplates: async () => {
     return apiRequest('/api/reports/templates/');
@@ -1094,10 +1094,28 @@ export const reportsApi = {
       method: 'DELETE',
     });
   },
-  generateReport: async (templateId: number) => {
-    return apiRequest('/api/reports/generate/', {
+  generateReport: async (templateId: number, exportFormat?: 'csv' | 'excel' | 'pdf', excludedIds?: number[]) => {
+    if (!exportFormat) {
+      return apiRequest('/api/reports/generate/', {
+        method: 'POST',
+        body: JSON.stringify({ template_id: templateId, excluded_ids: excludedIds || [] }),
+      });
+    }
+    
+    const token = localStorage.getItem('auth_token');
+    const response = await fetch(`${API_BASE_URL.replace('/api', '')}/api/reports/generate/`, {
       method: 'POST',
-      body: JSON.stringify({ template_id: templateId }),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ template_id: templateId, export_format: exportFormat, excluded_ids: excludedIds || [] })
     });
+    
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to generate report');
+    }
+    return response.blob();
   },
 };
