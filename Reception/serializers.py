@@ -1422,3 +1422,59 @@ class ReleaseWorkflowSerializer(serializers.ModelSerializer):
                 "date_of_sentence": date_of_sentence
             })
         return result
+
+# ==================================================
+# CUSTODY / LOCKUP & UNLOCK SERIALIZERS
+# ==================================================
+
+from .models import Yard, Cell, LockupRecord, LockupCellCount, UnlockRecord, UnlockCellCount
+
+class CellSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Cell
+        fields = ['id', 'yard', 'name', 'display_order', 'is_active', 'description', 'capacity']
+        read_only_fields = ['id']
+
+
+class YardSerializer(serializers.ModelSerializer):
+    cells = CellSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Yard
+        fields = ['id', 'station', 'name', 'description', 'display_order', 'is_active', 'cells']
+        read_only_fields = ['id', 'station', 'cells']
+
+
+class LockupCellCountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LockupCellCount
+        fields = ['id', 'yard', 'cell', 'yard_name_snapshot', 'cell_name_snapshot', 'count']
+        read_only_fields = ['id']
+
+
+class LockupRecordSerializer(serializers.ModelSerializer):
+    cell_counts = LockupCellCountSerializer(many=True, read_only=True)
+    recorded_by_name = serializers.CharField(source='recorded_by.user.username', read_only=True)
+
+    class Meta:
+        model = LockupRecord
+        fields = ['id', 'station', 'date', 'time', 'total_count', 'status', 'notes', 'recorded_by', 'recorded_by_name', 'created_at', 'cell_counts']
+        read_only_fields = ['id', 'station', 'total_count', 'recorded_by', 'recorded_by_name', 'created_at']
+
+
+class UnlockCellCountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UnlockCellCount
+        fields = ['id', 'yard', 'cell', 'yard_name_snapshot', 'cell_name_snapshot', 'count']
+        read_only_fields = ['id']
+
+
+class UnlockRecordSerializer(serializers.ModelSerializer):
+    cell_counts = UnlockCellCountSerializer(many=True, read_only=True)
+    recorded_by_name = serializers.CharField(source='recorded_by.user.username', read_only=True)
+
+    class Meta:
+        model = UnlockRecord
+        fields = ['id', 'station', 'date', 'time', 'total_count', 'status', 'notes', 'recorded_by', 'recorded_by_name', 'created_at', 'cell_counts']
+        read_only_fields = ['id', 'station', 'total_count', 'recorded_by', 'recorded_by_name', 'created_at']
+

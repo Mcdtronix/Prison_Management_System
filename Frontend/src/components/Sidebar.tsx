@@ -154,14 +154,15 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
           icon: <AlertTriangle size={18} />,
         },
         {
-          title: "Lock Up",
-          href: "/reception/lockup",
+          title: "Custody",
           icon: <Lock size={18} />,
-        },
-        {
-          title: "Unlock",
-          href: "/reception/unlock",
-          icon: <Unlock size={18} />,
+          subItems: [
+            { title: "Station Config", href: "/reception/station-config" },
+            { title: "Lockup", href: "/reception/lockup" },
+            { title: "Unlock", href: "/reception/unlock" },
+            { title: "Lockup History", href: "/reception/lockup-history" },
+            { title: "Unlock History", href: "/reception/unlock-history" },
+          ],
         },
         {
           title: "Report Builder",

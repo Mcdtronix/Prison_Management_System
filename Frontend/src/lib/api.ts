@@ -1103,7 +1103,10 @@ export const reportsApi = {
     }
     
     const token = localStorage.getItem('auth_token');
-    const response = await fetch(`${API_BASE_URL.replace('/api', '')}/api/reports/generate/`, {
+    let url = `${API_BASE_URL}/reports/generate/`;
+    url = url.replace(/\/api\/api\//g, '/api/');
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1118,4 +1121,48 @@ export const reportsApi = {
     }
     return response.blob();
   },
+};
+
+// ==================================================
+// CUSTODY / LOCKUP API
+// ==================================================
+
+export const custodyApi = {
+  getYards: async () => {
+    return fetchApi('/reception/yards/');
+  },
+  createYard: async (data: any) => {
+    return fetchApi('/reception/yards/', { method: 'POST', body: JSON.stringify(data) });
+  },
+  updateYard: async (id: number, data: any) => {
+    return fetchApi(`/reception/yards/${id}/`, { method: 'PATCH', body: JSON.stringify(data) });
+  },
+  
+  getCells: async () => {
+    return fetchApi('/reception/cells/');
+  },
+  createCell: async (data: any) => {
+    return fetchApi('/reception/cells/', { method: 'POST', body: JSON.stringify(data) });
+  },
+  updateCell: async (id: number, data: any) => {
+    return fetchApi(`/reception/cells/${id}/`, { method: 'PATCH', body: JSON.stringify(data) });
+  },
+
+  getLockupConfig: async () => {
+    return fetchApi('/reception/lockup/');
+  },
+  submitLockup: async (data: any) => {
+    return fetchApi('/reception/lockup/', { method: 'POST', body: JSON.stringify(data) });
+  },
+  
+  submitUnlock: async (data: any) => {
+    return fetchApi('/reception/unlock/', { method: 'POST', body: JSON.stringify(data) });
+  },
+  
+  getLockupHistory: async () => {
+    return fetchApi('/reception/lockup-history/');
+  },
+  getUnlockHistory: async () => {
+    return fetchApi('/reception/unlock-history/');
+  }
 };

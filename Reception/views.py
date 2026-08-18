@@ -347,8 +347,201 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
                 action=f"Recorded Court Session for '{offence.offence_description[:30]}': Outcome {outcome}",
                 performed_by=request.user.username if request.user else 'System'
             )
-                    
-        return Response({"status": "Court session recorded successfully."})
+        return Response({'status': 'Approved and forwarded'})
+
+# ==================================================
+# CUSTODY / LOCKUP & UNLOCK VIEWS
+# ==================================================
+
+from .models import Yard, Cell, LockupRecord, LockupCellCount, UnlockRecord, UnlockCellCount
+from .serializers import YardSerializer, CellSerializer, LockupRecordSerializer, UnlockRecordSerializer
+
+class YardViewSet(viewsets.ModelViewSet):
+    serializer_class = YardSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        org_unit = getattr(self.request, 'org_unit', None)
+        if not org_unit:
+            return Yard.objects.none()
+        return Yard.objects.filter(station=org_unit).prefetch_related('cells')
+
+    def perform_create(self, serializer):
+        org_unit = getattr(self.request, 'org_unit', None)
+        serializer.save(station=org_unit, created_by=self.request.user)
+
+class CellViewSet(viewsets.ModelViewSet):
+    serializer_class = CellSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        org_unit = getattr(self.request, 'org_unit', None)
+        if not org_unit:
+            return Cell.objects.none()
+        return Cell.objects.filter(yard__station=org_unit)
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+class LockupAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Returns the active configuration for the lockup UI."""
+        org_unit = getattr(request, 'org_unit', None)
+        if not org_unit:
+            return Response({"detail": "No organization unit context."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        yards = Yard.objects.filter(station=org_unit, is_active=True).prefetch_related('cells')
+        data = []
+        for yard in yards:
+            cells = yard.cells.filter(is_active=True)
+            if not cells.exists():
+                continue
+            data.append({
+                "id": yard.id,
+                "name": yard.name,
+                "display_order": yard.display_order,
+                "cells": [
+                    {
+                        "id": cell.id,
+                        "name": cell.name,
+                        "display_order": cell.display_order
+                    } for cell in cells
+                ]
+            })
+        return Response({"yards": data})
+
+    def post(self, request):
+        """Submits a lockup record."""
+        org_unit = getattr(request, 'org_unit', None)
+        if not org_unit:
+            return Response({"detail": "No organization unit context."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user_assignment = None
+        try:
+            from Auth.utils import get_primary_assignment
+            user_assignment = get_primary_assignment(request.user)
+        except Exception:
+            pass
+
+        if not user_assignment:
+            return Response({"detail": "User lacks primary assignment."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Expecting: { date: "YYYY-MM-DD", time: "HH:MM", counts: [ {yard_id, cell_id, count}, ... ] }
+        data = request.data
+        counts = data.get('counts', [])
+        
+        if not counts:
+            return Response({"detail": "No counts provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                total_sum = 0
+                for c in counts:
+                    total_sum += int(c.get('count', 0))
+
+                lockup = LockupRecord.objects.create(
+                    station=org_unit,
+                    date=data.get('date', timezone.now().date()),
+                    time=data.get('time', timezone.now().time()),
+                    total_count=total_sum,
+                    recorded_by=user_assignment,
+                    notes=data.get('notes', '')
+                )
+
+                for c in counts:
+                    yard = Yard.objects.get(id=c['yard_id'], station=org_unit)
+                    cell = Cell.objects.get(id=c['cell_id'], yard=yard)
+                    LockupCellCount.objects.create(
+                        lockup_record=lockup,
+                        yard=yard,
+                        cell=cell,
+                        yard_name_snapshot=yard.name,
+                        cell_name_snapshot=cell.name,
+                        count=int(c.get('count', 0))
+                    )
+            return Response({"status": "Success", "lockup_id": lockup.id})
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UnlockAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """Submits an unlock record."""
+        org_unit = getattr(request, 'org_unit', None)
+        if not org_unit:
+            return Response({"detail": "No organization unit context."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user_assignment = None
+        try:
+            from Auth.utils import get_primary_assignment
+            user_assignment = get_primary_assignment(request.user)
+        except Exception:
+            pass
+
+        if not user_assignment:
+            return Response({"detail": "User lacks primary assignment."}, status=status.HTTP_400_BAD_REQUEST)
+
+        data = request.data
+        counts = data.get('counts', [])
+        
+        if not counts:
+            return Response({"detail": "No counts provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                total_sum = 0
+                for c in counts:
+                    total_sum += int(c.get('count', 0))
+
+                unlock = UnlockRecord.objects.create(
+                    station=org_unit,
+                    date=data.get('date', timezone.now().date()),
+                    time=data.get('time', timezone.now().time()),
+                    total_count=total_sum,
+                    recorded_by=user_assignment,
+                    notes=data.get('notes', '')
+                )
+
+                for c in counts:
+                    yard = Yard.objects.get(id=c['yard_id'], station=org_unit)
+                    cell = Cell.objects.get(id=c['cell_id'], yard=yard)
+                    UnlockCellCount.objects.create(
+                        unlock_record=unlock,
+                        yard=yard,
+                        cell=cell,
+                        yard_name_snapshot=yard.name,
+                        cell_name_snapshot=cell.name,
+                        count=int(c.get('count', 0))
+                    )
+            return Response({"status": "Success", "unlock_id": unlock.id})
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LockupHistoryViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = LockupRecordSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        org_unit = getattr(self.request, 'org_unit', None)
+        if not org_unit:
+            return LockupRecord.objects.none()
+        return LockupRecord.objects.filter(station=org_unit).prefetch_related('cell_counts')
+
+
+class UnlockHistoryViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = UnlockRecordSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        org_unit = getattr(self.request, 'org_unit', None)
+        if not org_unit:
+            return UnlockRecord.objects.none()
+        return UnlockRecord.objects.filter(station=org_unit).prefetch_related('cell_counts')
 
 
 class ConvictedViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):

@@ -795,6 +795,144 @@ def update_release_dates_on_restitution_save(sender, instance, **kwargs):
     if instance.offence and hasattr(instance.offence, 'conviction'):
         calculate_inmate_release_dates(instance.offence.conviction.prison_number)
 
+# ==================================================
+# CUSTODY / LOCKUP & UNLOCK
+# ==================================================
+
+class Yard(models.Model):
+    """
+    Configurable Yards per station.
+    """
+    station = models.ForeignKey('Auth.OrgUnit', on_delete=models.PROTECT, related_name='yards')
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, null=True)
+    display_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
+
+    class Meta:
+        db_table = "reception_yard"
+        ordering = ["display_order", "name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.station.code})"
+
+
+class Cell(models.Model):
+    """
+    Configurable Cells per yard.
+    """
+    yard = models.ForeignKey(Yard, on_delete=models.PROTECT, related_name='cells')
+    name = models.CharField(max_length=100)
+    display_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    description = models.TextField(blank=True, null=True)
+    capacity = models.PositiveIntegerField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
+
+    class Meta:
+        db_table = "reception_cell"
+        ordering = ["display_order", "name"]
+
+    def __str__(self):
+        return f"{self.name} - {self.yard.name}"
+
+
+class LockupRecord(models.Model):
+    """
+    Historical record of a lockup operation.
+    """
+    station = models.ForeignKey('Auth.OrgUnit', on_delete=models.PROTECT, related_name='lockups')
+    date = models.DateField(default=timezone.now)
+    time = models.TimeField(default=timezone.now)
+    
+    total_count = models.PositiveIntegerField(help_text="Cached sum of cell counts")
+    status = models.CharField(
+        max_length=20, 
+        choices=[('SUBMITTED', 'Submitted'), ('CORRECTED', 'Corrected'), ('VOIDED', 'Voided')], 
+        default='SUBMITTED'
+    )
+    notes = models.TextField(blank=True, null=True)
+    
+    recorded_by = models.ForeignKey('Auth.UserAssignment', on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "reception_lockup_record"
+        ordering = ["-date", "-time"]
+
+    def __str__(self):
+        return f"Lockup {self.station.code} - {self.date} {self.time}"
+
+
+class LockupCellCount(models.Model):
+    """
+    Individual cell count for a specific lockup record.
+    """
+    lockup_record = models.ForeignKey(LockupRecord, on_delete=models.CASCADE, related_name='cell_counts')
+    yard = models.ForeignKey(Yard, on_delete=models.PROTECT)
+    cell = models.ForeignKey(Cell, on_delete=models.PROTECT)
+    
+    # Immutable historical snapshots
+    yard_name_snapshot = models.CharField(max_length=100)
+    cell_name_snapshot = models.CharField(max_length=100)
+    
+    count = models.PositiveIntegerField()
+
+    class Meta:
+        db_table = "reception_lockup_cell_count"
+
+
+class UnlockRecord(models.Model):
+    """
+    Historical record of an unlock operation.
+    """
+    station = models.ForeignKey('Auth.OrgUnit', on_delete=models.PROTECT, related_name='unlocks')
+    date = models.DateField(default=timezone.now)
+    time = models.TimeField(default=timezone.now)
+    
+    total_count = models.PositiveIntegerField(help_text="Cached sum of cell counts")
+    status = models.CharField(
+        max_length=20, 
+        choices=[('SUBMITTED', 'Submitted'), ('CORRECTED', 'Corrected'), ('VOIDED', 'Voided')], 
+        default='SUBMITTED'
+    )
+    notes = models.TextField(blank=True, null=True)
+    
+    recorded_by = models.ForeignKey('Auth.UserAssignment', on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "reception_unlock_record"
+        ordering = ["-date", "-time"]
+
+    def __str__(self):
+        return f"Unlock {self.station.code} - {self.date} {self.time}"
+
+
+class UnlockCellCount(models.Model):
+    """
+    Individual cell count for a specific unlock record.
+    """
+    unlock_record = models.ForeignKey(UnlockRecord, on_delete=models.CASCADE, related_name='cell_counts')
+    yard = models.ForeignKey(Yard, on_delete=models.PROTECT)
+    cell = models.ForeignKey(Cell, on_delete=models.PROTECT)
+    
+    # Immutable historical snapshots
+    yard_name_snapshot = models.CharField(max_length=100)
+    cell_name_snapshot = models.CharField(max_length=100)
+    
+    count = models.PositiveIntegerField()
+
+    class Meta:
+        db_table = "reception_unlock_cell_count"
+
 @receiver(post_delete, sender=Restitution)
 def update_release_dates_on_restitution_delete(sender, instance, **kwargs):
     if instance.offence and hasattr(instance.offence, 'conviction'):

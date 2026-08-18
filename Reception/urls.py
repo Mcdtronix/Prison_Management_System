@@ -31,6 +31,12 @@ from .views import (
     InmateListView,
     ReclassificationViewSet,
     DischargeApprovalViewSet,
+    YardViewSet,
+    CellViewSet,
+    LockupAPIView,
+    UnlockAPIView,
+    LockupHistoryViewSet,
+    UnlockHistoryViewSet,
 )
 
 router = DefaultRouter()
@@ -53,6 +59,10 @@ router.register(r'disciplinary-history', InmateDisciplinaryHistoryViewSet)
 router.register(r'documents', InmateDocumentViewSet)
 router.register(r'audit-trail', InmateAuditTrailViewSet)
 router.register(r'reclassifications', ReclassificationViewSet, basename='reclassifications')
+router.register(r'yards', YardViewSet, basename='yard')
+router.register(r'cells', CellViewSet, basename='cell')
+router.register(r'lockup-history', LockupHistoryViewSet, basename='lockup-history')
+router.register(r'unlock-history', UnlockHistoryViewSet, basename='unlock-history')
 
 urlpatterns = [
     path('court-sessions/upcoming/', UpcomingCourtSessionsView.as_view(), name='upcoming-court-sessions'),
@@ -65,5 +75,7 @@ urlpatterns = [
     path('analytics/', ReceptionAnalyticsView.as_view(), name='reception-analytics'),
     path('discharges/upcoming/', UpcomingDischargesView.as_view(), name='upcoming-discharges'),
     path('discharges/propose/', ProposeDischargeView.as_view(), name='propose-discharge'),
+    path('lockup/', LockupAPIView.as_view(), name='lockup-api'),
+    path('unlock/', UnlockAPIView.as_view(), name='unlock-api'),
     path('', include(router.urls)),
 ]

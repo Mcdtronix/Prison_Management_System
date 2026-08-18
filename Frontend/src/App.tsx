@@ -27,6 +27,11 @@ import Analysis from "@/pages/reception/Analysis";
 import Discharge from "@/pages/reception/Discharge";
 import Reclassification from "@/pages/reception/Reclassification";
 import ReportBuilder from "@/pages/reception/ReportBuilder";
+import StationConfig from "@/pages/reception/StationConfig";
+import Lockup from "@/pages/reception/Lockup";
+import Unlock from "@/pages/reception/Unlock";
+import LockupHistory from "@/pages/reception/LockupHistory";
+import UnlockHistory from "@/pages/reception/UnlockHistory";
 import HealthDashboard from "@/pages/health/HealthDashboard";
 import InmateHealth from "@/pages/health/InmateHealth";
 import InmateHealthList from "@/pages/health/InmateHealthList";
@@ -285,14 +290,56 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/reception/reports"
-            element={
-              <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
-                <ReportBuilder />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/reception/reports"
+              element={
+                <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
+                  <ReportBuilder />
+                </ProtectedRoute>
+              }
+            />
+            
+            {/* Custody / Lockup Routes */}
+            <Route
+              path="/reception/station-config"
+              element={
+                <ProtectedRoute allowedRoles={["RECEPTION_OFFICER", "SUPER_ADMIN"]}>
+                  <StationConfig />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/reception/lockup"
+              element={
+                <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
+                  <Lockup />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/reception/unlock"
+              element={
+                <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
+                  <Unlock />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/reception/lockup-history"
+              element={
+                <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
+                  <LockupHistory />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/reception/unlock-history"
+              element={
+                <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
+                  <UnlockHistory />
+                </ProtectedRoute>
+              }
+            />
 
           {/* Health department routes */}
           <Route
