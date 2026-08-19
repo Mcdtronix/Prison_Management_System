@@ -1123,46 +1123,55 @@ export const reportsApi = {
   },
 };
 
-// ==================================================
-// CUSTODY / LOCKUP API
-// ==================================================
+// Helper to extract data or throw error from ApiResponse
+async function unwrapCustodyApi<T = any>(apiPromise: Promise<ApiResponse<T>>): Promise<T> {
+  const res = await apiPromise;
+  if (res.error) {
+    throw new Error(res.error);
+  }
+  let d: any = res.data;
+  if (d && typeof d === 'object' && Array.isArray(d.results)) {
+    d = d.results;
+  }
+  return d as T;
+}
 
 export const custodyApi = {
   getYards: async () => {
-    return fetchApi('/reception/yards/');
+    return unwrapCustodyApi(fetchApi('/reception/yards/'));
   },
   createYard: async (data: any) => {
-    return fetchApi('/reception/yards/', { method: 'POST', body: JSON.stringify(data) });
+    return unwrapCustodyApi(fetchApi('/reception/yards/', { method: 'POST', body: JSON.stringify(data) }));
   },
   updateYard: async (id: number, data: any) => {
-    return fetchApi(`/reception/yards/${id}/`, { method: 'PATCH', body: JSON.stringify(data) });
+    return unwrapCustodyApi(fetchApi(`/reception/yards/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }));
   },
   
   getCells: async () => {
-    return fetchApi('/reception/cells/');
+    return unwrapCustodyApi(fetchApi('/reception/cells/'));
   },
   createCell: async (data: any) => {
-    return fetchApi('/reception/cells/', { method: 'POST', body: JSON.stringify(data) });
+    return unwrapCustodyApi(fetchApi('/reception/cells/', { method: 'POST', body: JSON.stringify(data) }));
   },
   updateCell: async (id: number, data: any) => {
-    return fetchApi(`/reception/cells/${id}/`, { method: 'PATCH', body: JSON.stringify(data) });
+    return unwrapCustodyApi(fetchApi(`/reception/cells/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }));
   },
 
   getLockupConfig: async () => {
-    return fetchApi('/reception/lockup/');
+    return unwrapCustodyApi(fetchApi('/reception/lockup/'));
   },
   submitLockup: async (data: any) => {
-    return fetchApi('/reception/lockup/', { method: 'POST', body: JSON.stringify(data) });
+    return unwrapCustodyApi(fetchApi('/reception/lockup/', { method: 'POST', body: JSON.stringify(data) }));
   },
   
   submitUnlock: async (data: any) => {
-    return fetchApi('/reception/unlock/', { method: 'POST', body: JSON.stringify(data) });
+    return unwrapCustodyApi(fetchApi('/reception/unlock/', { method: 'POST', body: JSON.stringify(data) }));
   },
   
   getLockupHistory: async () => {
-    return fetchApi('/reception/lockup-history/');
+    return unwrapCustodyApi(fetchApi('/reception/lockup-history/'));
   },
   getUnlockHistory: async () => {
-    return fetchApi('/reception/unlock-history/');
+    return unwrapCustodyApi(fetchApi('/reception/unlock-history/'));
   }
 };

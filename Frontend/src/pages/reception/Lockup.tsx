@@ -22,11 +22,12 @@ export default function Lockup() {
     try {
       setLoading(true);
       const data = await custodyApi.getLockupConfig();
-      setYards(data.yards || []);
+      const yardList: any[] = Array.isArray(data) ? data : (data?.yards || data?.results || data?.data || []);
+      setYards(Array.isArray(yardList) ? yardList : []);
       
       const initialCounts: Record<string, number> = {};
-      (data.yards || []).forEach((y: any) => {
-        y.cells.forEach((c: any) => {
+      (Array.isArray(yardList) ? yardList : []).forEach((y: any) => {
+        (y.cells || []).forEach((c: any) => {
           initialCounts[`${y.id}-${c.id}`] = 0;
         });
       });

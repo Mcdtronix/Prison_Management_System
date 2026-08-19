@@ -17,7 +17,8 @@ export default function UnlockHistory() {
     try {
       setLoading(true);
       const data = await custodyApi.getUnlockHistory();
-      setUnlocks(data);
+      const list = Array.isArray(data) ? data : (data?.results || data?.data || []);
+      setUnlocks(Array.isArray(list) ? list : []);
     } catch (err: any) {
       setError(err.message || 'Failed to load history');
     } finally {

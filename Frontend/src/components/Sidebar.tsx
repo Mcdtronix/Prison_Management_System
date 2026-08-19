@@ -155,6 +155,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
         },
         {
           title: "Custody",
+          href: "/reception/custody",
           icon: <Lock size={18} />,
           subItems: [
             { title: "Station Config", href: "/reception/station-config" },
@@ -385,21 +386,22 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
             </Button>
           </div>
           <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-            {navItems.map((item) => {
+            {navItems.map((item, index) => {
+              const itemKey = item.href || item.title || `nav-${index}`;
               const isMessaging = item.href === '/messaging';
               const hasSubItems = item.subItems && item.subItems.length > 0;
               const isDropdown = hasSubItems;
-              const isDropdownOpen = openDropdowns[item.href];
+              const isDropdownOpen = openDropdowns[itemKey];
 
               if (isDropdown) {
                 return (
-                  <div key={item.href}>
+                  <div key={itemKey}>
                     <button
-                      onClick={() => toggleDropdown(item.href)}
+                      onClick={() => toggleDropdown(itemKey)}
                       className={cn(
                         "w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
                         "text-gray-300 hover:text-white hover:bg-[#063f20]",
-                        location.pathname.startsWith(item.href) &&
+                        item.href && location.pathname.startsWith(item.href) &&
                           "border-r-2 border-[#d7a928] bg-[#063f20] text-white",
                         !isOpen && "justify-center px-2",
                       )}
@@ -418,9 +420,9 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
 
                     {isDropdownOpen && isOpen && (
                       <div className="ml-8 mt-1 space-y-1">
-                        {item.subItems?.map((subItem) => (
+                        {item.subItems?.map((subItem, subIndex) => (
                           <Link 
-                            key={subItem.href} 
+                            key={subItem.href || subItem.title || `sub-${subIndex}`} 
                             to={subItem.href} 
                             className={cn(
                               "block px-2 py-1 text-sm rounded transition-colors",
@@ -440,7 +442,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
 
               return (
                 <Link
-                  key={item.href}
+                  key={itemKey}
                   to={item.href}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",

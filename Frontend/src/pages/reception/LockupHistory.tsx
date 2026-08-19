@@ -17,7 +17,8 @@ export default function LockupHistory() {
     try {
       setLoading(true);
       const data = await custodyApi.getLockupHistory();
-      setLockups(data);
+      const list = Array.isArray(data) ? data : (data?.results || data?.data || []);
+      setLockups(Array.isArray(list) ? list : []);
     } catch (err: any) {
       setError(err.message || 'Failed to load history');
     } finally {
