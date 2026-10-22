@@ -183,20 +183,98 @@ def log_action(request, action, module, object_id=None, object_type=None, remark
     )
 
 
+def resolve_station_for_org_unit(org_unit):
+    """
+    Resolve corresponding Station model instance for a STATION-type OrgUnit.
+    Returns None for headquarters or provincial units.
+    """
+    if not org_unit or getattr(org_unit, 'unit_type', None) != 'STATION':
+        return None
+
+    from .models import Station
+    station = Station.objects.filter(code=org_unit.code_short).first()
+    if not station:
+        station = Station.objects.filter(code=org_unit.code).first()
+    return station
+
+
+def resolve_org_unit_for_station(station):
+    """
+    Resolve corresponding OrgUnit model instance for a Station instance.
+    """
+    if not station:
+        return None
+
+    from .models import OrgUnit
+    org_unit = OrgUnit.objects.filter(code_short=station.code).first()
+    if not org_unit:
+        org_unit = OrgUnit.objects.filter(code=station.code).first()
+    return org_unit
+
+
 def get_current_station(user):
     """
-    Get the current station for a user.
-
-    Args:
-        user: Django User instance
+    Safely get the operational station for a user across both
+    legacy UserProfile and multi-tenant UserAssignment architectures.
 
     Returns:
-        Station instance or None
+        Station instance or None (for Headquarters users who have no station).
     """
-    try:
-        return user.userprofile.station
-    except AttributeError:
+    if not user or not user.is_authenticated:
         return None
+
+    # 1. Check legacy userprofile
+    if hasattr(user, 'userprofile') and user.userprofile and user.userprofile.station:
+        return user.userprofile.station
+
+    # 2. Check active primary UserAssignment
+    assignment = get_primary_assignment(user)
+    if assignment and assignment.org_unit:
+        if assignment.org_unit.unit_type == 'STATION':
+            return resolve_station_for_org_unit(assignment.org_unit)
+
+    # 3. Check any active station assignment if no primary is a station
+    station_assignment = user.org_assignments.select_related('org_unit').filter(
+        is_active=True,
+        org_unit__unit_type='STATION'
+    ).first()
+    if station_assignment:
+        return resolve_station_for_org_unit(station_assignment.org_unit)
+
+    return None
+
+
+def get_user_operational_context(request_or_user):
+    """
+    Resolve both (org_unit, station) for a user or request.
+    Does not arbitrarily infer a station for headquarters users.
+    """
+    from .models import OrgUnit
+
+    request = request_or_user if hasattr(request_or_user, 'user') else None
+    user = request.user if request else request_or_user
+
+    if not user or not user.is_authenticated:
+        return (None, None)
+
+    org_unit = getattr(request, 'org_unit', None) if request else None
+    station = None
+
+    if not org_unit:
+        assignment = get_primary_assignment(user)
+        if assignment and assignment.org_unit:
+            org_unit = assignment.org_unit
+        elif hasattr(user, 'userprofile') and user.userprofile and user.userprofile.station:
+            station = user.userprofile.station
+            org_unit = resolve_org_unit_for_station(station)
+
+    if not station:
+        if hasattr(user, 'userprofile') and user.userprofile and user.userprofile.station:
+            station = user.userprofile.station
+        elif org_unit and org_unit.unit_type == 'STATION':
+            station = resolve_station_for_org_unit(org_unit)
+
+    return (org_unit, station)
 
 
 def get_officer_current_station(officer):

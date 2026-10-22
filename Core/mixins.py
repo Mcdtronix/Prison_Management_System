@@ -36,8 +36,8 @@ class OrgUnitContextMixin:
                 # Also assign station if applicable
                 if 'station' in model_fields and not serializer.validated_data.get('station'):
                     if org_unit.unit_type == 'STATION':
-                        from Auth.models import Station
-                        station = Station.objects.filter(org_unit=org_unit).first()
+                        from Auth.utils import resolve_station_for_org_unit
+                        station = resolve_station_for_org_unit(org_unit)
                         if station:
                             kwargs['station'] = station
 
