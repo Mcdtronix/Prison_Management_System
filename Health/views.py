@@ -11,9 +11,15 @@ from Core.mixins import OrgUnitContextMixin
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError
 from django.db.models import Q
 
-from Auth.permissions import IsHealthOfficer
+from Auth.permissions import IsHealthOfficer, IsStationDataOwner
+from Auth.utils import (
+    get_user_operational_context,
+    get_current_station,
+)
+from Auth.models import Station
 from .models import (
     Patient,
     AdmissionHealthAssessment,
@@ -41,24 +47,87 @@ from .serializers import (
 )
 
 
+def get_health_queryset_for_user(request, base_queryset, station_field="station"):
+    """
+    Scope health querysets according to user's organizational context.
+    - Superusers & National HQ: view all stations (or filter by ?station=)
+    - Provincial HQ: view all child stations in their province
+    - Station users: view only their assigned station
+    - Unassigned / no station: empty queryset
+    """
+    org_unit, user_station = get_user_operational_context(request)
+    station_param = request.query_params.get('station', None)
+
+    # 1. Superuser or National HQ
+    if request.user.is_superuser or (org_unit and org_unit.unit_type == 'NATIONAL_HQ'):
+        if station_param:
+            return base_queryset.filter(**{f"{station_field}_id": station_param})
+        return base_queryset
+
+    # 2. Provincial Command
+    if org_unit and org_unit.unit_type == 'PROVINCIAL_HQ':
+        visible_units = getattr(request, 'visible_org_units', None)
+        if visible_units is not None:
+            station_codes = [u.code_short for u in visible_units]
+            child_stations = Station.objects.filter(code__in=station_codes)
+            qs = base_queryset.filter(**{f"{station_field}__in": child_stations})
+            if station_param:
+                qs = qs.filter(**{f"{station_field}_id": station_param})
+            return qs
+
+    # 3. Station user
+    if user_station:
+        return base_queryset.filter(**{f"{station_field}": user_station})
+
+    # 4. Fallback / unassigned: deny visibility
+    return base_queryset.none()
+
+
+def save_health_record_with_station(request, serializer, station_field="station"):
+    """
+    Attach operational station on save.
+    Station users get their assigned station automatically.
+    Headquarters users must explicitly specify a station in validated_data.
+    """
+    org_unit, user_station = get_user_operational_context(request)
+    station = serializer.validated_data.get(station_field) or user_station
+
+    if not station:
+        raise ValidationError({
+            station_field: "An operational prison station is required for medical records. Headquarters users must specify a station."
+        })
+
+    kwargs = {station_field: station}
+    model = serializer.Meta.model
+    model_fields = {f.name for f in model._meta.get_fields()}
+    if org_unit and 'owner_org_unit' in model_fields:
+        if not serializer.validated_data.get('owner_org_unit'):
+            kwargs['owner_org_unit'] = org_unit
+
+    serializer.save(**kwargs)
+
+
 # ==================================================
 # PATIENT VIEWS
 # ==================================================
 class PatientViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for patient management with station isolation"""
     serializer_class = PatientSerializer
-    permission_classes = [IsAuthenticated, IsHealthOfficer]
+    permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
     def get_queryset(self):
-        """Filter patients by user's station"""
-        user_station = self.request.user.userprofile.station
-        queryset = Patient.objects.filter(station=user_station).select_related(
-            'inmate', 'officer', 'dependent', 'station'
+        """Filter patients by user's station/organizational context"""
+        base_qs = Patient.objects.select_related(
+            'inmate', 'officer', 'dependent', 'station', 'owner_org_unit'
         )
+        queryset = get_health_queryset_for_user(self.request, base_qs)
         inmate_id = self.request.query_params.get('inmate', None)
         if inmate_id is not None:
             queryset = queryset.filter(inmate_id=inmate_id)
         return queryset
+
+    def perform_create(self, serializer):
+        save_health_record_with_station(self.request, serializer)
 
     def get_serializer_class(self):
         """Use list serializer for list actions"""
@@ -68,14 +137,18 @@ class PatientViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def medical_history(self, request, pk=None):
-        """Get complete medical history for a patient"""
+        """Get comprehensive medical history for a patient"""
         patient = self.get_object()
         data = {
+            'patient': PatientSerializer(patient).data,
+            'admission_assessments': AdmissionHealthAssessmentSerializer(
+                patient.admission_assessments.all(), many=True
+            ).data,
             'opd_visits': OutPatientVisitSerializer(
-                patient.opd_visits.all()[:10], many=True
+                patient.opd_visits.all(), many=True
             ).data,
             'mental_health_visits': MentalHealthVisitSerializer(
-                patient.mental_health_visits.all()[:10], many=True
+                patient.mental_health_visits.all(), many=True
             ).data,
             'chronic_record': ChronicPatientSerializer(
                 patient.chronic_patient_record
@@ -90,61 +163,61 @@ class PatientViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 class AdmissionHealthAssessmentViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for inmate admission health assessments"""
     serializer_class = AdmissionHealthAssessmentSerializer
-    permission_classes = [IsAuthenticated, IsHealthOfficer]
+    permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
     def get_queryset(self):
-        """Filter by user's station"""
-        user_station = self.request.user.userprofile.station
-        queryset = AdmissionHealthAssessment.objects.filter(
-            station=user_station
-        ).select_related('inmate', 'station')
+        base_qs = AdmissionHealthAssessment.objects.select_related('inmate', 'station')
+        queryset = get_health_queryset_for_user(self.request, base_qs)
         inmate_id = self.request.query_params.get('inmate', None)
         if inmate_id is not None:
             queryset = queryset.filter(inmate_id=inmate_id)
         return queryset
 
+    def perform_create(self, serializer):
+        save_health_record_with_station(self.request, serializer)
+
 
 class OutPatientVisitViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for OPD consultations"""
     serializer_class = OutPatientVisitSerializer
-    permission_classes = [IsAuthenticated, IsHealthOfficer]
+    permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
     def get_queryset(self):
-        """Filter by user's station"""
-        user_station = self.request.user.userprofile.station
-        queryset = OutPatientVisit.objects.filter(
-            station=user_station
-        ).select_related('patient', 'station')
+        base_qs = OutPatientVisit.objects.select_related('patient', 'station')
+        queryset = get_health_queryset_for_user(self.request, base_qs)
         inmate_id = self.request.query_params.get('inmate', None)
         if inmate_id is not None:
             queryset = queryset.filter(patient__inmate_id=inmate_id)
         return queryset
 
+    def perform_create(self, serializer):
+        save_health_record_with_station(self.request, serializer)
+
 
 class MentalHealthVisitViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for mental health consultations"""
     serializer_class = MentalHealthVisitSerializer
-    permission_classes = [IsAuthenticated, IsHealthOfficer]
+    permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
     def get_queryset(self):
-        """Filter by user's station"""
-        user_station = self.request.user.userprofile.station
-        return MentalHealthVisit.objects.filter(
-            station=user_station
-        ).select_related('patient', 'station')
+        base_qs = MentalHealthVisit.objects.select_related('patient', 'station')
+        return get_health_queryset_for_user(self.request, base_qs)
+
+    def perform_create(self, serializer):
+        save_health_record_with_station(self.request, serializer)
 
 
 class ChronicPatientViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for chronic patient management"""
     serializer_class = ChronicPatientSerializer
-    permission_classes = [IsAuthenticated, IsHealthOfficer]
+    permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
     def get_queryset(self):
-        """Filter by user's station"""
-        user_station = self.request.user.userprofile.station
-        return ChronicPatient.objects.filter(
-            station=user_station
-        ).select_related('patient', 'station')
+        base_qs = ChronicPatient.objects.select_related('patient', 'station')
+        return get_health_queryset_for_user(self.request, base_qs)
+
+    def perform_create(self, serializer):
+        save_health_record_with_station(self.request, serializer)
 
 
 # ==================================================
@@ -160,11 +233,11 @@ class MedicineViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     def stock_history(self, request, pk=None):
         """Get stock card history for a medicine"""
         medicine = self.get_object()
-        user_station = request.user.userprofile.station
-        stock_entries = StockCardEntry.objects.filter(
-            medicine=medicine,
-            station=user_station
-        ).order_by('-entry_date')[:50]
+        user_station = get_current_station(request.user)
+        stock_entries = StockCardEntry.objects.filter(medicine=medicine)
+        if user_station:
+            stock_entries = stock_entries.filter(station=user_station)
+        stock_entries = stock_entries.order_by('-entry_date')[:50]
         serializer = StockCardEntrySerializer(stock_entries, many=True)
         return Response(serializer.data)
 
@@ -172,18 +245,14 @@ class MedicineViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 class StockCardEntryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for stock card register"""
     serializer_class = StockCardEntrySerializer
-    permission_classes = [IsAuthenticated, IsHealthOfficer]
+    permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
     def get_queryset(self):
-        """Filter by user's station"""
-        user_station = self.request.user.userprofile.station
-        return StockCardEntry.objects.filter(
-            station=user_station
-        ).select_related('medicine', 'station')
+        base_qs = StockCardEntry.objects.select_related('medicine', 'station')
+        return get_health_queryset_for_user(self.request, base_qs)
 
     def perform_create(self, serializer):
-        """Ensure station isolation on create"""
-        serializer.save(station=self.request.user.userprofile.station)
+        save_health_record_with_station(self.request, serializer)
 
 
 # ==================================================
@@ -192,18 +261,14 @@ class StockCardEntryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 class MedicalEquipmentViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for medical equipment management"""
     serializer_class = MedicalEquipmentSerializer
-    permission_classes = [IsAuthenticated, IsHealthOfficer]
+    permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
     def get_queryset(self):
-        """Filter by user's station"""
-        user_station = self.request.user.userprofile.station
-        return MedicalEquipment.objects.filter(
-            station=user_station
-        ).select_related('station')
+        base_qs = MedicalEquipment.objects.select_related('station')
+        return get_health_queryset_for_user(self.request, base_qs)
 
     def perform_create(self, serializer):
-        """Ensure station isolation on create"""
-        serializer.save(station=self.request.user.userprofile.station)
+        save_health_record_with_station(self.request, serializer)
 
 
 class EquipmentUsageLogViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
@@ -212,11 +277,8 @@ class EquipmentUsageLogViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsHealthOfficer]
 
     def get_queryset(self):
-        """Filter by user's station"""
-        user_station = self.request.user.userprofile.station
-        return EquipmentUsageLog.objects.filter(
-            equipment__station=user_station
-        ).select_related('equipment')
+        base_qs = EquipmentUsageLog.objects.select_related('equipment')
+        return get_health_queryset_for_user(self.request, base_qs, station_field="equipment__station")
 
 
 # ==================================================
@@ -229,22 +291,5 @@ class HealthAuditTrailViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """Filter audit logs by user's station and role permissions"""
-        user = self.request.user
-        user_station = user.userprofile.station
-
-        # Base queryset
-        queryset = HealthAuditTrail.objects.filter(
-            # Add station filtering logic based on your audit model
-        ).order_by('-timestamp')
-
-        # Role-based filtering
-        if user.userprofile.role.name == 'ADMIN_OFFICER':
-            # Admins can see all station logs
-            pass
-        else:
-            # Health officers see limited logs
-            queryset = queryset.filter(
-                # Add appropriate filters
-            )
-
-        return queryset
+        base_qs = HealthAuditTrail.objects.order_by('-timestamp')
+        return get_health_queryset_for_user(self.request, base_qs)
