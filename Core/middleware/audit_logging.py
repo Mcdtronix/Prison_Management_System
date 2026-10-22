@@ -88,41 +88,36 @@ class AuditLoggingMiddleware(MiddlewareMixin):
             department = getattr(request, 'department', None)
             status_code = response.status_code
             
-            # Log to AuditLog model
+            # Log to AuditLog model for all authenticated actors (including HQ and Provincial users)
             if user:
-                role_name = None
-                station = None
-                if request.user.is_authenticated:
-                    try:
-                        profile = request.user.userprofile
-                        role_name = profile.role.code
-                        station = profile.station
-                    except Exception:
-                        role_name = 'UNKNOWN'
-                        station = None
+                from Auth.utils import get_user_operational_context, get_current_role_code
 
-                if station:
-                    AuditLog.objects.create(
-                        user=user,
-                        role=role_name or 'UNKNOWN',
-                        station=station,
-                        action=self._action_from_method_path(
-                            request._audit_method, 
-                            request._audit_path
-                        ),
-                        module='API',
-                        object_id=None,
-                        object_type=None,
-                        ip_address=self._get_client_ip(request),
-                        user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
-                        request_method=request._audit_method,
-                        request_path=request._audit_path,
-                        remarks=None,
-                    )
-                else:
-                    logger.warning(
-                        f'Skipped audit log for {user.username} because station is unavailable'
-                    )
+                org_unit, station = get_user_operational_context(request)
+                role_name = get_current_role_code(user) or 'UNKNOWN'
+
+                remarks_parts = [f"Status: {status_code}"]
+                if org_unit:
+                    remarks_parts.append(f"OrgUnit: {org_unit.code} ({org_unit.name})")
+                if department:
+                    remarks_parts.append(f"Dept: {getattr(department, 'code', str(department))}")
+
+                AuditLog.objects.create(
+                    user=user,
+                    role=role_name,
+                    station=station,
+                    action=self._action_from_method_path(
+                        request._audit_method, 
+                        request._audit_path
+                    ),
+                    module=self._module_from_path(request._audit_path),
+                    object_id=None,
+                    object_type=None,
+                    ip_address=self._get_client_ip(request),
+                    user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+                    request_method=request._audit_method,
+                    request_path=request._audit_path,
+                    remarks=" | ".join(remarks_parts),
+                )
                 
                 logger.info(
                     f'Audit: {user.username} {request._audit_method} {request._audit_path} '
@@ -135,21 +130,39 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         
         return response
     
+    def _module_from_path(self, path):
+        """Map request path to AuditLog module choice."""
+        if '/api/reception/' in path:
+            return 'INMATES'
+        elif '/api/health/' in path:
+            return 'HEALTH'
+        elif '/api/stores/' in path:
+            return 'STORES'
+        elif '/api/farms/' in path:
+            return 'FARMS'
+        elif '/api/hr/' in path:
+            return 'HR'
+        elif '/api/auth/' in path:
+            return 'AUTH'
+        return 'API'
+
     def _get_request_body(self, request):
         """
-        Extract request body for logging.
-        
-        Attempts to parse as JSON; falls back to string.
+        Extract request body for logging while masking passwords and sensitive tokens.
         """
-        
+        sensitive_keys = {'password', 'token', 'refresh', 'access', 'secret', 'otp'}
         try:
             if request.method in self.MUTATION_METHODS:
                 body = request.body.decode('utf-8')
-                # Try to validate JSON
                 if body:
                     try:
-                        json.loads(body)
-                        return body[:500]  # Limit to 500 chars to prevent log bloat
+                        data = json.loads(body)
+                        if isinstance(data, dict):
+                            for key in list(data.keys()):
+                                if any(s in key.lower() for s in sensitive_keys):
+                                    data[key] = "******"
+                            return json.dumps(data)[:500]
+                        return body[:500]
                     except json.JSONDecodeError:
                         return body[:500]
         
