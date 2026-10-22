@@ -59,6 +59,28 @@ from .serializers import (
 
 from Auth.permissions import IsReceptionOrHealthOrAdmin, IsAdminOfficer, IsStationDataOwner
 
+
+def apply_reception_org_scope(request, queryset, field="owner_org_unit"):
+    """
+    Apply organizational scope to Reception querysets.
+    Only National HQ users or superusers can see unassigned records (owner_org_unit is NULL).
+    Station and provincial users strictly see their authorized visible org units.
+    """
+    visible_org_units = getattr(request, 'visible_org_units', None)
+    if visible_org_units is None:
+        return queryset
+
+    from django.db.models import Q
+    is_national_hq = (
+        getattr(request.user, 'is_superuser', False) or
+        (hasattr(request, 'org_unit') and getattr(request.org_unit, 'unit_type', None) == 'NATIONAL_HQ') or
+        (hasattr(request, 'access_scope') and isinstance(request.access_scope, dict) and request.access_scope.get('is_national'))
+    )
+
+    if is_national_hq:
+        return queryset.filter(Q(**{f"{field}__in": visible_org_units}) | Q(**{f"{field}__isnull": True}))
+    return queryset.filter(**{f"{field}__in": visible_org_units})
+
 class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Inmate.objects.all()
     serializer_class = InmateSerializer
@@ -82,12 +104,7 @@ class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
         else:
             qs = Inmate.objects.all()
             
-        visible_org_units = getattr(self.request, 'visible_org_units', None)
-        if visible_org_units is not None:
-            from django.db.models import Q
-            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
-            
-        return qs
+        return apply_reception_org_scope(self.request, qs, "owner_org_unit")
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def validate_unique(self, request):
@@ -768,11 +785,7 @@ class PendingAdminApprovalView(APIView):
             admission_status="PENDING_ADMIN_APPROVAL"
         )
         
-        if visible_org_units is not None:
-            from django.db.models import Q
-            inmates_with_offences = inmates_with_offences.filter(
-                Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True)
-            )
+        inmates_with_offences = apply_reception_org_scope(request, inmates_with_offences, "owner_org_unit")
             
         inmates_with_offences = inmates_with_offences.order_by('-admission_date').distinct()
 
@@ -803,11 +816,7 @@ class PendingOffenceRegistrationView(APIView):
         # Get inmates who have no offences registered
         inmates_without_offences = Inmate.objects.filter(offences__isnull=True)
         
-        if visible_org_units is not None:
-            from django.db.models import Q
-            inmates_without_offences = inmates_without_offences.filter(
-                Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True)
-            )
+        inmates_without_offences = apply_reception_org_scope(request, inmates_without_offences, "owner_org_unit")
             
         inmates_without_offences = inmates_without_offences.order_by('-admission_date')
 
@@ -917,10 +926,7 @@ class InmateListView(APIView):
             'offences', 'classification_history'
         )
         
-        if visible_org_units is not None:
-            queryset = queryset.filter(
-                Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True)
-            )
+        queryset = apply_reception_org_scope(request, queryset, "owner_org_unit")
 
         # Search functionality
         search_query = request.query_params.get('search', None)
@@ -1036,10 +1042,7 @@ class ReceptionAnalyticsView(APIView):
         seven_days_ahead = today + datetime.timedelta(days=7)
 
         # Base Inmate Queryset
-        visible_org_units = getattr(request, 'visible_org_units', None)
-        qs = Inmate.objects.all()
-        if visible_org_units is not None:
-            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
+        qs = apply_reception_org_scope(request, Inmate.objects.all(), "owner_org_unit")
 
         # KPIs
         total_in_custody = qs.filter(current_status="IN_CUSTODY").count()
@@ -1047,12 +1050,7 @@ class ReceptionAnalyticsView(APIView):
         pending_admissions = qs.filter(admission_status__in=["PENDING_HEALTH_ASSESSMENT", "PENDING_ADMIN_APPROVAL"]).count()
 
         # Court Sessions next 7 days
-        court_qs = CourtSession.objects.all()
-        if visible_org_units is not None:
-            court_qs = court_qs.filter(
-                Q(offence__inmate__owner_org_unit__in=visible_org_units) | 
-                Q(offence__inmate__owner_org_unit__isnull=True)
-            )
+        court_qs = apply_reception_org_scope(request, CourtSession.objects.all(), "offence__inmate__owner_org_unit")
         upcoming_courts = court_qs.filter(next_court_date__gte=today, next_court_date__lte=seven_days_ahead).count()
 
         # Status Distribution
@@ -1173,9 +1171,7 @@ class ReclassificationViewSet(viewsets.ViewSet):
         visible_org_units = getattr(request, 'visible_org_units', None)
         qs = Inmate.objects.filter(current_status="IN_CUSTODY")
         
-        if visible_org_units is not None:
-            from django.db.models import Q
-            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
+        qs = apply_reception_org_scope(request, qs, "owner_org_unit")
 
         due_inmates = []
         for inmate in qs:
@@ -1209,9 +1205,7 @@ class ReclassificationViewSet(viewsets.ViewSet):
         visible_org_units = getattr(request, 'visible_org_units', None)
         qs = Inmate.objects.filter(current_status="IN_CUSTODY", classification_history__approval_status="PENDING").distinct()
         
-        if visible_org_units is not None:
-            from django.db.models import Q
-            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
+        qs = apply_reception_org_scope(request, qs, "owner_org_unit")
 
         pending = []
         for inmate in qs:
@@ -1281,9 +1275,7 @@ class ReclassificationViewSet(viewsets.ViewSet):
         visible_org_units = getattr(request, 'visible_org_units', None)
         qs = Inmate.objects.filter(current_status="IN_CUSTODY")
         
-        if visible_org_units is not None:
-            from django.db.models import Q
-            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
+        qs = apply_reception_org_scope(request, qs, "owner_org_unit")
             
         categories = {"A": [], "B": [], "C": [], "D": [], "COND": [], "PUSOD": []}
         
