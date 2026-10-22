@@ -10,9 +10,27 @@ import os
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-BASE_URL = os.getenv("SMOKE_TEST_URL", "https://pms.mcdtronix.co.zw")
-TEST_USER = os.getenv("SMOKE_TEST_USER", "2934823Z")
-TEST_PASS = os.getenv("SMOKE_TEST_PASS", "Aqi16@khayz")
+# Environment-configured endpoints and credentials for smoke testing.
+# Never hardcode production URLs, service numbers, or passwords.
+BASE_URL = os.getenv("SMOKE_TEST_URL")
+TEST_USER = os.getenv("SMOKE_TEST_USER")
+TEST_PASS = os.getenv("SMOKE_TEST_PASS")
+
+
+def validate_environment():
+    """Ensure all required environment variables are set before running tests."""
+    missing = []
+    if not BASE_URL:
+        missing.append("SMOKE_TEST_URL")
+    if not TEST_USER:
+        missing.append("SMOKE_TEST_USER")
+    if not TEST_PASS:
+        missing.append("SMOKE_TEST_PASS")
+
+    if missing:
+        log(f"Configuration error: Missing required environment variable(s): {', '.join(missing)}", "FAIL")
+        log("Smoke tests require explicit environment configuration and cannot run with default credentials.", "FAIL")
+        sys.exit(1)
 
 session = requests.Session()
 retry_strategy = Retry(
@@ -26,8 +44,12 @@ session.mount("https://", adapter)
 session.mount("http://", adapter)
 
 def log(msg: str, status: str = "INFO"):
-    icons = {"INFO": "ℹ️", "PASS": "✅", "FAIL": "❌", "WARN": "⚠️"}
-    print(f"{icons.get(status, '•')} {msg}")
+    icons = {"INFO": "[INFO]", "PASS": "[PASS]", "FAIL": "[FAIL]", "WARN": "[WARN]"}
+    label = icons.get(status, f"[{status}]")
+    try:
+        print(f"{label} {msg}")
+    except UnicodeEncodeError:
+        print(f"{label} {msg.encode('ascii', 'replace').decode('ascii')}")
 
 
 def check(name: str, condition: bool, detail: str = ""):
@@ -85,6 +107,7 @@ def test_reception_endpoints():
 
 
 def run_all():
+    validate_environment()
     log("=" * 50)
     log("🏥 PMS POST-DEPLOYMENT SMOKE TESTS")
     log(f"   Target: {BASE_URL}")

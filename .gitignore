@@ -67,14 +67,28 @@ ENV/
 *.swp
 *.swo
 
-# Environment variables
+# Keys, certificates, and credentials
+*.pem
+*.key
+*.pub
+/pms
+/pms.pub
+id_rsa*
+id_ed25519*
+*.pfx
+*.p12
+credentials.json
+client_secrets.json
+
+# Environment variables & local configuration
 .env
+.env.*
 .env.local
 Backend/.env
-
-# ── Safe to commit — no secrets ───────────────────
-!.env.development
-!.env.production
+!.env.example
+!Frontend/.env.example
+!Frontend/.env.development
+!Frontend/.env.production
 
 # OS
 .DS_Store
