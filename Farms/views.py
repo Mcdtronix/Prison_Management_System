@@ -61,6 +61,7 @@ def get_farms_scoped_units(request):
 
 
 class FarmProjectViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = FarmProject.objects.all()
     serializer_class = FarmProjectSerializer
     permission_classes = [IsAuthenticated, IsFarmsOfficer, IsStationDataOwner]
 
@@ -99,6 +100,7 @@ class CropTypeViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 
 class CropCycleViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = CropCycle.objects.all()
     serializer_class = CropCycleSerializer
     permission_classes = [IsAuthenticated, IsFarmsOfficer, IsStationDataOwner]
 
@@ -111,6 +113,7 @@ class CropCycleViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 
 class CropInputUsageViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = CropInputUsage.objects.all()
     serializer_class = CropInputUsageSerializer
     permission_classes = [IsAuthenticated, IsFarmsOfficer, IsStationDataOwner]
 
@@ -123,6 +126,7 @@ class CropInputUsageViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 
 class CropOutputViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = CropOutput.objects.all()
     serializer_class = CropOutputSerializer
     permission_classes = [IsAuthenticated, IsFarmsOfficer, IsStationDataOwner]
 
@@ -141,6 +145,7 @@ class AnimalTypeViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 
 class LivestockBatchViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = LivestockBatch.objects.all()
     serializer_class = LivestockBatchSerializer
     permission_classes = [IsAuthenticated, IsFarmsOfficer, IsStationDataOwner]
 
@@ -152,6 +157,7 @@ class LivestockBatchViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 
 class LivestockEventViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = LivestockEvent.objects.all()
     serializer_class = LivestockEventSerializer
     permission_classes = [IsAuthenticated, IsFarmsOfficer, IsStationDataOwner]
 
@@ -162,6 +168,7 @@ class LivestockEventViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 
 class FarmRevenueViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = FarmRevenue.objects.all()
     serializer_class = FarmRevenueSerializer
     permission_classes = [IsAuthenticated, IsFarmsOfficer, IsStationDataOwner]
 
@@ -174,6 +181,7 @@ class FarmRevenueViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 
 class FarmExpenseViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = FarmExpense.objects.all()
     serializer_class = FarmExpenseSerializer
     permission_classes = [IsAuthenticated, IsFarmsOfficer, IsStationDataOwner]
 

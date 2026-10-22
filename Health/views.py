@@ -56,7 +56,8 @@ def get_health_queryset_for_user(request, base_queryset, station_field="station"
     - Unassigned / no station: empty queryset
     """
     org_unit, user_station = get_user_operational_context(request)
-    station_param = request.query_params.get('station', None)
+    query_params = getattr(request, 'query_params', getattr(request, 'GET', {}))
+    station_param = query_params.get('station', None)
 
     # 1. Superuser or National HQ
     if request.user.is_superuser or (org_unit and org_unit.unit_type == 'NATIONAL_HQ'):
@@ -112,6 +113,7 @@ def save_health_record_with_station(request, serializer, station_field="station"
 # ==================================================
 class PatientViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for patient management with station isolation"""
+    queryset = Patient.objects.all()
     serializer_class = PatientSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
@@ -162,6 +164,7 @@ class PatientViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 # ==================================================
 class AdmissionHealthAssessmentViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for inmate admission health assessments"""
+    queryset = AdmissionHealthAssessment.objects.all()
     serializer_class = AdmissionHealthAssessmentSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
@@ -179,6 +182,7 @@ class AdmissionHealthAssessmentViewSet(OrgUnitContextMixin, viewsets.ModelViewSe
 
 class OutPatientVisitViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for OPD consultations"""
+    queryset = OutPatientVisit.objects.all()
     serializer_class = OutPatientVisitSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
@@ -196,6 +200,7 @@ class OutPatientVisitViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 class MentalHealthVisitViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for mental health consultations"""
+    queryset = MentalHealthVisit.objects.all()
     serializer_class = MentalHealthVisitSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
@@ -209,6 +214,7 @@ class MentalHealthVisitViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 class ChronicPatientViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for chronic patient management"""
+    queryset = ChronicPatient.objects.all()
     serializer_class = ChronicPatientSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
@@ -244,6 +250,7 @@ class MedicineViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 class StockCardEntryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for stock card register"""
+    queryset = StockCardEntry.objects.all()
     serializer_class = StockCardEntrySerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
@@ -260,6 +267,7 @@ class StockCardEntryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 # ==================================================
 class MedicalEquipmentViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for medical equipment management"""
+    queryset = MedicalEquipment.objects.all()
     serializer_class = MedicalEquipmentSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer, IsStationDataOwner]
 
@@ -273,6 +281,7 @@ class MedicalEquipmentViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 class EquipmentUsageLogViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     """ViewSet for equipment usage tracking"""
+    queryset = EquipmentUsageLog.objects.all()
     serializer_class = EquipmentUsageLogSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer]
 
@@ -286,6 +295,7 @@ class EquipmentUsageLogViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 # ==================================================
 class HealthAuditTrailViewSet(viewsets.ReadOnlyModelViewSet):
     """Read-only ViewSet for health audit trails"""
+    queryset = HealthAuditTrail.objects.all()
     serializer_class = HealthAuditTrailSerializer
     permission_classes = [IsAuthenticated, IsHealthOfficer]
 

@@ -73,6 +73,7 @@ class InventoryItemViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 
 class StockReceiptViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = StockReceipt.objects.all()
     serializer_class = StockReceiptSerializer
     permission_classes = [IsAuthenticated, IsStoresOfficer, IsStationDataOwner]
 
@@ -106,6 +107,7 @@ class StockReceiptViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 
 class StockReceiptItemViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = StockReceiptItem.objects.all()
     serializer_class = StockReceiptItemSerializer
     permission_classes = [IsAuthenticated, IsStoresOfficer, IsStationDataOwner]
 
@@ -119,6 +121,7 @@ class StockReceiptItemViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 class StockLedgerViewSet(viewsets.ReadOnlyModelViewSet):
     """Append-only ledger of stock transactions."""
+    queryset = StockLedger.objects.all()
     serializer_class = StockLedgerSerializer
     permission_classes = [IsAuthenticated, IsStoresOfficer]
 
@@ -130,6 +133,7 @@ class StockLedgerViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class FeedingSessionViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = FeedingSession.objects.all()
     serializer_class = FeedingSessionSerializer
     permission_classes = [IsAuthenticated, IsStoresOfficer, IsStationDataOwner]
 
@@ -154,6 +158,7 @@ class FeedingSessionViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 
 class FeedingItemViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = FeedingItem.objects.all()
     serializer_class = FeedingItemSerializer
     permission_classes = [IsAuthenticated, IsStoresOfficer, IsStationDataOwner]
 
@@ -166,6 +171,7 @@ class FeedingItemViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 
 class OfficerIssueViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = OfficerIssue.objects.all()
     serializer_class = OfficerIssueSerializer
     permission_classes = [IsAuthenticated, IsStoresOfficer, IsStationDataOwner]
 
@@ -177,6 +183,7 @@ class OfficerIssueViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
 
 class StockWriteOffViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+    queryset = StockWriteOff.objects.all()
     serializer_class = StockWriteOffSerializer
     permission_classes = [IsAuthenticated, IsStoresOfficer, IsStationDataOwner]
 
