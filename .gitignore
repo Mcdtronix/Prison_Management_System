@@ -97,3 +97,10 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+
+# SSH keys (never commit)
+pms
+pms.pub
+*.pem
+id_rsa*
+id_ed25519*
