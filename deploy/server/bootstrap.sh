@@ -40,6 +40,8 @@ die()  { printf '\e[31mERROR:\e[0m %s\n' "$*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "Run as root (sudo)."
 [[ -n "$LETSENCRYPT_EMAIL" ]] || die "Set LETSENCRYPT_EMAIL (certificate expiry notices)."
 [[ -f "$REPO_DIR/deploy/systemd/pms.service" ]] || die "Run from a checkout of the repository."
+ENV_TEMPLATE="$REPO_DIR/deploy/env/production.env.example"
+[[ -s "$ENV_TEMPLATE" ]] || die "Missing $ENV_TEMPLATE. Update the checkout (git pull) and re-run."
 # shellcheck source=/dev/null
 . /etc/os-release
 [[ "${ID:-}" == "ubuntu" ]] || warn "Tested on Ubuntu 24.04; detected ${PRETTY_NAME:-unknown}"
@@ -92,10 +94,19 @@ ok "$APP_ROOT and $BACKUP_ROOT ready"
 # ── PostgreSQL ───────────────────────────────────────────────────────
 log "Configuring PostgreSQL"
 ENV_FILE="$APP_ROOT/shared/.env"
-if [[ -f "$ENV_FILE" ]]; then
-    DB_PASSWORD="$(grep -E '^DB_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)"
+DB_PASSWORD=""
+if [[ -s "$ENV_FILE" ]]; then
+    DB_PASSWORD="$(grep -E '^DB_PASSWORD=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- || true)"
+fi
+if [[ -n "$DB_PASSWORD" ]]; then
+    REUSE_ENV=1
     ok "Reusing credentials from existing $ENV_FILE"
 else
+    REUSE_ENV=0
+    if [[ -e "$ENV_FILE" ]]; then
+        mv "$ENV_FILE" "$ENV_FILE.invalid.$(date +%Y%m%d%H%M%S)"
+        warn "Existing $ENV_FILE had no DB_PASSWORD; moved aside and regenerating"
+    fi
     DB_PASSWORD="$(openssl rand -base64 36 | tr -dc 'A-Za-z0-9' | head -c 40)"
 fi
 
@@ -117,13 +128,16 @@ sudo -u postgres psql -q -d "$DB_NAME" -c "ALTER SCHEMA public OWNER TO $DB_USER
 
 # ── Production .env ──────────────────────────────────────────────────
 log "Writing production configuration"
-if [[ ! -f "$ENV_FILE" ]]; then
+if (( ! REUSE_ENV )); then
     SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(64))')"
+    # Write to a temp file first so a failure never leaves a partial .env.
     sed -e "s|^SECRET_KEY=.*|SECRET_KEY=$SECRET_KEY|" \
         -e "s|^DB_PASSWORD=.*|DB_PASSWORD=$DB_PASSWORD|" \
         -e "s|^DB_NAME=.*|DB_NAME=$DB_NAME|" \
         -e "s|^DB_USER=.*|DB_USER=$DB_USER|" \
-        "$REPO_DIR/deploy/env/production.env.example" > "$ENV_FILE"
+        "$ENV_TEMPLATE" > "$ENV_FILE.tmp"
+    grep -q "^DB_PASSWORD=$DB_PASSWORD\$" "$ENV_FILE.tmp" || die "Failed to render $ENV_FILE"
+    mv "$ENV_FILE.tmp" "$ENV_FILE"
     ok "Generated $ENV_FILE with fresh SECRET_KEY and DB password"
 else
     ok "$ENV_FILE exists, left unchanged"

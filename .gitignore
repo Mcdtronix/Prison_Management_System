@@ -109,3 +109,8 @@ id_ed25519*
 .claude/
 System_Documentation/.folio/
 *.folio-lock
+
+# deploy/env holds the committed production .env template (not a virtualenv;
+# the ENV/ rule above matches it on case-insensitive filesystems)
+!deploy/env/
+!deploy/env/production.env.example
