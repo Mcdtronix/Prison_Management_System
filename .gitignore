@@ -104,3 +104,8 @@ pms.pub
 *.pem
 id_rsa*
 id_ed25519*
+
+# Local editor / tool state
+.claude/
+System_Documentation/.folio/
+*.folio-lock

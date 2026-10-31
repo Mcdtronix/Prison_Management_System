@@ -1,0 +1,73 @@
+# ══════════════════════════════════════════════════════════════════════
+# PMS: manual rollback (Actions → Rollback Production → Run workflow)
+#
+# Points production back at an earlier release that is still on the server
+# (the last 5 are kept). Leave "release" empty to return to the release
+# that was live before the most recent deploy.
+# ══════════════════════════════════════════════════════════════════════
+name: Rollback Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Release id to restore (empty = previous release). Listed in the deploy log."
+        required: false
+        default: ""
+      restore_db:
+        description: "Restore the pre-deploy database backup?"
+        type: choice
+        options: [auto, "no", "yes"]
+        default: auto
+      reason:
+        description: "Why are we rolling back? (recorded in the server history)"
+        required: true
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    name: Roll back production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://pms.mcdtronix.co.zw
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS || secrets.VPS_KNOWN_HOST }}
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf 'Host prod\n  HostName %s\n  User %s\n  Port %s\n  IdentityFile ~/.ssh/deploy_key\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  BatchMode yes\n' \
+            "$HOST" "$USER" "$PORT" > ~/.ssh/config
+
+      - name: Available releases
+        run: ssh prod 'ls -1t /var/www/pms/releases; echo; tail -n 10 /var/www/pms/shared/state/history.log 2>/dev/null || true'
+
+      - name: Roll back
+        env:
+          RELEASE: ${{ inputs.release }}
+          RESTORE_DB: ${{ inputs.restore_db }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          [[ -z "$RELEASE" || "$RELEASE" =~ ^[0-9]{14}_[0-9a-f]{7}$ ]] || { echo "::error::Invalid release id"; exit 1; }
+          reason="$(printf '%s' "$REASON (by ${GITHUB_ACTOR})" | tr -cd 'A-Za-z0-9 ._,:()/-')"
+          # shellcheck disable=SC2029  # values intentionally expanded on the runner
+          ssh prod "/var/www/pms/bin/rollback.sh --yes --restore-db $RESTORE_DB \
+            ${RELEASE:+--to $RELEASE} --reason '$reason'"
+
+      - name: Clean up key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

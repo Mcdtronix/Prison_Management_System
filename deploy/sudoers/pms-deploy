@@ -1,0 +1,17 @@
+# Least-privilege sudo rights for the `pms` deploy user.
+# Installed to /etc/sudoers.d/pms-deploy (mode 0440) by deploy/server/bootstrap.sh
+# Validate after editing:  sudo visudo -cf /etc/sudoers.d/pms-deploy
+#
+# The CI pipeline can restart the app and reload nginx, nothing else.
+
+Cmnd_Alias PMS_SERVICE = /usr/bin/systemctl start pms, \
+                         /usr/bin/systemctl stop pms, \
+                         /usr/bin/systemctl restart pms, \
+                         /usr/bin/systemctl is-active pms, \
+                         /usr/bin/systemctl status pms, \
+                         /usr/bin/systemctl status pms --no-pager
+
+Cmnd_Alias PMS_NGINX   = /usr/sbin/nginx -t, \
+                         /usr/bin/systemctl reload nginx
+
+pms ALL=(root) NOPASSWD: PMS_SERVICE, PMS_NGINX
