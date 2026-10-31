@@ -135,7 +135,7 @@ rollback() {
     exit 1
 }
 
-# shellcheck disable=SC2329  # invoked via trap
+# shellcheck disable=SC2317,SC2329  # invoked via trap
 on_error() {
     local code=$? line=$1
     if [[ "$PHASE" == "preflight" || "$PHASE" == "backup" ]]; then
@@ -148,7 +148,7 @@ on_error() {
 }
 # Safety net: any exit after production was touched that is not a clean
 # finish or an explicit rollback (e.g. `die` inside a helper) rolls back.
-# shellcheck disable=SC2329  # invoked via trap
+# shellcheck disable=SC2317,SC2329  # invoked via trap
 on_exit() {
     local code=$?
     stop_candidate
@@ -268,7 +268,7 @@ fi
 CANDIDATE_PID=$!
 
 base="http://127.0.0.1:$CANDIDATE_PORT"
-# shellcheck disable=SC2329  # invoked via wait_until
+# shellcheck disable=SC2317,SC2329  # invoked via wait_until
 candidate_ping() {
     curl -fsS --max-time 5 -H "Host: $DOMAIN" "$base/api/ping/" 2>/dev/null \
         | grep -q '"status": *"healthy"'
