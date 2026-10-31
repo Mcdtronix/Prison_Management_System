@@ -94,7 +94,15 @@ MIDDLEWARE = [
     'Auth.middleware.RequestMiddleware',
 ]
 
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# Django 5.1+ ignores STATICFILES_STORAGE; STORAGES is the supported form.
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 ROOT_URLCONF = 'Core.urls'
 
@@ -118,6 +126,9 @@ WSGI_APPLICATION = 'Core.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+# PostgreSQL is the system of record. SQLite is allowed only for local
+# development by setting DB_ENGINE=django.db.backends.sqlite3 in .env;
+# the deploy pipeline refuses to ship anything that is not PostgreSQL.
 DB_ENGINE = config('DB_ENGINE', default='django.db.backends.postgresql')
 
 if DB_ENGINE == 'django.db.backends.sqlite3':
@@ -136,15 +147,14 @@ else:
             'PASSWORD': config('DB_PASSWORD', default='postgres'),
             'HOST':     config('DB_HOST', default='localhost'),
             'PORT':     config('DB_PORT', default='5432'),
-            # Connection pooling
+            # Persistent connections
             'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=600, cast=int),
+            'CONN_HEALTH_CHECKS': True,
             'OPTIONS': {
                 'connect_timeout': 10,
             }
         }
     }
-
-
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -299,6 +309,14 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+
+    # TLS terminates at nginx; trust its X-Forwarded-Proto so Django knows
+    # the original request was HTTPS. Gunicorn listens on a unix socket only,
+    # so this header cannot be spoofed by clients.
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Origins allowed to submit CSRF-protected forms (e.g. Django admin over HTTPS)
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
 
 # ==================================================

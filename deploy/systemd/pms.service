@@ -1,0 +1,47 @@
+# PMS application server (Django + Gunicorn)
+# Installed to /etc/systemd/system/pms.service by deploy/server/bootstrap.sh
+#
+# WorkingDirectory and ExecStart go through the `current` symlink, which
+# systemd resolves on every (re)start. Switching releases is therefore an
+# atomic symlink flip followed by `systemctl restart pms`.
+
+[Unit]
+Description=Prison Management System (Gunicorn)
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
+
+[Service]
+Type=simple
+User=pms
+Group=www-data
+WorkingDirectory=/var/www/pms/current
+# Django reads shared/.env itself (python-decouple, via the release's .env
+# symlink). It is deliberately NOT loaded here: systemd and decouple parse
+# quoting and inline comments differently. Optional Gunicorn tuning only:
+EnvironmentFile=-/var/www/pms/shared/gunicorn.env
+ExecStart=/var/www/pms/current/venv/bin/gunicorn Core.wsgi:application \
+    --config /var/www/pms/current/deploy/gunicorn.conf.py
+ExecReload=/bin/kill -s HUP $MAINPID
+
+# /run/pms holds the socket nginx proxies to.
+RuntimeDirectory=pms
+RuntimeDirectoryMode=0750
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=35
+KillMode=mixed
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

@@ -275,7 +275,8 @@ class StoreAuditTrailSerializer(serializers.ModelSerializer):
     class Meta:
         model = StoreAuditTrail
         fields = "__all__"
-        read_only_fields = fields
+        # Audit records are immutable. DRF needs a list here, not "__all__".
+        read_only_fields = [f.name for f in StoreAuditTrail._meta.fields]
 
 
 

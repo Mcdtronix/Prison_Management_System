@@ -7,7 +7,7 @@
 
 import { getRoleDisplayName, normalizeRole } from "./auth";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
 interface ApiResponse<T> {
   data?: T;
@@ -714,7 +714,7 @@ export const receptionApi = {
 
   validateInmateUnique: async (data: { prison_number?: string; national_id?: string }) => {
     const token = localStorage.getItem("auth_token");
-    const response = await fetch("http://localhost:8000/api/reception/inmates/validate_unique/", {
+    const response = await fetch(`${API_BASE_URL}/reception/inmates/validate_unique/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

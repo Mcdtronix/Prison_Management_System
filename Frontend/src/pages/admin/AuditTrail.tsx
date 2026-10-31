@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Download, Search, AlertCircle } from "lucide-react";
-import { authApi } from "@/lib/api";
+import { authApi, API_BASE_URL } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 
@@ -68,7 +68,7 @@ export default function AuditTrail() {
   };
 
   const handleExport = () => {
-    window.location.href = "http://localhost:8000/api/auth/logs/export/";
+    window.location.href = `${API_BASE_URL}/auth/logs/export/`;
   };
 
   const filteredLogs = logs.filter((log) => {

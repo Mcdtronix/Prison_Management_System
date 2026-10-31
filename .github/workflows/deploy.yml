@@ -1,288 +1,348 @@
-name: PMS Production Deployment
+# ══════════════════════════════════════════════════════════════════════
+# PMS: CI/CD to production (https://pms.mcdtronix.co.zw)
+#
+#   push to main
+#     ├─ backend     Django checks, migrations on PostgreSQL 16, unit tests
+#     ├─ frontend    production build of the React app
+#     └─ scripts     shellcheck of the deploy toolkit
+#           └─ package    one immutable release archive (code + built SPA)
+#                 └─ deploy     server: backup → stage → build → migrate →
+#                       │       test candidate → switch → verify
+#                       │       (auto-rollback on the server on any failure)
+#                       └─ smoke      end-to-end tests against the live URL
+#                             └─ rollback   only if smoke fails
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   VPS_HOST           server hostname or IP
+#   VPS_USER           deploy user (pms)
+#   VPS_SSH_KEY        private key whose public half is in ~pms/.ssh/authorized_keys
+#   VPS_KNOWN_HOSTS    output of: ssh-keyscan -t ed25519 <VPS_HOST>
+# Optional:
+#   VPS_PORT           SSH port (default 22)
+#   SMOKE_TEST_USER / SMOKE_TEST_PASS   read-only account for live smoke tests
+# Optional repository variable:
+#   UNIT_TESTS_BLOCKING = true   make failing unit tests block deployment
+# ══════════════════════════════════════════════════════════════════════
+name: Deploy to Production
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
+
+# Never run two deploys at once; never cancel one mid-flight.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  APP_URL: https://pms.mcdtronix.co.zw
+  APP_ROOT: /var/www/pms
 
-# ─────────────────────────────────────────────────────────────
-# JOB 1 — VALIDATE
-# Runs entirely on GitHub's runner before touching the server.
-# If any step fails, deployment never starts.
-# ─────────────────────────────────────────────────────────────
 jobs:
-  validate:
-    name: Validate Code Quality
-    runs-on: ubuntu-latest
+  # ────────────────────────────────────────────────────────────────────
+  backend:
+    name: Backend checks (PostgreSQL)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
 
     services:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_DB: pms_test
-          POSTGRES_USER: pms_user
-          POSTGRES_PASSWORD: pms_test_password
-        ports:
-          - 5432:5432
+          POSTGRES_DB: pms_ci
+          POSTGRES_USER: pms_ci
+          POSTGRES_PASSWORD: pms_ci_password
+        ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+
+    env:
+      SECRET_KEY: ci-only-${{ github.run_id }}-not-a-production-secret-0123456789abcdef
+      DEBUG: "False"
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      DB_ENGINE: django.db.backends.postgresql
+      DB_NAME: pms_ci
+      DB_USER: pms_ci
+      DB_PASSWORD: pms_ci_password
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
+          cache: pip
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
-      - name: Create test environment file
-        run: |
-          cat > .env << EOF
-          SECRET_KEY=ci-test-secret-key-not-used-in-production
-          DEBUG=False
-          ALLOWED_HOSTS=localhost,127.0.0.1
-          DB_NAME=pms_test
-          DB_USER=pms_user
-          DB_PASSWORD=pms_test_password
-          DB_HOST=localhost
-          DB_PORT=5432
-          CORS_ALLOW_ALL_ORIGINS=True
-          EOF
+      - name: Django system checks (deploy profile)
+        run: python manage.py check --deploy --fail-level ERROR
 
-      - name: Django system checks
-        run: |
-          python manage.py check
+      - name: Every model change has a migration
+        run: python manage.py makemigrations --check --dry-run
 
-      - name: Validate migrations are consistent
-        run: |
-          python manage.py makemigrations --check --dry-run
-        # Fails if there are model changes without corresponding migrations
-        # This caught the serializer issue — would have failed before deployment
+      - name: Migrations apply cleanly to PostgreSQL 16
+        run: python manage.py migrate --noinput
 
-      - name: Apply migrations to test database
-        run: |
-          python manage.py migrate --noinput
+      - name: Static files collect (WhiteNoise manifest)
+        run: python manage.py collectstatic --noinput --verbosity 0
 
-      - name: Run test suite
-        run: |
-          python -m pytest tests/ -v --tb=short || echo "No tests configured yet"
-        continue-on-error: true
-        # We set continue on error true if some tests aren't ready yet, but best practice is false once stable.
+      - name: Unit tests
+        id: unit
+        continue-on-error: ${{ vars.UNIT_TESTS_BLOCKING != 'true' }}
+        run: python manage.py test --noinput --verbosity 2
 
-# ─────────────────────────────────────────────────────────────
-# JOB 2 — BUILD FRONTEND
-# Builds the React app and verifies it compiles cleanly.
-# ─────────────────────────────────────────────────────────────
-  build_frontend:
-    name: Build React Frontend
-    runs-on: ubuntu-latest
-    needs: validate
+      - name: Report non-blocking test failures
+        if: steps.unit.outcome == 'failure'
+        run: echo "::warning title=Unit tests failing::Unit tests failed but are non-blocking. Set repository variable UNIT_TESTS_BLOCKING=true once the suite is green."
 
+  # ────────────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
           cache-dependency-path: Frontend/package-lock.json
 
       - name: Install dependencies
-        run: |
-          cd Frontend
-          npm ci --legacy-peer-deps
+        working-directory: Frontend
+        run: npm ci --legacy-peer-deps
 
-      - name: Build production bundle
-        run: |
-          cd Frontend
-          npm run build
+      - name: Production build
+        working-directory: Frontend
+        run: npm run build
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+      - name: Verify bundle targets production API
+        working-directory: Frontend
+        run: |
+          test -f dist/index.html
+          grep -rqF "pms.mcdtronix.co.zw/api" dist/assets/ \
+            || { echo "::error::Bundle does not reference https://pms.mcdtronix.co.zw/api"; exit 1; }
+          if grep -rqF "localhost:8000" dist/assets/; then
+            echo "::error::Bundle contains hard-coded localhost:8000"; exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
           path: Frontend/dist/
-          retention-days: 1
+          retention-days: 3
 
-# ─────────────────────────────────────────────────────────────
-# JOB 3 — DEPLOY
-# Only runs if validate AND build_frontend both passed.
-# Backs up database, deploys, then verifies health.
-# Rolls back automatically on any failure.
-# ─────────────────────────────────────────────────────────────
+  # ────────────────────────────────────────────────────────────────────
+  scripts:
+    name: Deploy scripts (shellcheck)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -x -P scripts/deploy scripts/deploy/*.sh deploy/server/bootstrap.sh
+
+  # ────────────────────────────────────────────────────────────────────
+  package:
+    name: Package release
+    needs: [backend, frontend, scripts]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      archive: ${{ steps.pack.outputs.archive }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: Frontend/dist/
+
+      - name: Build release archive
+        id: pack
+        run: |
+          archive="pms-${GITHUB_SHA::12}.tar.gz"
+          # Server-side code only: tracked files minus dev/docs, plus the built SPA.
+          git archive --format=tar HEAD -- . \
+            ':(exclude)Frontend' ':(exclude)scripts/dev' ':(exclude)cypress' \
+            ':(exclude)System_Documentation' ':(exclude)*.docx' ':(exclude)*.md' \
+            > release.tar
+          tar --append -f release.tar Frontend/dist
+          gzip -9 < release.tar > "$archive"
+          sha256sum "$archive" > "$archive.sha256"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "Release archive: $archive ($(du -h "$archive" | cut -f1))"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: pms-*.tar.gz*
+          retention-days: 30
+
+  # ────────────────────────────────────────────────────────────────────
   deploy:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    needs: [validate, build_frontend]
-
+    name: Deploy
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: ${{ env.APP_URL }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.2.2
-
-      - name: Download frontend build
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: frontend-dist
-          path: Frontend/dist/
+          name: release
 
-      - name: Copy frontend build to VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          source: "Frontend/dist/*"
-          target: "/var/www/pms/Frontend/dist"
-          strip_components: 2
+      - name: Verify archive integrity
+        run: sha256sum -c "${{ needs.package.outputs.archive }}.sha256"
 
-      - name: Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script_stop: true
-          script: |
-            set -e
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host prod
+            HostName $HOST
+            User $USER
+            Port $PORT
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            BatchMode yes
+            ServerAliveInterval 30
+          EOF
+          ssh prod true && echo "SSH OK"
 
-            echo "════════════════════════════════════════"
-            echo "🚀 PMS PRODUCTION DEPLOYMENT STARTED"
-            echo "   Commit: $(cd /var/www/pms && git rev-parse --short HEAD)"
-            echo "   Time:   $(date '+%Y-%m-%d %H:%M:%S')"
-            echo "════════════════════════════════════════"
+      - name: Upload release and deploy toolkit
+        run: |
+          archive="${{ needs.package.outputs.archive }}"
+          tar -xzf "$archive" scripts/deploy
+          scp -q "$archive" prod:"$APP_ROOT/incoming/"
+          scp -q scripts/deploy/*.sh prod:"$APP_ROOT/bin/"
+          # shellcheck disable=SC2029  # values intentionally expanded on the runner
+          ssh prod "chmod 750 $APP_ROOT/bin/*.sh"
 
-            cd /var/www/pms
+      - name: Deploy (backup → migrate → test candidate → switch → verify)
+        run: |
+          # shellcheck disable=SC2029  # values intentionally expanded on the runner
+          ssh prod "$APP_ROOT/bin/deploy.sh \
+            --archive $APP_ROOT/incoming/${{ needs.package.outputs.archive }} \
+            --sha $GITHUB_SHA"
 
-            # ── Step 1: Backup database before any changes ──────────
-            echo "📦 Step 1/6: Backing up database..."
-            if [ -f "/var/www/pms/scripts/backup_db.sh" ]; then
-                bash /var/www/pms/scripts/backup_db.sh
-                echo "✅ Database backup complete"
-            else
-                echo "⚠️ Backup script not found yet. Skipping backup."
-            fi
+      - name: Clean up key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
 
-            # ── Step 2: Pull latest code ────────────────────────────
-            echo "📥 Step 2/6: Pulling latest code..."
-            git fetch origin
-            git reset --hard origin/main
-            git clean -fd
-            echo "✅ Code updated to: $(git rev-parse --short HEAD)"
-
-            # ── Step 3: Install/update Python dependencies ──────────
-            echo "📦 Step 3/6: Installing Python dependencies..."
-            source venv/bin/activate
-            pip install -r requirements.txt --quiet
-            echo "✅ Dependencies installed"
-
-            # ── Step 4: Run migrations ──────────────────────────────
-            echo "🗄️  Step 4/6: Running database migrations..."
-            python manage.py migrate --noinput
-            python manage.py collectstatic --noinput
-            deactivate
-            echo "✅ Migrations and static files complete"
-
-            # ── Step 5: Restart service ─────────────────────────────
-            echo "🔄 Step 5/6: Restarting PMS service..."
-            sudo systemctl restart pms
-            sleep 8
-
-            # ── Step 6: Health check with auto-rollback ─────────────
-            echo "🏥 Step 6/6: Running health check..."
-            MAX_RETRIES=3
-            RETRY_INTERVAL=5
-            HEALTHY=false
-
-            for i in $(seq 1 $MAX_RETRIES); do
-                echo "   Health check attempt $i/$MAX_RETRIES..."
-                if curl -sf https://pms.mcdtronix.co.zw/api/ping/ > /dev/null 2>&1; then
-                    HEALTHY=true
-                    break
-                fi
-                echo "   ⚠️  Attempt $i failed, retrying in ${RETRY_INTERVAL}s..."
-                sleep $RETRY_INTERVAL
-            done
-
-            if [ "$HEALTHY" = false ]; then
-                echo "❌ Health check FAILED after $MAX_RETRIES attempts"
-                echo "🚨 Initiating automatic rollback..."
-                bash /var/www/pms/scripts/rollback.sh
-                echo "❌ DEPLOYMENT FAILED — rolled back to previous version"
-                exit 1
-            fi
-
-            echo "════════════════════════════════════════"
-            echo "✅ DEPLOYMENT SUCCESSFUL"
-            echo "   Commit: $(git rev-parse --short HEAD)"
-            echo "   Health: PASSING"
-            echo "   Time:   $(date '+%Y-%m-%d %H:%M:%S')"
-            echo "════════════════════════════════════════"
-
-# ─────────────────────────────────────────────────────────────
-# JOB 4 — SMOKE TESTS
-# Runs critical workflow tests against the live server
-# after deployment succeeds.
-# ─────────────────────────────────────────────────────────────
-  smoke_tests:
-    name: Post-Deployment Smoke Tests
-    runs-on: ubuntu-latest
+  # ────────────────────────────────────────────────────────────────────
+  smoke:
+    name: Smoke tests (live)
     needs: deploy
-
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tests
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install test dependencies
-        run: pip install requests pytest
+      - run: pip install requests
 
-      - name: Run smoke tests against live server
+      - name: Run smoke tests against ${{ env.APP_URL }}
         env:
-          SMOKE_TEST_URL: https://pms.mcdtronix.co.zw
+          SMOKE_TEST_URL: ${{ env.APP_URL }}
           SMOKE_TEST_USER: ${{ secrets.SMOKE_TEST_USER }}
           SMOKE_TEST_PASS: ${{ secrets.SMOKE_TEST_PASS }}
         run: python tests/smoke_test.py
 
-# ─────────────────────────────────────────────────────────────
-# JOB 5 — NOTIFY
-# Always runs — reports success or failure to your team.
-# ─────────────────────────────────────────────────────────────
-  notify:
-    name: Deployment Notification
-    runs-on: ubuntu-latest
-    needs: [validate, build_frontend, deploy, smoke_tests]
-    if: always()
-
+  # ────────────────────────────────────────────────────────────────────
+  rollback:
+    name: Roll back (smoke tests failed)
+    needs: [deploy, smoke]
+    if: failure() && needs.deploy.result == 'success' && needs.smoke.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - name: Report deployment status
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
         run: |
-          if [ "${{ needs.smoke_tests.result }}" == "success" ]; then
-            echo "✅ Deployment pipeline completed successfully"
-            echo "   All smoke tests passed"
-            echo "   PMS is live at https://pms.mcdtronix.co.zw"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf 'Host prod\n  HostName %s\n  User %s\n  Port %s\n  IdentityFile ~/.ssh/deploy_key\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  BatchMode yes\n' \
+            "$HOST" "$USER" "$PORT" > ~/.ssh/config
+
+      - name: Roll back to previous release
+        run: |
+          # shellcheck disable=SC2029  # values intentionally expanded on the runner
+          ssh prod "$APP_ROOT/bin/rollback.sh --yes --restore-db auto \
+            --reason 'smoke tests failed for ${GITHUB_SHA::7} (run ${GITHUB_RUN_ID})'"
+
+      - name: Fail the run
+        run: |
+          echo "::error::Smoke tests failed. Production was rolled back to the previous release."
+          exit 1
+
+      - name: Clean up key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  # ────────────────────────────────────────────────────────────────────
+  summary:
+    name: Summary
+    needs: [backend, frontend, scripts, package, deploy, smoke, rollback]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Write summary
+        run: |
+          r() { case "$1" in success) echo "✅ passed";; failure) echo "❌ failed";; skipped) echo "⏭️ skipped";; cancelled) echo "🚫 cancelled";; *) echo "$1";; esac; }
+          if [ "${{ needs.smoke.result }}" = "success" ]; then
+            verdict="🚀 **Deployed** \`${GITHUB_SHA::7}\` to ${{ env.APP_URL }}"
+          elif [ "${{ needs.rollback.result }}" = "success" ]; then
+            verdict="↩️ **Rolled back**: \`${GITHUB_SHA::7}\` failed smoke tests; previous release restored"
+          elif [ "${{ needs.deploy.result }}" = "failure" ]; then
+            verdict="↩️ **Deploy failed on server**: auto-rolled back; production still on previous release"
           else
-            echo "❌ Deployment pipeline FAILED"
-            echo "   Failed job: validate=${{ needs.validate.result }}"
-            echo "              build=${{ needs.build_frontend.result }}"
-            echo "              deploy=${{ needs.deploy.result }}"
-            echo "              smoke=${{ needs.smoke_tests.result }}"
+            verdict="⛔ **Not deployed**: a pre-deploy gate failed; production untouched"
           fi
+          {
+            echo "## $verdict"
+            echo
+            echo "| Stage | Result |"
+            echo "|---|---|"
+            echo "| Backend checks | $(r '${{ needs.backend.result }}') |"
+            echo "| Frontend build | $(r '${{ needs.frontend.result }}') |"
+            echo "| Deploy scripts | $(r '${{ needs.scripts.result }}') |"
+            echo "| Package | $(r '${{ needs.package.result }}') |"
+            echo "| Deploy | $(r '${{ needs.deploy.result }}') |"
+            echo "| Smoke tests | $(r '${{ needs.smoke.result }}') |"
+            echo "| Rollback | $(r '${{ needs.rollback.result }}') |"
+          } >> "$GITHUB_STEP_SUMMARY"
