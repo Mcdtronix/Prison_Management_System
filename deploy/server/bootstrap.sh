@@ -166,6 +166,8 @@ CERT="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
 
 if [[ ! -f "$CERT" ]]; then
     server_ip="$(curl -fsS4 --max-time 5 https://api.ipify.org || true)"
+    # Fall back to the primary interface address if the lookup fails.
+    [[ -n "$server_ip" ]] || server_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
     dns_ip="$(getent ahostsv4 "$DOMAIN" | awk 'NR==1{print $1}' || true)"
     if [[ -n "$server_ip" && "$dns_ip" != "$server_ip" ]]; then
         die "$DOMAIN resolves to '${dns_ip:-nothing}', this server is $server_ip. Fix the DNS A record, then re-run."
