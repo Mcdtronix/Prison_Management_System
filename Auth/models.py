@@ -10,6 +10,8 @@ Features:
 - Audit-ready design
 """
 
+import uuid
+
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -984,3 +986,101 @@ class SystemConfig(models.Model):
 
     def __str__(self):
         return f"System Config [{self.setup_status}]"
+
+
+# ==================================================
+# ACCOUNT SECURITY, SESSIONS AND USAGE (admin console)
+# ==================================================
+
+class UserSecurity(models.Model):
+    """Password and sign-in state for one account. Never holds the password itself."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='security')
+    must_change_password = models.BooleanField(
+        default=False, help_text="Set after an admin reset; the user must choose a new password at next sign-in.")
+    password_changed_at = models.DateTimeField(null=True, blank=True)
+    password_reset_at = models.DateTimeField(null=True, blank=True)
+    password_reset_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    failed_login_count = models.PositiveIntegerField(default=0)
+    last_failed_login_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "auth_user_security"
+
+    def __str__(self):
+        return f"security:{self.user.username}"
+
+    @classmethod
+    def for_user(cls, user):
+        return cls.objects.get_or_create(user=user)[0]
+
+
+class UserSession(models.Model):
+    """One signed-in session. Its id travels in the JWT as the `sid` claim.
+
+    Revoking a session signs that device out at its next request.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sessions')
+    org_unit = models.ForeignKey(OrgUnit, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(default=timezone.now, db_index=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True, default='')
+    revoked_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    revoked_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    revoke_reason = models.CharField(max_length=255, blank=True, default='')
+
+    class Meta:
+        db_table = "auth_user_session"
+        ordering = ['-last_seen_at']
+        indexes = [
+            models.Index(fields=['user', 'revoked_at']),
+            models.Index(fields=['org_unit', 'last_seen_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} {self.id}"
+
+
+class LoginEvent(models.Model):
+    """Every sign-in attempt, successful or not."""
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='login_events')
+    username_attempted = models.CharField(max_length=150)
+    success = models.BooleanField()
+    reason = models.CharField(max_length=100, blank=True, default='')
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True, default='')
+    at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "auth_login_event"
+        ordering = ['-at']
+        indexes = [models.Index(fields=['user', '-at']), models.Index(fields=['success', '-at'])]
+
+    def __str__(self):
+        return f"{self.username_attempted} {'ok' if self.success else 'fail'} {self.at:%Y-%m-%d %H:%M}"
+
+
+class OrgUsageSnapshot(models.Model):
+    """Estimated storage held by one org unit for one table, captured by `compute_org_usage`.
+
+    OWNED: rows belonging to `org_unit`. UNASSIGNED: rows in an ownable table
+    that have no owner yet. SHARED: system-wide tables with no owner column.
+    """
+    SCOPES = [('OWNED', 'Owned by a unit'), ('UNASSIGNED', 'No owner yet'), ('SHARED', 'System-wide')]
+    org_unit = models.ForeignKey(OrgUnit, on_delete=models.CASCADE, null=True, blank=True, related_name='usage')
+    scope = models.CharField(max_length=10, choices=SCOPES, default='OWNED')
+    table_name = models.CharField(max_length=100)
+    module = models.CharField(max_length=50)
+    row_count = models.BigIntegerField(default=0)
+    est_bytes = models.BigIntegerField(default=0)
+    captured_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = "org_usage_snapshot"
+        indexes = [models.Index(fields=['captured_at', 'org_unit'])]
+
+    def __str__(self):
+        return f"{self.org_unit_id}:{self.table_name}={self.row_count}"

@@ -157,6 +157,13 @@ async function apiRequest<T>(
 
       if (typeof responseData === "object") {
         if (responseData.error_code) {
+          // The server blocks everything until a reset password is replaced.
+          if (
+            responseData.error_code === "PASSWORD_CHANGE_REQUIRED" &&
+            window.location.pathname !== "/change-password"
+          ) {
+            window.location.assign("/change-password");
+          }
           return {
             error: responseData.message || errorMessage,
             status: response.status,
@@ -304,6 +311,8 @@ export const authApi = {
         username: response.data.username,
         role: normalizedRole,
         roleName: response.data.role_name || getRoleDisplayName(normalizedRole),
+        mustChangePassword: !!(response.data as any).must_change_password,
+        orgUnitType: (response.data as any).org_unit_unit_type || null,
         org_unit: (response.data as any).org_unit_id
           ? {
               id: (response.data as any).org_unit_id,
@@ -421,6 +430,27 @@ export const authApi = {
   /**
    * Check if user is authenticated
    */
+  /** Keeps this session marked "online" while the app is open. */
+  heartbeat: async (): Promise<ApiResponse<unknown>> => {
+    return apiRequest("/auth/heartbeat/", { method: "POST" });
+  },
+
+  /** Change own password; the server returns fresh tokens for this session. */
+  changePassword: async (
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<ApiResponse<{ access: string; refresh: string }>> => {
+    const res = await apiRequest<{ access: string; refresh: string }>("/auth/change-password/", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+    if (res.data?.access) {
+      localStorage.setItem("auth_token", res.data.access);
+      localStorage.setItem("refresh_token", res.data.refresh);
+    }
+    return res;
+  },
+
   isAuthenticated: (): boolean => {
     const token = localStorage.getItem("auth_token");
     return !!token;
@@ -1178,4 +1208,53 @@ export const custodyApi = {
   getUnlockHistory: async () => {
     return unwrapCustodyApi(fetchApi('/reception/unlock-history/'));
   }
+};
+
+
+// ==================================================
+// ADMIN CONSOLE (HQ / provincial / station system admins)
+// ==================================================
+const qs = (params: Record<string, string | number | undefined | null>) => {
+  const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "");
+  return entries.length ? "?" + new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString() : "";
+};
+
+export const consoleApi = {
+  overview: () => apiRequest<any>("/auth/console/overview/"),
+  orgTree: () => apiRequest<any>("/auth/console/org-tree/"),
+  users: (params: Record<string, string | number | undefined | null> = {}) =>
+    apiRequest<any>(`/auth/console/users/${qs(params)}`),
+  user: (id: number | string) => apiRequest<any>(`/auth/console/users/${id}/`),
+  createUser: (body: Record<string, unknown>) =>
+    apiRequest<any>("/auth/console/users/", { method: "POST", body: JSON.stringify(body) }),
+  updateProfile: (id: number, body: Record<string, unknown>) =>
+    apiRequest<any>(`/auth/console/users/${id}/update-profile/`, { method: "POST", body: JSON.stringify(body) }),
+  resetPassword: (id: number, reason: string) =>
+    apiRequest<any>(`/auth/console/users/${id}/reset-password/`, { method: "POST", body: JSON.stringify({ reason }) }),
+  forceLogout: (id: number, reason: string) =>
+    apiRequest<any>(`/auth/console/users/${id}/force-logout/`, { method: "POST", body: JSON.stringify({ reason }) }),
+  setActive: (id: number, isActive: boolean, reason: string) =>
+    apiRequest<any>(`/auth/console/users/${id}/set-active/`, {
+      method: "POST",
+      body: JSON.stringify({ is_active: isActive, reason }),
+    }),
+  endSession: (sessionId: string, reason: string) =>
+    apiRequest<any>(`/auth/console/sessions/${sessionId}/end/`, { method: "POST", body: JSON.stringify({ reason }) }),
+  grantableRoles: (orgUnitId: number) => apiRequest<any[]>(`/auth/console/grantable-roles/?org_unit=${orgUnitId}`),
+  online: (params: Record<string, string | number | undefined | null> = {}) =>
+    apiRequest<any[]>(`/auth/console/online/${qs(params)}`),
+  activity: (params: Record<string, string | number | undefined | null> = {}) =>
+    apiRequest<any>(`/auth/console/activity/${qs(params)}`),
+  logins: (params: Record<string, string | number | undefined | null> = {}) =>
+    apiRequest<any>(`/auth/console/logins/${qs(params)}`),
+  storage: () => apiRequest<any>("/auth/console/storage/"),
+  refreshStorage: () => apiRequest<any>("/auth/console/storage/", { method: "POST" }),
+  createProvince: (body: { name: string; code: string; code_short: string }) =>
+    apiRequest<any>("/auth/admin-actions/phq/", { method: "POST", body: JSON.stringify(body) }),
+  createStation: (body: { name: string; code: string; code_short: string; parent: number }) =>
+    apiRequest<any>("/auth/admin-actions/station/", { method: "POST", body: JSON.stringify(body) }),
+  assignRole: (body: Record<string, unknown>) =>
+    apiRequest<any>("/auth/user-assignments/", { method: "POST", body: JSON.stringify(body) }),
+  updateAssignment: (id: number, body: Record<string, unknown>) =>
+    apiRequest<any>(`/auth/user-assignments/${id}/`, { method: "PATCH", body: JSON.stringify(body) }),
 };

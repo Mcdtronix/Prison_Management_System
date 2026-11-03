@@ -36,22 +36,27 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        
-        if response.status_code == 200:
-            # Log successful login
-            try:
-                user = User.objects.get(username=request.data.get('username'))
-                log_action(
-                    request=request,
-                    action=f"User logged in: {user.username}",
-                    module="AUTH",
-                    remarks="Successful login"
-                )
-            except User.DoesNotExist:
-                pass
-        
-        return response
+        from .sessions import record_login
+
+        attempted = (request.data.get('username') or '').strip().upper()
+        serializer = self.get_serializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception:
+            known = User.objects.filter(username=attempted).first()
+            reason = 'inactive' if known is not None and not known.is_active else 'bad_credentials'
+            record_login(request, attempted, user=known, success=False, reason=reason)
+            raise
+
+        user = serializer.user
+        record_login(request, attempted, user=user, success=True)
+        request.user = user  # the request is anonymous until now; attribute the audit entry
+        try:
+            log_action(request=request, action=f"User logged in: {user.username}", module="AUTH",
+                       remarks="Successful login")
+        except Exception:
+            pass
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -65,7 +70,14 @@ def logout_view(request):
     """
     from rest_framework_simplejwt.exceptions import TokenError
     from rest_framework_simplejwt.tokens import RefreshToken
+    from django.utils import timezone as tz
+    from .models import UserSession
     from .utils import revoke_user_tokens
+
+    sid = request.auth.get('sid') if request.auth is not None else None
+    if sid:
+        UserSession.objects.filter(pk=sid, user=request.user, revoked_at__isnull=True).update(
+            revoked_at=tz.now(), revoked_by=request.user, revoke_reason='Signed out')
 
     raw = request.data.get('refresh') if hasattr(request, 'data') else None
     if raw:
@@ -76,7 +88,8 @@ def logout_view(request):
         except TokenError:
             pass
     if request.data.get('all_devices'):
-        revoke_user_tokens(request.user)
+        from .sessions import revoke_sessions
+        revoke_sessions(request.user, by=request.user, reason='Signed out on all devices')
 
     try:
         log_action(
@@ -99,6 +112,17 @@ def logout_view(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def current_user_view(request):
+    """Current user's profile, plus whether a password change is pending."""
+    from .models import UserSecurity
+    response = _current_user_payload(request)
+    if isinstance(response.data, dict) and response.status_code == 200:
+        response.data["must_change_password"] = UserSecurity.objects.filter(
+            user=request.user, must_change_password=True).exists()
+        response.data["is_superuser"] = request.user.is_superuser
+    return response
+
+
+def _current_user_payload(request):
     """
     Get current authenticated user's profile information.
     """
@@ -396,3 +420,52 @@ class PhaseOneSetupView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def heartbeat_view(request):
+    """Keeps the session marked online while a page is open. Authentication does the work."""
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password_view(request):
+    """Change your own password. Ends every other session and returns fresh tokens."""
+    from django.contrib.auth.password_validation import validate_password
+    from django.core.exceptions import ValidationError as DjangoValidationError
+    from django.utils import timezone as tz
+    from .models import UserSecurity
+    from .sessions import revoke_sessions, start_session
+
+    current = request.data.get('current_password') or ''
+    new = request.data.get('new_password') or ''
+    user = request.user
+    if not user.check_password(current):
+        return Response({'current_password': ['Your current password is incorrect.']},
+                        status=status.HTTP_400_BAD_REQUEST)
+    if current == new:
+        return Response({'new_password': ['Choose a password different from the current one.']},
+                        status=status.HTTP_400_BAD_REQUEST)
+    try:
+        validate_password(new, user=user)
+    except DjangoValidationError as exc:
+        return Response({'new_password': exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.set_password(new)
+    user.save(update_fields=['password'])
+    security = UserSecurity.for_user(user)
+    security.must_change_password = False
+    security.password_changed_at = tz.now()
+    security.save()
+    revoke_sessions(user, by=user, reason='Password changed')
+
+    assignment = get_primary_assignment(user)
+    session = start_session(user, request, assignment.org_unit if assignment else None)
+    from rest_framework_simplejwt.tokens import RefreshToken
+    refresh = RefreshToken.for_user(user)
+    refresh['sid'] = str(session.id)
+    log_action(request=request, action=f"Password changed: {user.username}", module="AUTH",
+               remarks="User changed own password")
+    return Response({'refresh': str(refresh), 'access': str(refresh.access_token)}, status=status.HTTP_200_OK)

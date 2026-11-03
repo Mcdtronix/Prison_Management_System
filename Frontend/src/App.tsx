@@ -49,6 +49,23 @@ import Compose from "@/pages/messaging/Compose";
 import Outbox from "@/pages/messaging/Outbox";
 import Drafts from "@/pages/messaging/Drafts";
 import { PrisonLayout } from "@/components/PrisonLayout";
+import HqOverview from "@/pages/hq/HqOverview";
+import HqOrganisation from "@/pages/hq/HqOrganisation";
+import HqUsers from "@/pages/hq/HqUsers";
+import HqUserDetail from "@/pages/hq/HqUserDetail";
+import HqActivity from "@/pages/hq/HqActivity";
+import HqStorage from "@/pages/hq/HqStorage";
+import ChangePassword from "@/pages/shared/ChangePassword";
+import { HQ_CONSOLE_ROLES } from "@/lib/auth";
+
+/** One HQ console page: role check + the standard app shell. */
+const hqPage = (title: string, description: string, page: JSX.Element) => (
+  <ProtectedRoute allowedRoles={HQ_CONSOLE_ROLES}>
+    <PrisonLayout title={title} description={description}>
+      {page}
+    </PrisonLayout>
+  </ProtectedRoute>
+);
 import { getDefaultRouteForRole, getLandingRouteForUser } from "@/lib/auth";
 
 function AuthLoadingScreen() {
@@ -457,6 +474,7 @@ function App() {
             element={
               <ProtectedRoute
                 allowedRoles={[
+                  "HQ_SYS_ADMIN",
                   "SUPER_ADMIN",
                   "ADMIN_OFFICER",
                   "RECEPTION_OFFICER",
@@ -494,7 +512,7 @@ function App() {
           <Route
             path="/messaging/inbox"
             element={
-              <ProtectedRoute allowedRoles={["SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
+              <ProtectedRoute allowedRoles={["HQ_SYS_ADMIN","SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
                 <MessagingInbox />
               </ProtectedRoute>
             }
@@ -502,7 +520,7 @@ function App() {
           <Route
             path="/messaging/compose"
             element={
-              <ProtectedRoute allowedRoles={["SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
+              <ProtectedRoute allowedRoles={["HQ_SYS_ADMIN","SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
                 <Compose />
               </ProtectedRoute>
             }
@@ -510,7 +528,7 @@ function App() {
           <Route
             path="/messaging/threads/:id"
             element={
-              <ProtectedRoute allowedRoles={["SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
+              <ProtectedRoute allowedRoles={["HQ_SYS_ADMIN","SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
                 <ThreadView />
               </ProtectedRoute>
             }
@@ -518,7 +536,7 @@ function App() {
           <Route
             path="/messaging/outbox"
             element={
-              <ProtectedRoute allowedRoles={["SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
+              <ProtectedRoute allowedRoles={["HQ_SYS_ADMIN","SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
                 <Outbox />
               </ProtectedRoute>
             }
@@ -526,11 +544,24 @@ function App() {
           <Route
             path="/messaging/drafts"
             element={
-              <ProtectedRoute allowedRoles={["SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
+              <ProtectedRoute allowedRoles={["HQ_SYS_ADMIN","SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
                 <Drafts />
               </ProtectedRoute>
             }
           />
+          {/* HQ System Admin console */}
+          <Route path="/hq" element={hqPage("HQ System Administration", "The whole system at a glance", <HqOverview />)} />
+          <Route path="/hq/organisation" element={hqPage("Provinces & Stations", "Provincial command centres and the stations under them", <HqOrganisation />)} />
+          <Route path="/hq/users" element={hqPage("User Accounts", "Every account, its roles and its status", <HqUsers />)} />
+          <Route path="/hq/users/:id" element={hqPage("User Account", "Details, roles, sessions and activity", <HqUserDetail />)} />
+          <Route path="/hq/activity" element={hqPage("Activity & Sign-ins", "Who did what, when, and who is online", <HqActivity />)} />
+          <Route path="/hq/storage" element={hqPage("Storage", "How much data each province and station holds", <HqStorage />)} />
+          <Route path="/hq/roles" element={hqPage("Roles", "Built-in and custom roles", <RoleManagement />)} />
+          <Route path="/hq/departments" element={hqPage("Departments", "Built-in and custom departments", <DepartmentManagement />)} />
+
+          {/* Any signed-in user; required after an admin password reset */}
+          <Route path="/change-password" element={<ChangePassword />} />
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Router>

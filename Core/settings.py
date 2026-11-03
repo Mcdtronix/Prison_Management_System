@@ -166,6 +166,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 10},
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -206,7 +207,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # ==================================================
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'Auth.authentication.SessionJWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
@@ -241,6 +242,8 @@ SIMPLE_JWT = {
     # Tokens carry a hash of the password, so a password change or reset
     # ends every existing session at once.
     'CHECK_REVOKE_TOKEN': True,
+    # Refuses refresh tokens whose session an admin has ended.
+    'TOKEN_REFRESH_SERIALIZER': 'Auth.authentication.SessionTokenRefreshSerializer',
     
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,

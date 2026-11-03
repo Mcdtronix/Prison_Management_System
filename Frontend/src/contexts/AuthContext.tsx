@@ -15,6 +15,9 @@ interface User {
   };
   orgUnitType?: string | null;
   mailboxAddress?: string | null;
+  /** Set after an admin password reset; the app only allows the change-password page. */
+  mustChangePassword?: boolean;
+  isSuperuser?: boolean;
 }
 
 interface AuthContextType {
@@ -22,6 +25,8 @@ interface AuthContextType {
   loading: boolean;
   login: (serviceNumber: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
+  /** Re-read the signed-in user from the server (e.g. after a password change). */
+  refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -35,6 +40,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Check if user is already logged in on app start
     checkAuthStatus();
   }, []);
+
+  // Heartbeat: keeps this session shown as "online" to admins while the tab is open.
+  useEffect(() => {
+    if (!user) return;
+    const beat = () => {
+      if (document.visibilityState === 'visible') authApi.heartbeat();
+    };
+    const timer = window.setInterval(beat, 2 * 60 * 1000);
+    document.addEventListener('visibilitychange', beat);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', beat);
+    };
+  }, [user?.id]);
 
   const checkAuthStatus = async () => {
     try {
@@ -75,6 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             },
             orgUnitType: (response.data as any).org_unit_unit_type || undefined,
             mailboxAddress: (response.data as any).mailbox_address || undefined,
+            mustChangePassword: !!(response.data as any).must_change_password,
+            isSuperuser: !!(response.data as any).is_superuser,
           };
           setUser(userData);
           localStorage.setItem('user_role', normalizedRole);
@@ -154,6 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     login,
     logout,
+    refreshUser: checkAuthStatus,
     isAuthenticated: !!user
   };
 

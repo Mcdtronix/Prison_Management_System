@@ -36,8 +36,8 @@ export const normalizeRole = (role?: string | null): string => {
     FO: "FARMS_OFFICER",
     // System-administrator roles route to the existing admin screens until
     // the dedicated admin console lands. The server decides what they may do.
-    NATIONAL_SYSTEM_ADMIN: "SUPER_ADMIN",
-    HQ_SYS_ADMIN: "SUPER_ADMIN",
+    NATIONAL_SYSTEM_ADMIN: "HQ_SYS_ADMIN",
+    HQ_SYSTEM_ADMIN: "HQ_SYS_ADMIN",
     PROVINCIAL_SYSTEM_ADMIN: "ADMIN_OFFICER",
     PROV_SYS_ADMIN: "ADMIN_OFFICER",
     STATION_SYSTEM_ADMIN: "ADMIN_OFFICER",
@@ -55,6 +55,7 @@ export const getRoleDisplayName = (role?: string | null): string => {
   const normalizedRole = normalizeRole(role);
 
   const roleMap: Record<string, string> = {
+    HQ_SYS_ADMIN: "HQ System Admin",
     SUPER_ADMIN: "Super Administrator",
     ADMIN_OFFICER: "Admin Officer",
     RECEPTION_OFFICER: "Reception Officer",
@@ -73,9 +74,14 @@ export const getRoleDisplayName = (role?: string | null): string => {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 };
 
+/** Roles that use the HQ System Admin console (/hq). */
+export const HQ_CONSOLE_ROLES = ["HQ_SYS_ADMIN", "SUPER_ADMIN"];
+
 export const getDefaultRouteForRole = (role?: string | null): string => {
   switch (normalizeRole(role)) {
+    case "HQ_SYS_ADMIN":
     case "SUPER_ADMIN":
+      return "/hq";
     case "ADMIN_OFFICER":
       return "/admin";
     case "RECEPTION_OFFICER":
@@ -94,13 +100,12 @@ export const getDefaultRouteForRole = (role?: string | null): string => {
 export const getLandingRouteForUser = (role?: string | null, orgUnitType?: string | null, orgUnitId?: number | null): string => {
   const normalized = normalizeRole(role);
 
-  // Only apply org-specific admin routing for admin roles
-  if (normalized === 'SUPER_ADMIN' || normalized === 'ADMIN_OFFICER') {
-    if (orgUnitType === 'NATIONAL_HQ') return '/admin/nhq';
-    if (orgUnitType === 'PROVINCIAL_HQ') return orgUnitId ? `/admin/phq/${orgUnitId}` : '/admin/phq';
-    if (orgUnitType === 'STATION') return orgUnitId ? `/admin/station/${orgUnitId}` : '/admin/station';
-    return '/admin';
-  }
+  // HQ System Admins (and legacy super admins) have their own console.
+  if (HQ_CONSOLE_ROLES.includes(normalized)) return '/hq';
+
+  // Administration officers use the station admin dashboard. (The per-level
+  // /admin/nhq, /admin/phq and /admin/station pages were never built.)
+  if (normalized === 'ADMIN_OFFICER') return '/admin';
 
   return getDefaultRouteForRole(normalized);
 };

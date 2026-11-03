@@ -46,6 +46,7 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         '/api/health/',
         '/api/status/',
         '/api/ping/',
+        '/api/auth/heartbeat/',  # keep-alive every few minutes; not an action
     }
     
     def process_request(self, request):

@@ -54,7 +54,7 @@ class OrgContextMiddleware(MiddlewareMixin):
             auth_header = request.META.get('HTTP_AUTHORIZATION', '')
             if auth_header.startswith('Bearer '):
                 try:
-                    from rest_framework_simplejwt.authentication import JWTAuthentication
+                    from Auth.authentication import SessionJWTAuthentication as JWTAuthentication
                     jwt_auth = JWTAuthentication()
                     raw_token = auth_header.split(' ')[1]
                     validated_token = jwt_auth.get_validated_token(raw_token)

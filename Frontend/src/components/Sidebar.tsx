@@ -30,6 +30,8 @@ import {
   Wrench,
   MessageSquare,
   ChevronDown,
+  Landmark,
+  Database,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { messagingApi } from '@/lib/api'
@@ -67,7 +69,27 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
   let navItems: NavItem[] = [];
 
   switch (normalizedRole) {
+    case "HQ_SYS_ADMIN":
     case "SUPER_ADMIN":
+      navItems = [
+        { title: "Overview", href: "/hq", icon: <Home size={18} /> },
+        { title: "Provinces & Stations", href: "/hq/organisation", icon: <Landmark size={18} /> },
+        { title: "User Accounts", href: "/hq/users", icon: <Users size={18} /> },
+        {
+          title: "Roles & Departments",
+          href: "/hq/roles",
+          icon: <Shield size={18} />,
+          subItems: [
+            { title: "Roles", href: "/hq/roles" },
+            { title: "Departments", href: "/hq/departments" },
+          ],
+        },
+        { title: "Activity & Sign-ins", href: "/hq/activity", icon: <Activity size={18} /> },
+        { title: "Storage", href: "/hq/storage", icon: <Database size={18} /> },
+        { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },
+        { title: "Settings", href: "/settings", icon: <Settings size={18} /> },
+      ];
+      break;
     case "ADMIN_OFFICER":
       navItems = [
         { title: "Dashboard", href: "/admin", icon: <Home size={18} /> },
@@ -447,7 +469,10 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
                   className={cn(
                     "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
                     "text-gray-300 hover:text-white hover:bg-[#063f20]",
-                    (location.pathname === item.href || (isMessaging && location.pathname.startsWith(item.href))) &&
+                    (location.pathname === item.href ||
+                      (isMessaging && location.pathname.startsWith(item.href)) ||
+                      // sub-pages (e.g. /hq/users/12) keep their section highlighted
+                      (item.href.split('/').length > 2 && location.pathname.startsWith(item.href + '/'))) &&
                       "border-r-2 border-[#d7a928] bg-[#063f20] text-white",
                     !isOpen && "justify-center px-2",
                   )}

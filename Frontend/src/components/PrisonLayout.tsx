@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
+import { getRoleDisplayName } from "@/lib/auth";
 
 interface PrisonLayoutProps {
   children: ReactNode;
@@ -33,7 +34,7 @@ export const PrisonLayout = ({
 
   const getUserRoleDisplay = () => {
     if (!user?.role) return "User";
-    return user.role.replace("_", " ").toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+    return user.roleName || getRoleDisplayName(user.role);
   };
 
   return (

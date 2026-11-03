@@ -29,6 +29,11 @@ const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
     return <Navigate to="/login" replace />;
   }
 
+  // After an admin reset, nothing else opens until a new password is set.
+  if (user.mustChangePassword) {
+    return <Navigate to="/change-password" replace />;
+  }
+
   if (!normalizedAllowedRoles.includes(normalizeRole(user.role))) {
     return <Navigate to={getDefaultRouteForRole(user.role)} replace />;
   }

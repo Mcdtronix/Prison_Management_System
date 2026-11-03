@@ -99,7 +99,18 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         data["user_id"] = self.user.id
         data["username"] = self.user.username
-        
+
+        # Re-issue the tokens bound to a new session, so this sign-in can be
+        # seen as "online" and ended by an admin.
+        from .models import UserSecurity
+        from .sessions import start_session
+        session = start_session(self.user, self.context.get("request"),
+                                assignment.org_unit if assignment else None)
+        refresh = self.get_token(self.user)
+        refresh["sid"] = str(session.id)
+        data["refresh"] = str(refresh)
+        data["access"] = str(refresh.access_token)
+        data["must_change_password"] = UserSecurity.for_user(self.user).must_change_password
         return data
 
 
