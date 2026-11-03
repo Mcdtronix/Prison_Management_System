@@ -229,3 +229,14 @@ def _get_client_ip(request):
         ip = request.META.get('REMOTE_ADDR')
     return ip
 
+
+
+def revoke_user_tokens(user):
+    """Blacklist every refresh token issued to `user`. Returns how many were revoked."""
+    from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
+
+    count = 0
+    for token in OutstandingToken.objects.filter(user=user).exclude(blacklistedtoken__isnull=False):
+        BlacklistedToken.objects.get_or_create(token=token)
+        count += 1
+    return count

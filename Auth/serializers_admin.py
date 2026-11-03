@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import OrgUnit, Department, Role
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
 from HumanResources.models import Officer
 
 User = get_user_model()
@@ -17,24 +18,33 @@ class CreatePHQSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data):
+        nhq = OrgUnit.objects.filter(unit_type='NATIONAL_HQ').first()
+        if nhq is None:
+            raise serializers.ValidationError('Set up National HQ before creating provinces.')
         return OrgUnit.objects.create(
             name=validated_data['name'],
             code=validated_data['code'],
             code_short=validated_data['code_short'],
-            unit_type='PROVINCIAL_HQ'
+            unit_type='PROVINCIAL_HQ',
+            parent=nhq,
         )
 
 
 class CreateAdminSerializer(serializers.Serializer):
     officer = serializers.PrimaryKeyRelatedField(queryset=Officer.objects.filter(current_status='ACTIVE'))
     role = serializers.PrimaryKeyRelatedField(queryset=Role.objects.filter(is_active=True))
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
     email = serializers.EmailField(required=False, allow_blank=True)
 
     def validate(self, attrs):
         officer = attrs['officer']
         if User.objects.filter(username=officer.service_number).exists():
             raise serializers.ValidationError({'officer': 'Officer already has a user account'})
+        probe = User(username=officer.service_number, first_name=officer.first_name, last_name=officer.surname)
+        try:
+            validate_password(attrs['password'], user=probe)
+        except Exception as exc:
+            raise serializers.ValidationError({'password': list(getattr(exc, 'messages', [str(exc)]))})
         return attrs
 
     def create(self, validated_data, org_unit=None):
@@ -95,6 +105,15 @@ class UserAssignmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserAssignment
         fields = '__all__'
+        read_only_fields = ('created_by', 'created_at', 'updated_at', 'revoked_by', 'revoked_at')
+
+    def run_validators(self, value):
+        # The "one active primary per user" constraint needs these fields; on a
+        # PATCH fill them from the existing row so the check can run.
+        if self.partial and self.instance is not None:
+            for field in ('user', 'is_primary', 'is_active'):
+                value.setdefault(field, getattr(self.instance, field))
+        super().run_validators(value)
 
     def get_full_name(self, obj):
         if obj.user:
@@ -107,6 +126,8 @@ class DataExposurePolicySerializer(serializers.ModelSerializer):
     class Meta:
         model = DataExposurePolicy
         fields = '__all__'
+        read_only_fields = ('created_by', 'approved_by', 'approved_at', 'revoked_by', 'revoked_at',
+                            'created_at', 'updated_at')
 
 class DataExposureRecordSerializer(serializers.ModelSerializer):
     policy_code = serializers.CharField(source='policy.code', read_only=True)
@@ -114,3 +135,4 @@ class DataExposureRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = DataExposureRecord
         fields = '__all__'
+        read_only_fields = ('exposed_by', 'exposed_at', 'revoked_by', 'revoked_at')

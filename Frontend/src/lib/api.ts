@@ -330,8 +330,12 @@ export const authApi = {
    */
   logout: async (): Promise<ApiResponse<boolean>> => {
     try {
-      // Call backend logout (optional, client-side cleanup is primary)
-      await apiRequest("/auth/logout/", { method: "POST" });
+      // Send the refresh token so the server can revoke it.
+      const refresh = localStorage.getItem("refresh_token");
+      await apiRequest("/auth/logout/", {
+        method: "POST",
+        body: JSON.stringify(refresh ? { refresh } : {}),
+      });
     } catch (error) {
       // Ignore logout API errors, proceed with client cleanup
       console.warn("Backend logout failed, proceeding with client cleanup");

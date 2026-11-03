@@ -59,9 +59,25 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 def logout_view(request):
     """
     Logout endpoint.
-    In JWT, logout is primarily handled client-side by discarding tokens.
-    Optionally, you can implement token blacklisting here.
+    Blacklists the refresh token sent in the body so it cannot mint new
+    access tokens. Send {"refresh": "<token>"}; {"all_devices": true}
+    revokes every session of this user.
     """
+    from rest_framework_simplejwt.exceptions import TokenError
+    from rest_framework_simplejwt.tokens import RefreshToken
+    from .utils import revoke_user_tokens
+
+    raw = request.data.get('refresh') if hasattr(request, 'data') else None
+    if raw:
+        try:
+            token = RefreshToken(raw)
+            if str(token.get('user_id')) == str(request.user.pk):
+                token.blacklist()
+        except TokenError:
+            pass
+    if request.data.get('all_devices'):
+        revoke_user_tokens(request.user)
+
     try:
         log_action(
             request=request,
@@ -254,6 +270,9 @@ class UserDetailView(APIView):
                 profile.user.is_active = is_active
                 profile.user.save()
                 profile.save()
+                if not is_active:
+                    from .utils import revoke_user_tokens
+                    revoke_user_tokens(profile.user)
 
                 action_str = "Activated" if is_active else "Deactivated"
                 log_action(

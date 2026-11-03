@@ -5,10 +5,46 @@ from django.http import HttpResponse
 import csv
 from django.db import models
 
-from .models import AuditLog, OrgUnit
+from .models import AuditLog, OrgUnit, Station, UserAssignment, UserProfile
 from .serializers_audit import AuditLogSerializer
 from .rbac import user_has_capability
-from .permissions import IsAdminOfficer
+from .admin_guard import scoped_org_ids
+from .utils import normalize_role_code
+
+
+def visible_audit_logs(user, qs):
+    """Limit audit logs to what `user` may see.
+
+    Super admins see everything. Admins see logs from their own unit and the
+    units below it. Everyone else sees only their own actions.
+    """
+    ids = scoped_org_ids(user, 'admin.view_created_logs')
+    if ids is None:
+        return qs
+
+    station_ids = set()
+    user_ids = set()
+    if ids:
+        units = OrgUnit.objects.filter(id__in=ids).values_list('code', 'name')
+        codes = [c for c, _ in units]
+        names = [n for _, n in units]
+        station_ids |= set(Station.objects.filter(models.Q(code__in=codes) | models.Q(name__in=names))
+                           .values_list('id', flat=True))
+        user_ids |= set(UserAssignment.objects.filter(org_unit_id__in=ids, is_active=True)
+                        .values_list('user_id', flat=True))
+
+    # Legacy station admins (UserProfile only) keep station-level visibility.
+    profile = UserProfile.objects.filter(user=user, is_active=True).select_related('role').first()
+    if profile and profile.station_id and normalize_role_code(profile.role.code) in ('ADMIN_OFFICER', 'SUPER_ADMIN'):
+        if normalize_role_code(profile.role.code) == 'SUPER_ADMIN':
+            return qs
+        station_ids.add(profile.station_id)
+
+    if station_ids:
+        user_ids |= set(UserProfile.objects.filter(station_id__in=station_ids)
+                        .values_list('user_id', flat=True))
+
+    return qs.filter(models.Q(user=user) | models.Q(user_id__in=user_ids) | models.Q(station_id__in=station_ids))
 
 class IsScopedAdmin(permissions.BasePermission):
     """Permission that allows NHQ/PHQ/Station admins to view logs within their scope.
@@ -43,10 +79,10 @@ class IsScopedAdmin(permissions.BasePermission):
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AuditLog.objects.all().order_by('-timestamp')
     serializer_class = AuditLogSerializer
-    permission_classes = [IsAdminOfficer]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = visible_audit_logs(self.request.user, super().get_queryset().select_related('user', 'station'))
         # Filter by actor if requested
         actor = self.request.query_params.get('created_by')
         org_id = self.request.query_params.get('org_unit')
