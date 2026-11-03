@@ -284,3 +284,25 @@ class ZimbabweStructureTests(TestCase):
                                   ('Harare Remand Prison', 'HRE'), ('Chivhu Prison', 'MASH_EAST'),
                                   ('Ridigita Prison', 'MASH_EAST'), ('Marondera Prison', 'MASH_EAST')]:
             self.assertEqual(OrgUnit.objects.get(name=station, unit_type='STATION').parent.code, province)
+
+    def test_empty_database_gets_national_hq(self):
+        from django.core.management import call_command
+        from io import StringIO
+        from Auth.models import SystemConfig
+        call_command('setup_zimbabwe_structure', stdout=StringIO())  # dry run writes nothing
+        self.assertFalse(OrgUnit.objects.exists())
+        call_command('setup_zimbabwe_structure', apply=True, stdout=StringIO())
+        nhq = OrgUnit.objects.get(unit_type='NATIONAL_HQ')
+        self.assertEqual(OrgUnit.objects.filter(unit_type='PROVINCIAL_HQ', parent=nhq).count(), 10)
+        self.assertEqual(OrgUnit.objects.filter(unit_type='STATION').count(), 6)
+        self.assertEqual(SystemConfig.objects.get().national_hq, nhq)
+
+    def test_hq_admin_option(self):
+        from django.core.management import call_command
+        from io import StringIO
+        boss = User.objects.create_superuser('BOSS1', 'b@example.com', PW)
+        call_command('setup_zimbabwe_structure', apply=True, hq_admin='BOSS1', stdout=StringIO())
+        call_command('setup_zimbabwe_structure', apply=True, hq_admin='BOSS1', stdout=StringIO())
+        a = UserAssignment.objects.get(user=boss)
+        self.assertEqual((a.role.code, a.department.code, a.org_unit.unit_type, a.is_primary),
+                         ('HQ_SYS_ADMIN', 'IT', 'NATIONAL_HQ', True))
