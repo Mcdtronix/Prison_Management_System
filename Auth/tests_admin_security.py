@@ -12,6 +12,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from Auth.models import AuditLog, DataExposurePolicy, Department, OrgUnit, Role, UserAssignment
 from Auth.rbac import user_has_capability
+from Auth.testing import department, role
 from HumanResources.models import Officer
 
 User = get_user_model()
@@ -32,20 +33,22 @@ class AdminSecurityTestBase(TestCase):
         self.stn2 = OrgUnit.objects.create(code='STB', name='Station B', code_short='STB', unit_type='STATION', parent=self.prov)
         self.stn_other = OrgUnit.objects.create(code='STC', name='Station C', code_short='STC', unit_type='STATION', parent=self.prov_b)
 
-        self.r_super = Role.objects.create(code='SUPER_ADMIN', name='Super Admin')
-        self.r_admin = Role.objects.create(code='ADMIN_OFFICER', name='Admin Officer')
-        self.r_recep = Role.objects.create(code='RECEPTION_OFFICER', name='Reception Officer')
-        self.dept = Department.objects.create(code='ADMIN', name='Administration')
+        self.r_super = role('SUPER_ADMIN')
+        self.r_prov = role('PROV_SYS_ADMIN')
+        self.r_admin = role('STN_SYS_ADMIN')  # station-level system admin
+        self.r_recep = role('RECEPTION_OFFICER')
+        self.dept = department('ADMINISTRATION')
 
         self.super_admin = self._user('super', self.r_super, self.nat)
-        self.prov_admin = self._user('provadmin', self.r_admin, self.prov)
+        self.prov_admin = self._user('provadmin', self.r_prov, self.prov)
         self.stn_admin = self._user('stnadmin', self.r_admin, self.stn)
         self.clerk = self._user('clerk', self.r_recep, self.stn)
         self.newbie = User.objects.create_user(username='newbie', password=STRONG_PW)
 
-    def _user(self, name, role, org):
+    def _user(self, name, role_obj, org):
         u = User.objects.create_user(username=name, password=STRONG_PW)
-        UserAssignment.objects.create(user=u, role=role, org_unit=org, department=self.dept, is_primary=True)
+        UserAssignment.objects.create(user=u, role=role_obj, org_unit=org,
+                                      department=role_obj.department or self.dept, is_primary=True)
         return u
 
     def client_for(self, user):
@@ -54,9 +57,10 @@ class AdminSecurityTestBase(TestCase):
         c.credentials(HTTP_AUTHORIZATION=f'Bearer {RefreshToken.for_user(user).access_token}')
         return c
 
-    def assign(self, actor, user, role, org):
+    def assign(self, actor, user, role_obj, org):
         return self.client_for(actor).post('/api/auth/user-assignments/', {
-            'user': user.pk, 'role': role.pk, 'org_unit': org.pk, 'department': self.dept.pk,
+            'user': user.pk, 'role': role_obj.pk, 'org_unit': org.pk,
+            'department': (role_obj.department or self.dept).pk,
             'is_primary': False, 'is_active': True,
         }, format='json')
 
@@ -85,9 +89,12 @@ class RoleAssignmentTests(AdminSecurityTestBase):
     def test_provincial_admin_cannot_act_in_other_province(self):
         self.assertEqual(self.assign(self.prov_admin, self.newbie, self.r_recep, self.stn_other).status_code, 403)
 
-    def test_nobody_but_super_admin_grants_super_admin(self):
+    def test_only_break_glass_superuser_appoints_national_admins(self):
         self.assertEqual(self.assign(self.prov_admin, self.newbie, self.r_super, self.stn).status_code, 403)
-        self.assertEqual(self.assign(self.super_admin, self.newbie, self.r_super, self.nat).status_code, 201)
+        # Plan §2.2: national-to-national needs the two-person rule (Phase 6).
+        self.assertEqual(self.assign(self.super_admin, self.newbie, self.r_super, self.nat).status_code, 403)
+        root = User.objects.create_superuser('root', 'root@example.com', STRONG_PW)
+        self.assertEqual(self.assign(root, self.newbie, self.r_super, self.nat).status_code, 201)
 
     def test_station_admin_cannot_edit_provincial_admin_assignment(self):
         ua = UserAssignment.objects.get(user=self.prov_admin)
@@ -98,7 +105,7 @@ class RoleAssignmentTests(AdminSecurityTestBase):
 
     def test_station_admin_cannot_promote_clerk(self):
         ua = UserAssignment.objects.get(user=self.clerk)
-        resp = self.client_for(self.stn_admin).patch(f'/api/auth/user-assignments/{ua.pk}/', {'role': self.r_admin.pk}, format='json')
+        resp = self.client_for(self.stn_admin).patch(f'/api/auth/user-assignments/{ua.pk}/', {'role': self.r_admin.pk, 'department': self.r_admin.department_id}, format='json')
         self.assertEqual(resp.status_code, 403)
 
     def test_assignment_list_is_scoped(self):
@@ -262,7 +269,7 @@ class CustomAdminRoleTests(AdminSecurityTestBase):
     """Admin roles created in the UI map onto the built-in tiers."""
 
     def test_hq_sys_admin_at_national_hq_is_super_admin(self):
-        hq = self._user('hqsys', Role.objects.create(code='HQ_SYS_ADMIN', name='HQ Sys Admin'), self.nat)
+        hq = self._user('hqsys', role('HQ_SYS_ADMIN'), self.nat)
         self.assertEqual(self.client_for(hq).post('/api/auth/roles/', {'code': 'R2', 'name': 'R2'}, format='json').status_code, 201)
 
     def test_super_admin_role_below_national_hq_is_not_global(self):
@@ -271,6 +278,6 @@ class CustomAdminRoleTests(AdminSecurityTestBase):
         self.assertEqual(self.assign(rogue, self.newbie, self.r_recep, self.stn_other).status_code, 403)
 
     def test_station_sys_admin_manages_own_station(self):
-        sysadm = self._user('stnsys', Role.objects.create(code='SYS_ADMIN', name='Station Sys Admin'), self.stn2)
+        sysadm = self._user('stnsys', role('STN_SYS_ADMIN'), self.stn2)
         self.assertEqual(self.assign(sysadm, self.newbie, self.r_recep, self.stn2).status_code, 201)
         self.assertEqual(self.assign(sysadm, self.newbie, self.r_recep, self.stn).status_code, 403)

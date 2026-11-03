@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from .serializers_admin import CreatePHQSerializer, CreateAdminSerializer, CreateStationSerializer
 from .models import OrgUnit, UserAssignment, Department
 from .utils import create_audit_log, get_primary_assignment
-from .admin_guard import can_grant, has_scoped_capability
+from .rbac import can, can_grant
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -17,7 +17,7 @@ class AdminWorkflowViewSet(viewsets.ViewSet):
 
     def _ensure_capable(self, request, capability, target_org):
         # Scoped check: with no target org only super admins pass.
-        return has_scoped_capability(request.user, capability, target_org)
+        return target_org is not None and can(request.user, capability, target_org)
 
     @action(detail=False, methods=['post'], url_path='phq')
     def create_phq(self, request):
@@ -50,8 +50,11 @@ class AdminWorkflowViewSet(viewsets.ViewSet):
             return Response({'detail': reason}, status=status.HTTP_403_FORBIDDEN)
         user = serializer.create(serializer.validated_data, org_unit=org)
 
-        # create assignment: use Department ADMIN if available
-        dept, _ = Department.objects.get_or_create(code='ADMIN', defaults={'name': 'Administration'})
+        # The assignment goes in the role's home department (IT for system admins).
+        role = serializer.validated_data['role']
+        dept = role.department or Department.objects.filter(code='ADMINISTRATION').first()
+        if dept is None:
+            return Response({'detail': 'No department available for this role.'}, status=status.HTTP_400_BAD_REQUEST)
         UserAssignment.objects.create(user=user, role=serializer.validated_data['role'], org_unit=org, department=dept, is_primary=True, created_by=get_primary_assignment(request.user))
 
         create_audit_log(request.user, action='CREATE_ORG_ADMIN', module='RBAC', object_type='User', object_id=user.pk, remarks=f'Created admin {user.username} for {org.code}', role=getattr(request.user, 'username', None), station=None)

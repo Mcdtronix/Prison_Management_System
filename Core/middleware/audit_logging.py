@@ -88,42 +88,34 @@ class AuditLoggingMiddleware(MiddlewareMixin):
             department = getattr(request, 'department', None)
             status_code = response.status_code
             
-            # Log to AuditLog model
+            # Log to AuditLog model. Every signed-in user is recorded, whether
+            # they have a new-style assignment or only a legacy profile.
             if user:
-                role_name = None
+                role_obj = getattr(request, 'role', None)
                 station = None
-                if request.user.is_authenticated:
-                    try:
-                        profile = request.user.userprofile
-                        role_name = profile.role.code
-                        station = profile.station
-                    except Exception:
-                        role_name = 'UNKNOWN'
-                        station = None
+                profile = getattr(user, 'userprofile', None) if hasattr(user, 'userprofile') else None
+                if profile is not None:
+                    station = profile.station
+                    role_obj = role_obj or profile.role
+                role_code = getattr(role_obj, 'code', None) or ('SUPERUSER' if user.is_superuser else 'UNKNOWN')
 
-                if station:
-                    AuditLog.objects.create(
-                        user=user,
-                        role=role_name or 'UNKNOWN',
-                        station=station,
-                        action=self._action_from_method_path(
-                            request._audit_method, 
-                            request._audit_path
-                        ),
-                        module='API',
-                        object_id=None,
-                        object_type=None,
-                        ip_address=self._get_client_ip(request),
-                        user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
-                        request_method=request._audit_method,
-                        request_path=request._audit_path,
-                        remarks=None,
-                    )
-                else:
-                    logger.warning(
-                        f'Skipped audit log for {user.username} because station is unavailable'
-                    )
-                
+                AuditLog.objects.create(
+                    user=user,
+                    role=role_code,
+                    station=station,
+                    action=self._action_from_method_path(request._audit_method, request._audit_path),
+                    module='API',
+                    object_id=None,
+                    object_type=None,
+                    ip_address=self._get_client_ip(request) or '0.0.0.0',
+                    user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+                    request_method=request._audit_method,
+                    request_path=request._audit_path[:500],
+                    remarks=(f'status={status_code}'
+                             + (f' org={org_unit.code}' if org_unit is not None else '')
+                             + (f' dept={department.code}' if department is not None else '')),
+                )
+
                 logger.info(
                     f'Audit: {user.username} {request._audit_method} {request._audit_path} '
                     f'({status_code}) from {self._get_client_ip(request)}'

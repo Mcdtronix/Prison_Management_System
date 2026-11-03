@@ -1,14 +1,11 @@
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import permissions, viewsets
-from rest_framework.exceptions import PermissionDenied
+from django.db.models import ProtectedError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from .admin_guard import (
-    IsSuperAdminOrReadOnly,
-    can_grant,
-    has_scoped_capability,
-    scoped_org_ids,
-)
+from .permissions import IsSuperAdminOrReadOnly
+from .rbac import admin_scope, can, can_grant
 from .models import DataExposurePolicy, DataExposureRecord, Department, OrgUnitDepartment, Role, UserAssignment
 from .serializers_admin import (
     DataExposurePolicySerializer,
@@ -22,7 +19,7 @@ from .utils import create_audit_log, get_primary_assignment
 
 
 def _require(user, capability, org_unit):
-    if not has_scoped_capability(user, capability, org_unit):
+    if org_unit is None or not can(user, capability, org_unit):
         raise PermissionDenied('You do not have permission to manage this org unit.')
 
 
@@ -56,18 +53,40 @@ class AdminBaseViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
 
-class RoleViewSet(AdminBaseViewSet):
-    """Roles are system-wide: everyone may read, only super admins may change."""
-    queryset = Role.objects.all()
-    serializer_class = RoleSerializer
+class BuiltinProtectedViewSet(AdminBaseViewSet):
+    """System-wide lists: everyone may read, only HQ admins may change.
+
+    Built-in rows cannot be deleted; anything still in use cannot be deleted
+    either (disable it instead).
+    """
     permission_classes = [IsSuperAdminOrReadOnly]
 
+    def perform_create(self, serializer):
+        obj = serializer.save()
+        _log(self.request, f'CREATE_{type(obj).__name__.upper()}', obj, obj.code)
 
-class DepartmentViewSet(AdminBaseViewSet):
-    """Departments are system-wide: everyone may read, only super admins may change."""
+    def perform_update(self, serializer):
+        obj = serializer.save()
+        _log(self.request, f'UPDATE_{type(obj).__name__.upper()}', obj, obj.code)
+
+    def perform_destroy(self, instance):
+        if instance.is_system:
+            raise ValidationError({'detail': f'{instance.code} is built in and cannot be deleted.'})
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError({'detail': f'{instance.code} is still in use. Disable it instead of deleting it.'})
+        _log(self.request, f'DELETE_{type(instance).__name__.upper()}', instance, instance.code)
+
+
+class RoleViewSet(BuiltinProtectedViewSet):
+    queryset = Role.objects.select_related('department').prefetch_related('capabilities')
+    serializer_class = RoleSerializer
+
+
+class DepartmentViewSet(BuiltinProtectedViewSet):
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
-    permission_classes = [IsSuperAdminOrReadOnly]
 
 
 class OrgUnitDepartmentViewSet(AdminBaseViewSet):
@@ -75,7 +94,7 @@ class OrgUnitDepartmentViewSet(AdminBaseViewSet):
     capability = 'admin.manage_station_departments'
 
     def get_queryset(self):
-        ids = scoped_org_ids(self.request.user, self.capability)
+        ids = admin_scope(self.request.user, self.capability)
         return _filter_by_scope(OrgUnitDepartment.objects.all(), ids, 'org_unit_id')
 
     def perform_create(self, serializer):
@@ -98,7 +117,7 @@ class UserAssignmentViewSet(AdminBaseViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        ids = scoped_org_ids(user, 'assignments.manage')
+        ids = admin_scope(user, 'assignments.manage')
         qs = UserAssignment.objects.select_related('user', 'role', 'org_unit', 'department')
         if ids is None:
             return qs
@@ -138,7 +157,7 @@ class DataExposurePolicyViewSet(AdminBaseViewSet):
     serializer_class = DataExposurePolicySerializer
 
     def get_queryset(self):
-        ids = scoped_org_ids(self.request.user, 'policies.view')
+        ids = admin_scope(self.request.user, 'policies.view')
         return _filter_by_scope(DataExposurePolicy.objects.all(), ids,
                                 'source_org_unit_id', 'target_org_unit_id')
 
@@ -187,7 +206,7 @@ class DataExposureRecordViewSet(AdminBaseViewSet):
     capability = 'cases.manage_exposure'
 
     def get_queryset(self):
-        ids = scoped_org_ids(self.request.user, 'policies.view')
+        ids = admin_scope(self.request.user, 'policies.view')
         return _filter_by_scope(DataExposureRecord.objects.select_related('policy'), ids,
                                 'target_org_unit_id', 'policy__source_org_unit_id')
 

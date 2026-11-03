@@ -5,6 +5,7 @@ from rest_framework.test import APITestCase
 
 from Auth.models import Role, Station, UserProfile
 from Auth.serializers import CustomTokenObtainPairSerializer
+from Auth.testing import role
 from HumanResources.models import Officer, OfficerStationHistory
 
 
@@ -21,9 +22,10 @@ class UserCreationApiTests(APITestCase):
             location="Bulawayo",
         )
 
-        self.admin_role = Role.objects.create(code="ADMIN_OFFICER", name="Admin Officer")
-        self.super_role = Role.objects.create(code="SUPER_ADMIN", name="Super Administrator")
-        self.reception_role = Role.objects.create(code="RECEPTION_OFFICER", name="Reception Officer")
+        # Station accounts are created by the station's system admin (IT).
+        self.admin_role = role("STN_SYS_ADMIN")
+        self.super_role = role("SUPER_ADMIN")
+        self.reception_role = role("RECEPTION_OFFICER")
 
         self.admin_user = User.objects.create_user(
             username="1234567A",
@@ -128,10 +130,12 @@ class UserCreationApiTests(APITestCase):
 
         self.assertIn(self.officer.service_number, officer_ids)
         self.assertNotIn(self.other_station_officer.service_number, officer_ids)
-        self.assertEqual(
-            [role["code"] for role in response.data["roles"]],
-            ["ADMIN_OFFICER", "RECEPTION_OFFICER"],
-        )
+        codes = [r["code"] for r in response.data["roles"]]
+        self.assertIn("RECEPTION_OFFICER", codes)
+        self.assertIn("ADMIN_OFFICER", codes)
+        # A station admin cannot hand out system-admin roles.
+        for admin_code in ("HQ_SYS_ADMIN", "PROV_SYS_ADMIN", "STN_SYS_ADMIN", "SUPER_ADMIN"):
+            self.assertNotIn(admin_code, codes)
 
 
 class LoginCompatibilityTests(APITestCase):
@@ -141,7 +145,7 @@ class LoginCompatibilityTests(APITestCase):
             name="Chivhu",
             location="Chivhu",
         )
-        self.role = Role.objects.create(code="R.O", name="Reception")
+        self.role = role("R.O", "Reception")
 
         self.officer = Officer.objects.create(
             service_number="2934834Z",

@@ -71,6 +71,7 @@ def normalize_role_code(role_code):
         "A_O": "ADMIN_OFFICER",
         "AO": "ADMIN_OFFICER",
         "RECEPTION": "RECEPTION_OFFICER",
+        "REC": "RECEPTION_OFFICER",
         "RECEPTION_OFFICER": "RECEPTION_OFFICER",
         "R_O": "RECEPTION_OFFICER",
         "RO": "RECEPTION_OFFICER",
@@ -86,6 +87,17 @@ def normalize_role_code(role_code):
         "FARMS_OFFICER": "FARMS_OFFICER",
         "F_O": "FARMS_OFFICER",
         "FO": "FARMS_OFFICER",
+        "ADMINISTRATION": "ADMIN_OFFICER",
+        "SECURITY": "SECURITY_OFFICER",
+        "REHABILITATION": "REHABILITATION_OFFICER",
+        "REHAB": "REHABILITATION_OFFICER",
+        # System administrators (IT)
+        "SYS_ADMIN": "STN_SYS_ADMIN",
+        "STATION_SYS_ADMIN": "STN_SYS_ADMIN",
+        "STATION_SYSTEM_ADMIN": "STN_SYS_ADMIN",
+        "PROVINCIAL_SYSTEM_ADMIN": "PROV_SYS_ADMIN",
+        "NATIONAL_SYSTEM_ADMIN": "HQ_SYS_ADMIN",
+        "HQ_SYSTEM_ADMIN": "HQ_SYS_ADMIN",
     }
 
     return aliases.get(normalized, normalized)

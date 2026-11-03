@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { rbacApi } from '@/lib/api';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Lock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { z } from 'zod';
@@ -26,6 +26,7 @@ const DepartmentManagement = () => {
   const [departments, setDepartments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingBuiltin, setEditingBuiltin] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<DepartmentFormValues>({
@@ -52,23 +53,19 @@ const DepartmentManagement = () => {
   }, []);
 
   const onSubmit = async (data: DepartmentFormValues) => {
-    try {
-      if (data.id) {
-        await rbacApi.updateDepartment(data.id, data);
-        toast({ title: "Department updated" });
-      } else {
-        await rbacApi.createDepartment(data);
-        toast({ title: "Department created" });
-      }
-      setDialogOpen(false);
-      form.reset();
-      fetchDepartments();
-    } catch (err) {
-      toast({ title: "Error saving department", variant: "destructive" });
+    const res = data.id ? await rbacApi.updateDepartment(data.id, data) : await rbacApi.createDepartment(data);
+    if (res.error) {
+      toast({ title: "Could not save department", description: res.error, variant: "destructive" });
+      return;
     }
+    toast({ title: data.id ? "Department updated" : "Department created" });
+    setDialogOpen(false);
+    form.reset();
+    fetchDepartments();
   };
 
   const handleEdit = (dept: any) => {
+    setEditingBuiltin(!!dept.is_system);
     form.reset({
       id: dept.id,
       code: dept.code,
@@ -79,15 +76,15 @@ const DepartmentManagement = () => {
     setDialogOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm("Are you sure you want to delete this department?")) return;
-    try {
-      await rbacApi.deleteDepartment(id);
-      toast({ title: "Department deleted" });
-      fetchDepartments();
-    } catch (err) {
-      toast({ title: "Error deleting department", variant: "destructive" });
+  const handleDelete = async (dept: any) => {
+    if (!window.confirm(`Delete the ${dept.name} department?`)) return;
+    const res = await rbacApi.deleteDepartment(dept.id);
+    if (res.error) {
+      toast({ title: "Could not delete department", description: res.error, variant: "destructive" });
+      return;
     }
+    toast({ title: "Department deleted" });
+    fetchDepartments();
   };
 
   return (
@@ -95,9 +92,9 @@ const DepartmentManagement = () => {
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle>Department Management</CardTitle>
-          <CardDescription>Manage organizational departments</CardDescription>
+          <CardDescription>Built-in departments are fixed. Add more departments as needed.</CardDescription>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) form.reset({ id: null, code: '', name: '', description: '', active: true }); }}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { form.reset({ id: null, code: '', name: '', description: '', active: true }); setEditingBuiltin(false); } }}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="w-4 h-4 mr-2" /> New Department
@@ -106,7 +103,11 @@ const DepartmentManagement = () => {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{form.getValues('id') ? 'Edit Department' : 'Create New Department'}</DialogTitle>
-              <DialogDescription>Define a new department within the organization.</DialogDescription>
+              <DialogDescription>
+                {editingBuiltin
+                  ? 'This is a built-in department. Only its name and description can be changed.'
+                  : 'Define a new department within the organization.'}
+              </DialogDescription>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -118,7 +119,7 @@ const DepartmentManagement = () => {
                       <FormItem>
                         <FormLabel>Department Code</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g. RECEPTION" {...field} />
+                          <Input placeholder="e.g. RECEPTION" disabled={editingBuiltin} {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -151,7 +152,7 @@ const DepartmentManagement = () => {
                     </FormItem>
                   )}
                 />
-                <FormField
+                {!editingBuiltin && <FormField
                   control={form.control}
                   name="active"
                   render={({ field }) => (
@@ -164,7 +165,7 @@ const DepartmentManagement = () => {
                       </div>
                     </FormItem>
                   )}
-                />
+                />}
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
                   <Button type="submit" disabled={!form.formState.isValid}>Save Department</Button>
@@ -189,7 +190,14 @@ const DepartmentManagement = () => {
               <tbody>
                 {departments.map(dept => (
                   <tr key={dept.id} className="border-b">
-                    <td className="px-4 py-3 font-medium">{dept.code}</td>
+                    <td className="px-4 py-3 font-medium">
+                      {dept.code}
+                      {dept.is_system && (
+                        <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-muted text-muted-foreground">
+                          <Lock className="w-3 h-3" /> Built-in
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">{dept.name}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-1 rounded text-xs ${dept.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
@@ -200,9 +208,11 @@ const DepartmentManagement = () => {
                       <Button variant="ghost" size="sm" onClick={() => handleEdit(dept)}>
                         <Edit className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDelete(dept.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {!dept.is_system && (
+                        <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDelete(dept)} aria-label={`Delete ${dept.name}`}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}

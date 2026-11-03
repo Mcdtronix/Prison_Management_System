@@ -78,26 +78,58 @@ class CreateStationSerializer(serializers.Serializer):
             parent=validated_data['parent']
         )
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+
 from .models import Role, Department, UserAssignment, DataExposurePolicy, DataExposureRecord, OrgUnitDepartment
 
-class RoleSerializer(serializers.ModelSerializer):
+
+class ModelRulesMixin:
+    """Turn model-level rule violations (built-in protection, role/department
+    mismatch) into 400 responses instead of server errors."""
+
+    def _guard(self, fn, *args):
+        try:
+            return fn(*args)
+        except DjangoValidationError as exc:
+            detail = exc.message_dict if hasattr(exc, 'error_dict') else {'detail': exc.messages}
+            raise serializers.ValidationError(detail)
+
+    def create(self, validated_data):
+        return self._guard(super().create, validated_data)
+
+    def update(self, instance, validated_data):
+        return self._guard(super().update, instance, validated_data)
+
+
+class RoleSerializer(ModelRulesMixin, serializers.ModelSerializer):
+    department_code = serializers.CharField(source='department.code', read_only=True, default=None)
+    department_name = serializers.CharField(source='department.name', read_only=True, default=None)
+    capabilities = serializers.SerializerMethodField()
+
     class Meta:
         model = Role
         fields = '__all__'
+        read_only_fields = ('is_system', 'is_admin_role', 'created_at', 'updated_at')
 
-class DepartmentSerializer(serializers.ModelSerializer):
+    def get_capabilities(self, obj):
+        return sorted(c.capability for c in obj.capabilities.all())
+
+
+class DepartmentSerializer(ModelRulesMixin, serializers.ModelSerializer):
     class Meta:
         model = Department
         fields = '__all__'
+        read_only_fields = ('is_system', 'created_at', 'updated_at')
 
-class OrgUnitDepartmentSerializer(serializers.ModelSerializer):
+
+class OrgUnitDepartmentSerializer(ModelRulesMixin, serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     department_code = serializers.CharField(source='department.code', read_only=True)
     class Meta:
         model = OrgUnitDepartment
         fields = '__all__'
 
-class UserAssignmentSerializer(serializers.ModelSerializer):
+class UserAssignmentSerializer(ModelRulesMixin, serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     full_name = serializers.SerializerMethodField()
     role_name = serializers.CharField(source='role.name', read_only=True)
@@ -106,6 +138,14 @@ class UserAssignmentSerializer(serializers.ModelSerializer):
         model = UserAssignment
         fields = '__all__'
         read_only_fields = ('created_by', 'created_at', 'updated_at', 'revoked_by', 'revoked_at')
+
+    def validate(self, attrs):
+        role = attrs.get('role', getattr(self.instance, 'role', None))
+        dept = attrs.get('department', getattr(self.instance, 'department', None))
+        if role is not None and role.department_id and (dept is None or dept.pk != role.department_id):
+            raise serializers.ValidationError(
+                {'department': f'{role.name} belongs to the {role.department.name} department.'})
+        return attrs
 
     def run_validators(self, value):
         # The "one active primary per user" constraint needs these fields; on a

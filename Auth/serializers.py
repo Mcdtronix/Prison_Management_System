@@ -214,9 +214,9 @@ class UserCreateSerializer(serializers.Serializer):
         requester_is_super_admin = normalize_role_code(requester_profile.role.code) == "SUPER_ADMIN"
 
         if not requester_is_super_admin:
-            if normalize_role_code(role.code) == "SUPER_ADMIN":
+            if role.is_admin_role or normalize_role_code(role.code) == "SUPER_ADMIN":
                 raise serializers.ValidationError({
-                    "role": "Only super administrators can create SUPER_ADMIN accounts."
+                    "role": "System administrator roles can only be granted by HQ."
                 })
             if station_id := getattr(station, "id", None):
                 if station_id != requester_profile.station_id:

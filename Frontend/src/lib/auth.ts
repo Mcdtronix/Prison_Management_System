@@ -18,6 +18,7 @@ export const normalizeRole = (role?: string | null): string => {
     A_O: "ADMIN_OFFICER",
     AO: "ADMIN_OFFICER",
     RECEPTION: "RECEPTION_OFFICER",
+    REC: "RECEPTION_OFFICER",
     RECEPTION_OFFICER: "RECEPTION_OFFICER",
     R_O: "RECEPTION_OFFICER",
     RO: "RECEPTION_OFFICER",
@@ -33,6 +34,18 @@ export const normalizeRole = (role?: string | null): string => {
     FARMS_OFFICER: "FARMS_OFFICER",
     F_O: "FARMS_OFFICER",
     FO: "FARMS_OFFICER",
+    // System-administrator roles route to the existing admin screens until
+    // the dedicated admin console lands. The server decides what they may do.
+    NATIONAL_SYSTEM_ADMIN: "SUPER_ADMIN",
+    HQ_SYS_ADMIN: "SUPER_ADMIN",
+    PROVINCIAL_SYSTEM_ADMIN: "ADMIN_OFFICER",
+    PROV_SYS_ADMIN: "ADMIN_OFFICER",
+    STATION_SYSTEM_ADMIN: "ADMIN_OFFICER",
+    STN_SYS_ADMIN: "ADMIN_OFFICER",
+    SYS_ADMIN: "ADMIN_OFFICER",
+    ADMINISTRATION: "ADMIN_OFFICER",
+    SECURITY: "SECURITY_OFFICER",
+    REHABILITATION: "REHABILITATION_OFFICER",
   };
 
   return aliases[normalized] || normalized;

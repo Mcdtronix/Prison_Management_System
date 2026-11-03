@@ -16,8 +16,8 @@ class CasesSmokeTest(TestCase):
         prov = OrgUnit.objects.create(code='PROV_TEST', name='Provincial Test HQ', code_short='PROV', unit_type='PROVINCIAL_HQ', parent=nat)
         # create station with required code_short and parent
         self.org = OrgUnit.objects.create(code='TEST_STN', name='Test Station', code_short='STN', unit_type='STATION', parent=prov)
-        role = Role.objects.create(code='ADMIN_OFFICER', name='Admin Officer')
-        dept = Department.objects.create(code='TEST_DEPT', name='Test Department')
+        role = Role.objects.get(code='ADMIN_OFFICER')  # built in
+        dept = role.department
         UserAssignment.objects.create(user=self.user, role=role, org_unit=self.org, department=dept, is_primary=True, is_active=True)
 
     def test_casefile_model_create(self):

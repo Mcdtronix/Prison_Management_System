@@ -26,7 +26,7 @@ from .serializers import (
     UserProfileSerializer,
 )
 from .utils import get_officer_current_station, get_primary_assignment, log_action, normalize_role_code
-from .permissions import IsAdminOfficer, IsSuperAdmin
+from .permissions import CanManageUsers, IsSuperAdmin
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -187,7 +187,7 @@ class UserManagementView(APIView):
     POST creates a Django user and linked UserProfile from an existing officer.
     """
 
-    permission_classes = [IsAuthenticated, IsAdminOfficer]
+    permission_classes = [IsAuthenticated, CanManageUsers]
 
     def get_queryset(self):
         queryset = UserProfile.objects.select_related("user", "role", "station", "officer")
@@ -243,11 +243,18 @@ class UserDetailView(APIView):
     Admin-only endpoint to manage specific users (e.g., toggle active status).
     """
 
-    permission_classes = [IsAuthenticated, IsAdminOfficer]
+    permission_classes = [IsAuthenticated, CanManageUsers]
 
     def patch(self, request, pk):
         try:
             profile = UserProfile.objects.get(id=pk)
+
+            from .models import UserAssignment
+            from .rbac import can_manage_user
+            if UserAssignment.objects.filter(user=profile.user, is_active=True).exists():
+                reason = can_manage_user(request.user, profile.user)
+                if reason:
+                    return Response({"error": reason}, status=status.HTTP_403_FORBIDDEN)
             
             # Admins can only manage users in their own station unless SuperAdmin
             requester_assignment = get_primary_assignment(request.user)
@@ -297,7 +304,7 @@ class UserCreationOptionsView(APIView):
     Returns eligible officers and assignable roles.
     """
 
-    permission_classes = [IsAuthenticated, IsAdminOfficer]
+    permission_classes = [IsAuthenticated, CanManageUsers]
 
     def get(self, request):
         requester_assignment = get_primary_assignment(request.user)
@@ -334,9 +341,12 @@ class UserCreationOptionsView(APIView):
                 continue
             eligible_officers.append(officer)
 
+        # Station accounts get operational roles. Admin roles (system admins)
+        # are granted only by HQ, through role assignments.
+        from .rbac import is_national_admin
         roles = Role.objects.filter(is_active=True).order_by("name")
-        if requester_role_code != "SUPER_ADMIN":
-            roles = [role for role in roles if normalize_role_code(role.code) != "SUPER_ADMIN"]
+        if not (requester_role_code == "SUPER_ADMIN" or is_national_admin(request.user)):
+            roles = roles.filter(is_admin_role=False)
 
         return Response(
             {

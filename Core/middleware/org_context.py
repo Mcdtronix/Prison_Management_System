@@ -98,6 +98,8 @@ class OrgContextMiddleware(MiddlewareMixin):
                         org_unit = OrgUnit.objects.filter(code_short=station.code).first()
                         if not org_unit:
                             org_unit = OrgUnit.objects.filter(code=station.code).first()
+                        if not org_unit:
+                            org_unit = OrgUnit.objects.filter(name=station.name, unit_type='STATION').first()
                             
                         if org_unit:
                             request.org_unit = org_unit

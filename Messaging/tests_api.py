@@ -19,7 +19,7 @@ class MessagingFlowTest(TestCase):
         self.stn = OrgUnit.objects.create(code='STN', name='Station', code_short='STN', unit_type='STATION', parent=self.prov)
 
         # Department and mailbox setups
-        self.dept = Department.objects.create(code='RECEPTION', name='Reception')
+        self.dept = Department.objects.get(code='RECEPTION')  # built in
         self.oud_a = OrgUnitDepartment.objects.create(org_unit=self.stn, department=self.dept, mailbox_address='reception@stn.example')
         self.mailbox_a = Mailbox.objects.create(org_unit_department=self.oud_a, mailbox_address=self.oud_a.mailbox_address)
 
@@ -28,7 +28,7 @@ class MessagingFlowTest(TestCase):
         self.mailbox_b = Mailbox.objects.create(org_unit_department=self.oud_b, mailbox_address=self.oud_b.mailbox_address)
 
         # Roles and assignments
-        role = Role.objects.create(code='RECEPTION_OFFICER', name='Reception')
+        role = Role.objects.get(code='RECEPTION_OFFICER')  # built in
         UserAssignment.objects.create(user=self.user_a, role=role, org_unit=self.stn, department=self.dept, is_primary=True, is_active=True)
         UserAssignment.objects.create(user=self.user_b, role=role, org_unit=self.prov, department=self.dept, is_primary=True, is_active=True)
 

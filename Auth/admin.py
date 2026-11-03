@@ -193,7 +193,7 @@ class OrgUnitAdmin(admin.ModelAdmin):
                 # Create Django user and assignment
                 user = User.objects.create_user(username=officer.service_number, email=email, password=password, first_name=officer.first_name, last_name=officer.surname)
                 # Attach UserAssignment
-                ua = UserAssignment.objects.create(user=user, role=role, org_unit=parent, department=Department.objects.first() or Department.objects.create(code='ADMIN', name='Administration'))
+                ua = UserAssignment.objects.create(user=user, role=role, org_unit=parent, department=role.department or Department.objects.get(code='ADMINISTRATION'))
                 ua.is_primary = True
                 ua.save()
 

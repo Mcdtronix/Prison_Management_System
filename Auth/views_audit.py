@@ -7,8 +7,7 @@ from django.db import models
 
 from .models import AuditLog, OrgUnit, Station, UserAssignment, UserProfile
 from .serializers_audit import AuditLogSerializer
-from .rbac import user_has_capability
-from .admin_guard import scoped_org_ids
+from .rbac import admin_scope, user_has_capability
 from .utils import normalize_role_code
 
 
@@ -18,7 +17,7 @@ def visible_audit_logs(user, qs):
     Super admins see everything. Admins see logs from their own unit and the
     units below it. Everyone else sees only their own actions.
     """
-    ids = scoped_org_ids(user, 'admin.view_created_logs')
+    ids = admin_scope(user, 'admin.view_created_logs')
     if ids is None:
         return qs
 

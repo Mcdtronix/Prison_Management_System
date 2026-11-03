@@ -28,6 +28,29 @@ class Role(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
+    is_system = models.BooleanField(
+        default=False,
+        help_text="Built-in role: cannot be deleted, renamed or disabled.",
+    )
+    is_admin_role = models.BooleanField(
+        default=False,
+        help_text="Administers accounts. Its tier is the level of the org unit it is assigned at.",
+    )
+    assignable_at = models.CharField(
+        max_length=20,
+        choices=[('NATIONAL_HQ', 'National HQ'), ('PROVINCIAL_HQ', 'Provincial HQ'), ('STATION', 'Station')],
+        blank=True,
+        null=True,
+        help_text="If set, the role may only be assigned at this level.",
+    )
+    department = models.ForeignKey(
+        'Department',
+        on_delete=models.PROTECT,
+        related_name='roles',
+        blank=True,
+        null=True,
+        help_text="Home department. If set, the role can only be assigned in this department.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -37,6 +60,67 @@ class Role(models.Model):
 
     def __str__(self):
         return f"{self.code} - {self.name}"
+
+    def clean(self):
+        _protect_builtin(self, Role, 'is_active', 'department_id', 'is_admin_role', 'assignable_at')
+
+    def save(self, *args, **kwargs):
+        from .capabilities import ADMIN_ROLE_CODES, DEFAULT_ROLE_CAPABILITIES, ROLE_ASSIGNABLE_AT
+        from .utils import normalize_role_code
+
+        self.clean()
+        creating = self._state.adding
+        code = normalize_role_code(self.code)
+        if creating:
+            # New roles with a known code pick up their built-in defaults.
+            if code in ADMIN_ROLE_CODES:
+                self.is_admin_role = True
+            if not self.assignable_at:
+                self.assignable_at = ROLE_ASSIGNABLE_AT.get(code)
+        super().save(*args, **kwargs)
+        if creating:
+            RoleCapability.objects.bulk_create(
+                [RoleCapability(role=self, capability=c) for c in DEFAULT_ROLE_CAPABILITIES.get(code, [])],
+                ignore_conflicts=True,
+            )
+
+    def delete(self, *args, **kwargs):
+        if self.is_system:
+            raise ValidationError(f"{self.code} is a built-in role and cannot be deleted.")
+        return super().delete(*args, **kwargs)
+
+
+def _protect_builtin(obj, model, *locked_fields):
+    """Built-in rows keep their code and is_system flag, and keep `locked_fields` unchanged."""
+    if obj._state.adding or not obj.pk:
+        return
+    old = model.objects.filter(pk=obj.pk).first()
+    if old is None or not old.is_system:
+        return
+    if obj.code != old.code:
+        raise ValidationError({'code': f"{old.code} is built in; its code cannot change."})
+    if not obj.is_system:
+        raise ValidationError({'is_system': "A built-in item cannot be made custom."})
+    for field in locked_fields:
+        if getattr(obj, field) != getattr(old, field):
+            raise ValidationError({field.replace('_id', ''): f"{old.code} is built in; this cannot change."})
+
+
+class RoleCapability(models.Model):
+    """One capability granted by a role. Replaces the hard-coded map in rbac.py."""
+    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name='capabilities')
+    capability = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "auth_role_capability"
+        constraints = [
+            models.UniqueConstraint(fields=['role', 'capability'], name='uniq_role_capability'),
+        ]
+        ordering = ['role', 'capability']
+
+    def __str__(self):
+        return f"{self.role.code}: {self.capability}"
 
 
 # ==================================================
@@ -330,19 +414,35 @@ class Department(models.Model):
         db_index=True,
         help_text="Active department"
     )
-    
+    is_system = models.BooleanField(
+        default=False,
+        help_text="Built-in department: cannot be deleted, renamed or disabled.",
+    )
+
     # Audit
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = "auth_department"
         ordering = ["code"]
         verbose_name = "Department"
         verbose_name_plural = "Departments"
-    
+
     def __str__(self):
         return f"{self.code} - {self.name}"
+
+    def clean(self):
+        _protect_builtin(self, Department, 'active')
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.is_system:
+            raise ValidationError(f"{self.code} is a built-in department and cannot be deleted.")
+        return super().delete(*args, **kwargs)
 
 
 class OrgUnitDepartment(models.Model):
@@ -409,8 +509,9 @@ class OrgUnitDepartment(models.Model):
             try:
                 unit = self.org_unit
                 dep_code = self.department.code
-                if unit.unit_type == 'NATIONAL_HQ':
-                    # Use short code for NHQ and keep uppercase
+                if unit.unit_type == 'NATIONAL_HQ' and not OrgUnitDepartment.objects.filter(org_unit=unit).exists():
+                    # The first NHQ department keeps the short NHQ address; later
+                    # ones fall through to the per-department format below.
                     self.mailbox_address = f"{unit.code_short.upper()}@{domain}"
                 else:
                     # For provinces and stations, concatenate short code and department
@@ -546,6 +647,12 @@ class UserAssignment(models.Model):
             ).exclude(pk=self.pk).exists()
             if existing:
                 raise ValidationError("User already has an active primary assignment")
+
+        role = self.role if self.role_id else None
+        if role is not None and role.department_id and self.department_id != role.department_id:
+            raise ValidationError({
+                'department': f"{role.name} belongs to the {role.department.name} department."
+            })
     
     def save(self, *args, **kwargs):
         self.full_clean()

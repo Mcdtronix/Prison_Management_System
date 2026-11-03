@@ -14,7 +14,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from Auth.admin_guard import TIER_OPERATIONAL, role_tier
+from Auth.rbac import TIER_OPERATIONAL, assignment_tier
 from Auth.models import AuditLog, DataExposurePolicy, Department, Role, UserAssignment
 
 User = get_user_model()
@@ -46,19 +46,19 @@ class Command(BaseCommand):
             out(f'  {u.username:<20} superuser={u.is_superuser} staff={u.is_staff} '
                 f'active={u.is_active} joined={_fmt(u.date_joined)} last_login={_fmt(u.last_login)}')
 
-        out(self.style.MIGRATE_HEADING('\n2. Active admin-level assignments (SUPER_ADMIN / ADMIN_OFFICER)'))
+        out(self.style.MIGRATE_HEADING('\n2. Active admin-level assignments'))
         qs = recent(UserAssignment.objects.filter(is_active=True)
                     .select_related('user', 'role', 'org_unit', 'created_by__user')
                     .order_by('-created_at'))
         for a in qs:
-            if role_tier(a.role) <= TIER_OPERATIONAL:
+            if assignment_tier(a) <= TIER_OPERATIONAL:
                 continue
             creator = a.created_by.user.username if a.created_by else 'unknown'
             note = ''
             if a.created_by is None:
                 note = '  <-- no recorded creator, check with HR/admin'
                 flagged += 1
-            elif role_tier(a.created_by.role) <= role_tier(a.role) and not a.created_by.user.is_superuser:
+            elif assignment_tier(a.created_by) <= assignment_tier(a) and not a.created_by.user.is_superuser:
                 note = '  <-- granted by someone not above this level'
                 flagged += 1
             out(f'  {a.user.username:<20} {a.role.code:<15} at {a.org_unit.code:<10} '
