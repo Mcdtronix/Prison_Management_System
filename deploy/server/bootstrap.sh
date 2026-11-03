@@ -37,6 +37,18 @@ ok()   { printf '    \e[32m✓\e[0m %s\n' "$*"; }
 warn() { printf '    \e[33m!\e[0m %s\n' "$*"; }
 die()  { printf '\e[31mERROR:\e[0m %s\n' "$*" >&2; exit 1; }
 
+# Enable the pms site only if nginx accepts the full configuration. On failure
+# the site is disabled again so other sites on this host survive a restart.
+enable_nginx_site() {
+    ln -sfn /etc/nginx/sites-available/pms /etc/nginx/sites-enabled/pms
+    if ! nginx -t 2>/tmp/pms-nginx-test.log; then
+        rm -f /etc/nginx/sites-enabled/pms
+        cat /tmp/pms-nginx-test.log >&2
+        die "nginx rejected the pms site config; it has been disabled. Other sites are unaffected."
+    fi
+    systemctl reload nginx
+}
+
 [[ $EUID -eq 0 ]] || die "Run as root (sudo)."
 [[ -n "$LETSENCRYPT_EMAIL" ]] || die "Set LETSENCRYPT_EMAIL (certificate expiry notices)."
 [[ -f "$REPO_DIR/deploy/systemd/pms.service" ]] || die "Run from a checkout of the repository."
@@ -183,8 +195,7 @@ server {
     location / { return 503; }
 }
 EOF
-    ln -sfn /etc/nginx/sites-available/pms /etc/nginx/sites-enabled/pms
-    nginx -t -q && systemctl reload nginx
+    enable_nginx_site
 
     certbot certonly --webroot -w /var/www/letsencrypt -d "$DOMAIN" \
         --email "$LETSENCRYPT_EMAIL" --agree-tos --non-interactive --quiet
@@ -201,8 +212,7 @@ EOF
 chmod 755 /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 
 install -m 644 "$REPO_DIR/deploy/nginx/pms.conf" /etc/nginx/sites-available/pms
-ln -sfn /etc/nginx/sites-available/pms /etc/nginx/sites-enabled/pms
-nginx -t -q && systemctl reload nginx
+enable_nginx_site
 ok "nginx serving https://$DOMAIN (auto-renewal via certbot.timer)"
 
 # ── Scheduled backups ────────────────────────────────────────────────
