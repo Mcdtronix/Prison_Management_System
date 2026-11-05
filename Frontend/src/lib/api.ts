@@ -475,6 +475,28 @@ export const authApi = {
   },
 };
 
+// Organisation structure (read-only): National HQ, provinces, stations
+export type OrgUnitType = 'NATIONAL_HQ' | 'PROVINCIAL_HQ' | 'STATION';
+export type OrgUnitRow = {
+  id: number; code: string; code_short: string; name: string;
+  unit_type: OrgUnitType; unit_type_display: string;
+  parent: number | null; parent_name: string | null;
+  location: string | null; active: boolean; station_count: number;
+};
+export const orgUnitsApi = {
+  list: (params: { unit_type?: OrgUnitType; parent?: number; search?: string; include_inactive?: boolean } = {}) => {
+    const q = new URLSearchParams();
+    if (params.unit_type) q.set('unit_type', params.unit_type);
+    if (params.parent) q.set('parent', String(params.parent));
+    if (params.search) q.set('search', params.search);
+    if (params.include_inactive) q.set('include_inactive', '1');
+    const s = q.toString();
+    return apiRequest<OrgUnitRow[]>(`/auth/org-units/${s ? `?${s}` : ''}`);
+  },
+  provinces: () => orgUnitsApi.list({ unit_type: 'PROVINCIAL_HQ' }),
+  stations: (provinceId?: number) => orgUnitsApi.list({ unit_type: 'STATION', parent: provinceId }),
+};
+
 // Admin actions for NHQ/PHQ/Station workflows
 export const adminActionsApi = {
   createPHQ: async (payload: { name: string; code: string; code_short: string }) => {

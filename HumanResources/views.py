@@ -59,14 +59,15 @@ class OfficerViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
         try:
             # Try to get the admin's station to post the officer there initially
             station = None
-            
+            posting_unit = None
+
             # 1. Try to get station from primary assignment
-            from Auth.utils import get_primary_assignment
+            from Auth.utils import get_primary_assignment, legacy_station_for_unit
             assignment = get_primary_assignment(self.request.user)
             if assignment and assignment.org_unit and assignment.org_unit.unit_type == "STATION":
-                from Auth.models import Station
-                station = Station.objects.filter(org_unit=assignment.org_unit).first()
-                
+                posting_unit = assignment.org_unit
+                station = legacy_station_for_unit(posting_unit)
+
             # 2. Fallback to userprofile
             if not station and hasattr(self.request.user, 'userprofile') and self.request.user.userprofile.station:
                 station = self.request.user.userprofile.station
@@ -76,6 +77,7 @@ class OfficerViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
                 OfficerStationHistory.objects.create(
                     officer=officer,
                     station=station,
+                    posting_org_unit=posting_unit,
                     date_posted=officer.date_of_attestation,
                     posted_by=self.request.user.username
                 )

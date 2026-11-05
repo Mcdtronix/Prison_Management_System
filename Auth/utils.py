@@ -211,6 +211,23 @@ def get_current_station(user):
         return None
 
 
+def legacy_station_for_unit(unit):
+    """The old auth_station row matching a STATION org unit, or None.
+
+    The two tables have no link column yet, so match on code (any case),
+    short code, then name. Remove once data moves off auth_station.
+    """
+    if unit is None:
+        return None
+    from django.db.models import Q
+    from .models import Station
+    by_code = Q(code__iexact=unit.code)
+    if unit.code_short:
+        by_code |= Q(code__iexact=unit.code_short)
+    return (Station.objects.filter(by_code).first()
+            or Station.objects.filter(name__iexact=unit.name).first())
+
+
 def get_officer_current_station(officer):
     """
     Resolve an officer's current station from station history.

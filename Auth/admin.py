@@ -3,8 +3,10 @@ Django Admin Configuration for RBAC
 ====================================
 """
 
+from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.db.models import Count, Q
 from django.contrib.auth.models import User
 from django.urls import path
 from django.shortcuts import redirect
@@ -15,6 +17,8 @@ from .models import (
     UserProfile,
     AuditLog,
     OrgUnit,
+    ProvincialCommandCentre,
+    StationUnit,
     Department,
     OrgUnitDepartment,
     UserAssignment,
@@ -36,10 +40,114 @@ class RoleAdmin(admin.ModelAdmin):
 
 @admin.register(Station)
 class StationAdmin(admin.ModelAdmin):
+    """Old flat station table, kept only until data moves to org units.
+
+    New stations are created under Stations (org units), linked to a province.
+    """
     list_display = ['code', 'name', 'location', 'active', 'created_at']
     list_filter = ['active', 'created_at']
     search_fields = ['code', 'name', 'location']
     readonly_fields = ['created_at', 'updated_at']
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class ProvinceFilter(admin.SimpleListFilter):
+    title = 'province'
+    parameter_name = 'province'
+
+    def lookups(self, request, model_admin):
+        return [(p.pk, p.name) for p in ProvincialCommandCentre.objects.order_by('name')]
+
+    def queryset(self, request, queryset):
+        return queryset.filter(parent_id=self.value()) if self.value() else queryset
+
+
+class StationInlineForm(forms.ModelForm):
+    class Meta:
+        model = StationUnit
+        fields = ['code', 'name', 'code_short', 'location', 'active']
+
+
+class ProvinceForm(forms.ModelForm):
+    """Provinces always sit directly under National HQ; set it before validation."""
+
+    class Meta:
+        model = ProvincialCommandCentre
+        fields = ['code', 'name', 'code_short', 'location', 'description', 'active']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.parent_id is None:
+            self.instance.parent = OrgUnit.objects.filter(unit_type='NATIONAL_HQ').first()
+
+
+class StationInline(admin.TabularInline):
+    model = StationUnit
+    form = StationInlineForm
+    fk_name = 'parent'
+    extra = 0
+    show_change_link = True
+    verbose_name = 'Station'
+    verbose_name_plural = 'Stations under this command centre'
+
+
+@admin.register(ProvincialCommandCentre)
+class ProvincialCommandCentreAdmin(admin.ModelAdmin):
+    list_display = ['code', 'name', 'code_short', 'station_count', 'active']
+    list_filter = ['active']
+    search_fields = ['code', 'name', 'code_short']
+    fields = ['code', 'name', 'code_short', 'location', 'description', 'active', 'created_at', 'updated_at']
+    readonly_fields = ['created_at', 'updated_at']
+    inlines = [StationInline]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(
+            _stations=Count('children', filter=Q(children__unit_type='STATION')))
+
+    @admin.display(description='Stations', ordering='_stations')
+    def station_count(self, obj):
+        url = reverse('admin:Auth_stationunit_changelist') + f'?province={obj.pk}'
+        return format_html('<a href="{}">{}</a>', url, obj._stations)
+
+    form = ProvinceForm
+
+
+@admin.register(StationUnit)
+class StationUnitAdmin(admin.ModelAdmin):
+    list_display = ['code', 'name', 'province', 'location', 'active']
+    list_filter = [ProvinceFilter, 'active']
+    list_select_related = ['parent']
+    search_fields = ['code', 'name', 'code_short', 'parent__name']
+    fields = ['parent', 'code', 'name', 'code_short', 'location', 'description', 'active', 'created_at', 'updated_at']
+    readonly_fields = ['created_at', 'updated_at']
+
+    @admin.display(description='Provincial command centre', ordering='parent__name')
+    def province(self, obj):
+        return obj.parent.name if obj.parent else '-'
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'parent':
+            kwargs['queryset'] = OrgUnit.objects.filter(unit_type='PROVINCIAL_HQ').order_by('name')
+            field = super().formfield_for_foreignkey(db_field, request, **kwargs)
+            field.required = True
+            field.label = 'Provincial command centre'
+            return field
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_changeform_initial_data(self, request):
+        # "Add station" links from a province page pass ?province=<id>.
+        initial = super().get_changeform_initial_data(request)
+        if request.GET.get('province'):
+            initial['parent'] = request.GET['province']
+        return initial
 
 
 class UserProfileInline(admin.StackedInline):

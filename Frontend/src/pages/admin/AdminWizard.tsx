@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { PrisonLayout } from '@/components/PrisonLayout'
-import { adminActionsApi, adminApi } from '@/lib/api'
+import { adminActionsApi, adminApi, orgUnitsApi } from '@/lib/api'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -57,10 +57,8 @@ export default function AdminWizard(){
 
   useEffect(()=>{
     (async ()=>{
-      try{
-        const orgs = await fetch('/api/auth/orgunits/').then(r=>r.json())
-        setProvinces(orgs || [])
-      }catch(e){}
+      const res = await orgUnitsApi.list()
+      setProvinces(res.data || [])
     })()
   },[])
 

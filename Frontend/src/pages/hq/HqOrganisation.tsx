@@ -122,6 +122,8 @@ const HqOrganisation = () => {
   const [open, setOpen] = useState<Record<number, boolean>>({});
   const [filter, setFilter] = useState('');
   const [dialog, setDialog] = useState<'province' | 'station' | null>(null);
+  const [view, setView] = useState<'provinces' | 'stations'>('provinces');
+  const [provinceFilter, setProvinceFilter] = useState('');
 
   const load = async () => {
     const res = await consoleApi.orgTree();
@@ -142,6 +144,16 @@ const HqOrganisation = () => {
       })
       .filter(Boolean) as Province[];
   }, [provinces, filter]);
+
+  // Flat list of every station with its province, for the "All stations" view.
+  const stationRows = useMemo(() => {
+    const f = filter.trim().toLowerCase();
+    return provinces
+      .filter((p) => !provinceFilter || String(p.id) === provinceFilter)
+      .flatMap((p) => p.stations.map((s) => ({ ...s, province: p })))
+      .filter((s) => !f || `${s.name} ${s.code} ${s.province.name}`.toLowerCase().includes(f))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [provinces, filter, provinceFilter]);
 
   if (error) return <EmptyState>Could not load the organisation: {error}</EmptyState>;
   if (!tree) return <LoadingRows label="Loading provinces and stations…" />;
@@ -165,12 +177,76 @@ const HqOrganisation = () => {
           </div>
         }
       >
-        <div className="relative mb-4 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="pl-9" placeholder="Find a province or station" value={filter}
-            onChange={(e) => setFilter(e.target.value)} />
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div role="tablist" aria-label="View" className="inline-flex rounded-md border p-0.5 text-sm">
+            {([['provinces', 'By command centre'], ['stations', 'All stations']] as const).map(([key, label]) => (
+              <button key={key} role="tab" aria-selected={view === key} onClick={() => setView(key)}
+                className={`rounded px-3 py-1.5 ${view === key
+                  ? 'bg-[#0b4f2a] text-white'
+                  : 'text-muted-foreground hover:text-foreground'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="relative w-full max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input className="pl-9" placeholder={view === 'stations' ? 'Find a station' : 'Find a province or station'}
+              value={filter} onChange={(e) => setFilter(e.target.value)} />
+          </div>
+          {view === 'stations' && (
+            <select aria-label="Filter by command centre" value={provinceFilter}
+              onChange={(e) => setProvinceFilter(e.target.value)}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <option value="">All command centres</option>
+              {provinces.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
         </div>
 
+        {view === 'stations' ? (
+          stationRows.length === 0 ? (
+            <EmptyState>No stations match.</EmptyState>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Station</th>
+                    <th className="px-4 py-3 text-left">Command centre</th>
+                    <th className="hidden px-4 py-3 text-left md:table-cell">Code</th>
+                    <th className="px-4 py-3 text-right">Users</th>
+                    <th className="hidden px-4 py-3 text-right sm:table-cell">Online</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stationRows.map((s) => (
+                    <tr key={s.id} className="border-t hover:bg-muted/40">
+                      <td className="px-4 py-2.5">
+                        <span className="flex items-center gap-2 text-foreground">
+                          <Building2 className="h-4 w-4 text-muted-foreground" /> {s.name}
+                          {!s.active && <span className="text-xs text-red-600">(inactive)</span>}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <button className="text-left text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                          onClick={() => setProvinceFilter(String(s.province.id))}>{s.province.name}</button>
+                      </td>
+                      <td className="hidden px-4 py-2.5 font-mono text-xs md:table-cell">{s.code}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <button className="text-[#0b4f2a] dark:text-[#d7a928] underline-offset-2 hover:underline"
+                          onClick={() => goUsers(s.id)}>{s.users}</button>
+                      </td>
+                      <td className="hidden px-4 py-2.5 text-right sm:table-cell">{s.online}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="border-t px-4 py-2 text-xs text-muted-foreground">
+                {stationRows.length} station{stationRows.length === 1 ? '' : 's'}
+              </p>
+            </div>
+          )
+        ) : (<>
         {tree.national && (
           <button onClick={() => goUsers(tree.national.id)}
             className="mb-3 flex w-full items-center justify-between rounded-md bg-[#0b4f2a] px-4 py-3 text-left text-white">
@@ -242,6 +318,7 @@ const HqOrganisation = () => {
             </table>
           </div>
         )}
+        </>)}
       </SectionCard>
 
       <CreateUnitDialog kind={dialog || 'province'} provinces={provinces} open={!!dialog}

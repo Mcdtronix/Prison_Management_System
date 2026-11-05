@@ -144,6 +144,8 @@ class Station(models.Model):
     class Meta:
         db_table = "auth_station"
         ordering = ["name"]
+        verbose_name = "Legacy station (read-only)"
+        verbose_name_plural = "Legacy stations (read-only)"
 
     def __str__(self):
         return f"{self.code} - {self.name}"
@@ -382,6 +384,52 @@ class OrgUnit(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
+
+
+class ProvincialCommandCentreManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(unit_type='PROVINCIAL_HQ')
+
+
+class StationUnitManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(unit_type='STATION')
+
+
+class _FixedTypeMixin:
+    """Locks an OrgUnit proxy to one unit_type, so forms can't pick another."""
+    FIXED_TYPE = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.unit_type:
+            self.unit_type = self.FIXED_TYPE
+
+    def save(self, *args, **kwargs):
+        self.unit_type = self.FIXED_TYPE
+        super().save(*args, **kwargs)
+
+
+class ProvincialCommandCentre(_FixedTypeMixin, OrgUnit):
+    """Provinces only. Same table as OrgUnit; used for its own admin page."""
+    FIXED_TYPE = 'PROVINCIAL_HQ'
+    objects = ProvincialCommandCentreManager()
+
+    class Meta:
+        proxy = True
+        verbose_name = "Provincial Command Centre"
+        verbose_name_plural = "Provincial Command Centres"
+
+
+class StationUnit(_FixedTypeMixin, OrgUnit):
+    """Stations only. Same table as OrgUnit; used for its own admin page."""
+    FIXED_TYPE = 'STATION'
+    objects = StationUnitManager()
+
+    class Meta:
+        proxy = True
+        verbose_name = "Station"
+        verbose_name_plural = "Stations"
 
 
 class Department(models.Model):
