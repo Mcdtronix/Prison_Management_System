@@ -1,7 +1,7 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Button } from "./ui/button";
-import { LogOut, User } from "lucide-react";
+import { LogOut, Menu, User } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,6 +26,7 @@ export const PrisonLayout = ({
   description,
 }: PrisonLayoutProps) => {
   const { user, logout } = useAuth();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const getUserDisplayName = () => {
     // In a real app, this would come from user profile
@@ -39,15 +40,28 @@ export const PrisonLayout = ({
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <Sidebar userRole={user?.role || ""} />
+      <Sidebar
+        userRole={user?.role || ""}
+        mobileOpen={mobileNavOpen}
+        onMobileOpenChange={setMobileNavOpen}
+      />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="sticky top-0 z-10 h-16 border-b border-[#063f20] bg-[#0b4f2a] flex items-center justify-between px-6 shadow-sm">
-          <div className="flex items-center gap-4">
+        <header className="sticky top-0 z-10 h-16 border-b border-[#063f20] bg-[#0b4f2a] flex items-center justify-between gap-2 px-3 md:px-6 shadow-sm">
+          <div className="flex items-center gap-2 md:gap-4 min-w-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setMobileNavOpen(true)}
+              className="md:hidden shrink-0 text-white hover:bg-[#063f20] hover:text-white"
+              aria-label="Open navigation"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
             {title && (
-              <div>
-                <h1 className="text-xl font-semibold text-white">{title}</h1>
+              <div className="min-w-0">
+                <h1 className="text-lg md:text-xl font-semibold text-white truncate">{title}</h1>
                 {description && (
                   <p className="text-sm text-gray-200 truncate max-w-md">{description}</p>
                 )}
@@ -55,11 +69,11 @@ export const PrisonLayout = ({
             )}
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 shrink-0">
             {/* User Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="flex items-center gap-2 px-3 text-white hover:bg-[#063f20] hover:text-white">
+                <Button variant="ghost" className="flex items-center gap-2 px-2 md:px-3 text-white hover:bg-[#063f20] hover:text-white">
                   <Avatar className="h-8 w-8">
                     <AvatarImage src="" alt={getUserDisplayName()} />
                     <AvatarFallback className="bg-[#d7a928] text-[#0b4f2a]">
@@ -100,7 +114,7 @@ export const PrisonLayout = ({
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 p-6 overflow-x-hidden">
+        <main className="flex-1 p-3 md:p-6 overflow-x-hidden">
           {children}
         </main>
       </div>

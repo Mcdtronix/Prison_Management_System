@@ -36,13 +36,16 @@ import {
 import { useEffect, useState } from "react";
 import { messagingApi } from '@/lib/api'
 import { Link, useLocation } from "react-router-dom";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "./ui/button";
+import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
 import { getDefaultRouteForRole, normalizeRole } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface SidebarProps {
   userRole: string;
+  /** Phone-width drawer state (below md). Controlled by the layout's menu button. */
+  mobileOpen?: boolean;
+  onMobileOpenChange?: (open: boolean) => void;
 }
 
 interface NavItem {
@@ -52,15 +55,18 @@ interface NavItem {
   subItems?: { title: string; href: string }[];
 }
 
-export const Sidebar = ({ userRole }: SidebarProps) => {
+export const Sidebar = ({ userRole, mobileOpen = false, onMobileOpenChange }: SidebarProps) => {
   const location = useLocation();
-  const isMobile = useIsMobile();
-  const [isOpen, setIsOpen] = useState(!isMobile);
+  // Desktop expand/collapse. Phones use the drawer below instead.
+  const [isOpen, setIsOpen] = useState(true);
   const normalizedRole = normalizeRole(userRole);
+  const closeMobile = () => onMobileOpenChange?.(false);
 
+  // Close the phone drawer whenever the route changes.
   useEffect(() => {
-    setIsOpen(!isMobile);
-  }, [isMobile]);
+    closeMobile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
@@ -320,11 +326,6 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
     isOpen ? "w-64" : "w-16",
   );
 
-  const sidebarContentClasses = cn(
-    "flex flex-col h-full",
-    !isOpen && "items-center",
-  );
-
   const dashboardUrl = getDefaultRouteForRole(normalizedRole);
   const { user } = useAuth();
   const [openDropdowns, setOpenDropdowns] = useState<Record<string, boolean>>({});
@@ -374,13 +375,13 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
     return () => { mounted = false; clearInterval(id); };
   }, []);
 
-  return (
-    <>
-      <div className={sidebarClasses}>
-        <div className={sidebarContentClasses}>
+  // Panel contents, shared by the desktop sidebar and the phone drawer.
+  // `isOpen` here shadows the desktop state: the drawer always renders expanded.
+  const renderPanel = (isOpen: boolean, inDrawer: boolean) => (
+        <div className={cn("flex flex-col h-full", !isOpen && "items-center")}>
           <div className="h-16 flex items-center justify-between px-4 border-b border-[#063f20]">
             {isOpen && (
-              <Link to={dashboardUrl} className="flex items-center gap-2">
+              <Link to={dashboardUrl} onClick={inDrawer ? closeMobile : undefined} className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white font-bold text-[#0b4f2a] ring-1 ring-[#d7a928]">
                   <Shield size={16} />
                 </div>
@@ -391,21 +392,21 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
             )}
             {!isOpen && (
               <div className="w-full flex justify-center">
-                <Link to={dashboardUrl} className="flex items-center">
+                <Link to={dashboardUrl} onClick={inDrawer ? closeMobile : undefined} className="flex items-center">
                   <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-[#0b4f2a] ring-1 ring-[#d7a928]">
                     <Shield size={16} />
                   </div>
                 </Link>
               </div>
             )}
-            <Button
+            {!inDrawer && <Button
               variant="ghost"
               size="sm"
               onClick={toggleSidebar}
               className="text-gray-300 hover:text-white hover:bg-[#063f20]"
             >
               {isOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-            </Button>
+            </Button>}
           </div>
           <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
             {navItems.map((item, index) => {
@@ -445,7 +446,8 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
                         {item.subItems?.map((subItem, subIndex) => (
                           <Link 
                             key={subItem.href || subItem.title || `sub-${subIndex}`} 
-                            to={subItem.href} 
+                            to={subItem.href}
+                            onClick={inDrawer ? closeMobile : undefined}
                             className={cn(
                               "block px-2 py-1 text-sm rounded transition-colors",
                               location.pathname === subItem.href 
@@ -466,6 +468,7 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
                 <Link
                   key={itemKey}
                   to={item.href}
+                  onClick={inDrawer ? closeMobile : undefined}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
                     "text-gray-300 hover:text-white hover:bg-[#063f20]",
@@ -509,21 +512,32 @@ export const Sidebar = ({ userRole }: SidebarProps) => {
             </div>
           </div>
         </div>
+  );
+
+  return (
+    <>
+      {/* Desktop sidebar (md and up) */}
+      <div className={cn(sidebarClasses, "hidden md:block")}>
+        {renderPanel(isOpen, false)}
       </div>
-      {/* Content spacer - always present */}
+      {/* Content spacer for the fixed desktop sidebar */}
       <div
         className={cn(
+          "hidden md:block",
           isOpen ? "ml-64" : "ml-16",
           "transition-all duration-300",
         )}
       />
-      {/* Mobile overlay */}
-      {isMobile && isOpen && (
-        <div
-          className="fixed inset-0 bg-black/20 z-10 md:hidden"
-          onClick={toggleSidebar}
-        />
-      )}
+      {/* Phone drawer (below md) */}
+      <Sheet open={mobileOpen} onOpenChange={(open) => onMobileOpenChange?.(open)}>
+        <SheetContent
+          side="left"
+          className="md:hidden w-64 max-w-[85vw] p-0 gap-0 bg-[#0b4f2a] border-r border-[#063f20] text-white [&>button]:text-white [&>button]:data-[state=open]:bg-transparent"
+        >
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          {renderPanel(true, true)}
+        </SheetContent>
+      </Sheet>
     </>
   );
 };
