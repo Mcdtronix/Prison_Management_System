@@ -703,6 +703,13 @@ class UserAssignment(models.Model):
             raise ValidationError({
                 'department': f"{role.name} belongs to the {role.department.name} department."
             })
+
+        # At most two provincial admins per province and two station admins per station.
+        if role is not None and self.is_active and self.org_unit_id and self.user_id and self.user.is_active:
+            from .rbac import system_admin_slot_problem
+            problem = system_admin_slot_problem(role, self.org_unit, exclude_user=self.user)
+            if problem:
+                raise ValidationError({'role': problem})
     
     def save(self, *args, **kwargs):
         self.full_clean()

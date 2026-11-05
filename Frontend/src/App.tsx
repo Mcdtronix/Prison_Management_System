@@ -52,7 +52,7 @@ import HqUserDetail from "@/pages/hq/HqUserDetail";
 import HqActivity from "@/pages/hq/HqActivity";
 import HqStorage from "@/pages/hq/HqStorage";
 import ChangePassword from "@/pages/shared/ChangePassword";
-import { HQ_CONSOLE_ROLES } from "@/lib/auth";
+import { CONSOLE_ROLES, HQ_CONSOLE_ROLES } from "@/lib/auth";
 
 // Messaging (and its rich-text editor) loads only when someone opens it.
 const MailFolder = lazy(() => import("@/pages/messaging/MailFolder"));
@@ -63,11 +63,11 @@ const MessagingLoading = () => (
   <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading messages…</div>
 );
 
-const MESSAGING_ROLES = ["HQ_SYS_ADMIN","SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"];
+const MESSAGING_ROLES = ["HQ_SYS_ADMIN","SUPER_ADMIN","PROV_SYS_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"];
 
-/** One HQ console page: role check + the standard app shell. */
-const hqPage = (title: string, description: string, page: JSX.Element) => (
-  <ProtectedRoute allowedRoles={HQ_CONSOLE_ROLES}>
+/** One console page: role check + the standard app shell. Provincial admins see their province only. */
+const hqPage = (title: string, description: string, page: JSX.Element, roles: string[] = CONSOLE_ROLES) => (
+  <ProtectedRoute allowedRoles={roles}>
     <PrisonLayout title={title} description={description}>
       {page}
     </PrisonLayout>
@@ -483,6 +483,7 @@ function App() {
                 allowedRoles={[
                   "HQ_SYS_ADMIN",
                   "SUPER_ADMIN",
+                  "PROV_SYS_ADMIN",
                   "ADMIN_OFFICER",
                   "RECEPTION_OFFICER",
                   "HEALTH_OFFICER",
@@ -556,8 +557,8 @@ function App() {
           <Route path="/hq/users/:id" element={hqPage("User Account", "Details, roles, sessions and activity", <HqUserDetail />)} />
           <Route path="/hq/activity" element={hqPage("Activity & Sign-ins", "Who did what, when, and who is online", <HqActivity />)} />
           <Route path="/hq/storage" element={hqPage("Storage", "How much data each province and station holds", <HqStorage />)} />
-          <Route path="/hq/roles" element={hqPage("Roles", "Built-in and custom roles", <RoleManagement />)} />
-          <Route path="/hq/departments" element={hqPage("Departments", "Built-in and custom departments", <DepartmentManagement />)} />
+          <Route path="/hq/roles" element={hqPage("Roles", "Built-in and custom roles", <RoleManagement />, HQ_CONSOLE_ROLES)} />
+          <Route path="/hq/departments" element={hqPage("Departments", "Built-in and custom departments", <DepartmentManagement />, HQ_CONSOLE_ROLES)} />
 
           {/* Any signed-in user; required after an admin password reset */}
           <Route path="/change-password" element={<ChangePassword />} />

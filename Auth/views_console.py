@@ -27,7 +27,9 @@ from rest_framework.response import Response
 
 from .models import (AuditLog, Department, LoginEvent, OrgUnit, Role, UserAssignment, UserSecurity,
                      UserSession)
-from .rbac import admin_scope, can, can_grant, can_manage_user, descendant_ids, grantable_roles, is_national_admin
+from .capabilities import SYSTEM_ADMIN_LIMITS, SYSTEM_ADMIN_ROLE_FOR_UNIT
+from .rbac import (admin_scope, can, can_grant, can_manage_user, descendant_ids, grantable_roles, is_national_admin,
+                   system_admin_slot_problem, system_admin_slots)
 from .sessions import ONLINE_WINDOW, online_sessions, revoke_sessions
 from .usage import compute_org_usage, database_size, latest_snapshot
 from .utils import create_audit_log, get_primary_assignment, revoke_user_tokens
@@ -96,6 +98,54 @@ def _user_or_404(request, pk):
     if user is None:
         raise NotFound('User not found in your area.')
     return user
+
+
+def normalize_service_number(raw):
+    """Upper-cased, trimmed service number, or a ValidationError if it is not 7 digits + a letter."""
+    value = (raw or '').strip().upper()
+    if not SERVICE_NUMBER.match(value):
+        raise ValidationError({'service_number': [
+            "Use the officer's service number: 7 digits and a letter, e.g. 1234567A."]})
+    return value
+
+
+def _unit_for_admin(request, raw, active_only=False):
+    """The org unit `raw` names, if it is inside the caller's area."""
+    try:
+        unit = OrgUnit.objects.select_related('parent').get(pk=int(raw))
+    except (TypeError, ValueError, OrgUnit.DoesNotExist):
+        raise ValidationError({'org_unit': ['Choose a province or station.']})
+    if active_only and not unit.active:
+        raise ValidationError({'org_unit': [f'{unit.name} is inactive.']})
+    scope = _scope(request)
+    if scope is not None and unit.pk not in scope:
+        raise PermissionDenied('That unit is outside your area.')
+    return unit
+
+
+def _admin_role_for(unit):
+    """The system-admin role created at this unit's level (None at National HQ)."""
+    code = SYSTEM_ADMIN_ROLE_FOR_UNIT.get(unit.unit_type)
+    return Role.objects.select_related('department').filter(code=code, is_active=True).first() if code else None
+
+
+def _system_admin_problem(user, role, unit):
+    """None if `user` may add another `role` holder at `unit` now, otherwise the reason."""
+    if role is None:
+        return 'System admins are created at a province or a station.'
+    if not (user.is_superuser or can(user, 'users.create', unit)):
+        return 'You cannot create accounts here.'
+    return can_grant(user, role, unit) or system_admin_slot_problem(role, unit)
+
+
+def _officer_names(service_number):
+    """First name and surname from the HR record with this service number, if there is one."""
+    try:
+        from HumanResources.models import Officer
+        officer = Officer.objects.filter(service_number=service_number).first()
+    except Exception:
+        officer = None
+    return (officer.first_name, officer.surname) if officer else ('', '')
 
 
 def _reason(request):
@@ -310,16 +360,23 @@ class ConsoleViewSet(viewsets.ViewSet):
         online_per_unit = dict(
             online_sessions().filter(org_unit_id__in=ids).values('org_unit_id')
             .annotate(n=Count('user', distinct=True)).values_list('org_unit_id', 'n'))
+        admins_per_unit = dict(
+            UserAssignment.objects.filter(org_unit_id__in=ids, is_active=True, user__is_active=True,
+                                          role__code__in=list(SYSTEM_ADMIN_ROLE_FOR_UNIT.values()))
+            .values('org_unit_id').annotate(n=Count('user', distinct=True)).values_list('org_unit_id', 'n'))
         rows, captured = latest_snapshot()
         usage, unassigned, shared = _usage_by_unit(rows)
 
         def node(u):
+            admin_role = SYSTEM_ADMIN_ROLE_FOR_UNIT.get(u.unit_type)
             return {
                 'id': u.id, 'code': u.code, 'code_short': u.code_short, 'name': u.name,
                 'unit_type': u.unit_type, 'location': u.location, 'active': u.active,
                 'parent_id': u.parent_id, 'users': users_per_unit.get(u.id, 0),
                 'online': online_per_unit.get(u.id, 0),
                 'storage_bytes': usage[u.id]['bytes'], 'records': usage[u.id]['rows'],
+                'system_admins': admins_per_unit.get(u.id, 0),
+                'system_admin_limit': SYSTEM_ADMIN_LIMITS.get(admin_role) if admin_role else None,
             }
 
         stations_by_parent = defaultdict(list)
@@ -341,6 +398,7 @@ class ConsoleViewSet(viewsets.ViewSet):
 
         national = next((node(u) for u in units if u.unit_type == 'NATIONAL_HQ'), None)
         return Response({
+            'scope': 'NATIONAL' if _scope(request) is None else 'LIMITED',
             'national': national,
             'provinces': provinces,
             'storage': {'captured_at': captured, 'unassigned': unassigned, 'shared': shared},
@@ -402,6 +460,9 @@ class ConsoleViewSet(viewsets.ViewSet):
         problem = can_grant(request.user, role, unit)
         if problem:
             raise PermissionDenied(problem)
+        problem = system_admin_slot_problem(role, unit)
+        if problem:
+            raise ValidationError({'role': [problem]})
         department = role.department or Department.objects.filter(pk=data.get('department'), active=True).first()
         if department is None:
             raise ValidationError({'department': ['Choose a department for this role.']})
@@ -484,6 +545,12 @@ class ConsoleViewSet(viewsets.ViewSet):
         _require_manage(request, target)
         reason = _reason(request)
         active = bool(request.data.get('is_active'))
+        if active and not target.is_active:
+            # Re-enabling must not push a unit past its system-admin limit.
+            for a in UserAssignment.objects.filter(user=target, is_active=True).select_related('role', 'org_unit'):
+                problem = system_admin_slot_problem(a.role, a.org_unit, exclude_user=target)
+                if problem:
+                    raise ValidationError({'is_active': [problem]})
         target.is_active = active
         target.save(update_fields=['is_active'])
         if not active:
@@ -508,6 +575,99 @@ class ConsoleViewSet(viewsets.ViewSet):
         target.save(update_fields=['first_name', 'last_name', 'email'])
         _audit(request, 'UPDATE_ACCOUNT', target, 'Name/email updated')
         return Response({'ok': True})
+
+    # ---- unit officers and system admins ---------------------------------
+
+    @action(detail=False, methods=['get'], url_path=r'units/(?P<unit_id>\d+)/officers')
+    def unit_officers(self, request, unit_id=None):
+        """Accounts assigned directly at one province or station, and its system-admin slots."""
+        unit = _unit_for_admin(request, unit_id)
+        users = (User.objects.filter(org_assignments__org_unit=unit, org_assignments__is_active=True).distinct()
+                 .prefetch_related('org_assignments__role', 'org_assignments__org_unit',
+                                   'org_assignments__department', 'sessions')
+                 .select_related('security'))
+        role = _admin_role_for(unit)
+        online_ids = _online_user_ids()
+        officers = []
+        for u in users:
+            row = _user_row(u, online_ids)
+            here = [a for a in u.org_assignments.all() if a.is_active and a.org_unit_id == unit.pk]
+            row['roles_here'] = [{'role_code': a.role.code, 'role_name': a.role.name,
+                                  'department_name': a.department.name} for a in here]
+            row['is_system_admin'] = role is not None and any(a.role_id == role.pk for a in here)
+            officers.append(row)
+        officers.sort(key=lambda r: (not r['is_system_admin'], r['username']))
+
+        admins = None
+        if role is not None:
+            used, limit = system_admin_slots(role, unit)
+            problem = _system_admin_problem(request.user, role, unit)
+            admins = {'role_code': role.code, 'role_name': role.name, 'used': used, 'limit': limit,
+                      'can_create': problem is None, 'reason': problem}
+        return Response({
+            'unit': {'id': unit.pk, 'code': unit.code, 'name': unit.name, 'unit_type': unit.unit_type,
+                     'active': unit.active, 'parent_id': unit.parent_id,
+                     'parent_name': unit.parent.name if unit.parent_id else None},
+            'officers': officers,
+            'system_admins': admins,
+        })
+
+    @action(detail=False, methods=['post'], url_path='system-admins')
+    def create_system_admin(self, request):
+        """Create a provincial (at a province) or station (at a station) system admin.
+
+        The service number is the username. The password is the one the creating
+        admin types; the new admin must replace it at first sign-in.
+        """
+        data = request.data
+        unit = _unit_for_admin(request, data.get('org_unit'), active_only=True)
+        role = _admin_role_for(unit)
+        if role is None:
+            raise ValidationError({'org_unit': ['System admins are created at a province or a station.']})
+        if not (request.user.is_superuser or can(request.user, 'users.create', unit)):
+            raise PermissionDenied('You cannot create accounts here.')
+        problem = can_grant(request.user, role, unit)
+        if problem:
+            raise PermissionDenied(problem)
+        problem = system_admin_slot_problem(role, unit)
+        if problem:
+            raise ValidationError({'org_unit': [problem]})
+
+        username = normalize_service_number(data.get('service_number'))
+        if User.objects.filter(username__iexact=username).exists():
+            raise ValidationError({'service_number': ['An account with this service number already exists.']})
+        hr_first, hr_last = _officer_names(username)
+        first = (data.get('first_name') or '').strip() or hr_first
+        last = (data.get('last_name') or '').strip() or hr_last
+        password = data.get('password') or ''
+        user = User(username=username, first_name=first, last_name=last)
+        try:
+            validate_password(password, user=user)
+        except DjangoValidationError as exc:
+            raise ValidationError({'password': list(exc.messages)})
+        department = role.department or Department.objects.filter(code='IT').first()
+        if department is None:
+            raise ValidationError({'org_unit': ['The IT department is missing; set up departments first.']})
+
+        with transaction.atomic():
+            # Lock the unit so two admins cannot fill the last slot at the same time.
+            OrgUnit.objects.select_for_update().filter(pk=unit.pk).first()
+            problem = system_admin_slot_problem(role, unit)
+            if problem:
+                raise ValidationError({'org_unit': [problem]})
+            user.set_password(password)
+            user.save()
+            UserSecurity.objects.create(user=user, must_change_password=True, password_reset_at=timezone.now(),
+                                        password_reset_by=request.user)
+            UserAssignment.objects.create(user=user, role=role, org_unit=unit, department=department,
+                                          is_primary=True, created_by=get_primary_assignment(request.user))
+        _audit(request, 'CREATE_SYSTEM_ADMIN', user, f'{username} as {role.code} at {unit.code}')
+        used, limit = system_admin_slots(role, unit)
+        return Response({
+            'id': user.id, 'username': user.username, 'role_code': role.code, 'org_unit_id': unit.pk,
+            'used': used, 'limit': limit,
+            'message': f'{username} can sign in with the password you set and must change it at first sign-in.',
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='grantable-roles')
     def grantable(self, request):

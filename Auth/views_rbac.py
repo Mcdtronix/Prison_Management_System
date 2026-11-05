@@ -5,7 +5,7 @@ from django.db.models import ProtectedError
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from .permissions import IsSuperAdminOrReadOnly
-from .rbac import admin_scope, can, can_grant
+from .rbac import admin_scope, can, can_grant, system_admin_slot_problem
 from .models import DataExposurePolicy, DataExposureRecord, Department, OrgUnitDepartment, Role, UserAssignment
 from .serializers_admin import (
     DataExposurePolicySerializer,
@@ -128,9 +128,17 @@ class UserAssignmentViewSet(AdminBaseViewSet):
         if reason:
             raise PermissionDenied(reason)
 
+    @staticmethod
+    def _check_slots(role, org_unit, target_user, is_active=True):
+        if is_active and target_user is not None and target_user.is_active:
+            problem = system_admin_slot_problem(role, org_unit, exclude_user=target_user)
+            if problem:
+                raise ValidationError({'role': [problem]})
+
     def perform_create(self, serializer):
         data = serializer.validated_data
         self._check(data.get('role'), data.get('org_unit'), data.get('user'))
+        self._check_slots(data.get('role'), data.get('org_unit'), data.get('user'), data.get('is_active', True))
         obj = serializer.save(created_by=_actor(self.request))
         _log(self.request, 'ASSIGN_ROLE', obj,
              f'{obj.user.username} -> {obj.role.code} at {obj.org_unit.code}')
@@ -142,6 +150,8 @@ class UserAssignmentViewSet(AdminBaseViewSet):
         self._check(inst.role, inst.org_unit, inst.user)
         self._check(data.get('role', inst.role), data.get('org_unit', inst.org_unit),
                     data.get('user', inst.user))
+        self._check_slots(data.get('role', inst.role), data.get('org_unit', inst.org_unit),
+                          data.get('user', inst.user), data.get('is_active', inst.is_active))
         obj = serializer.save()
         _log(self.request, 'UPDATE_ROLE_ASSIGNMENT', obj,
              f'{obj.user.username} -> {obj.role.code} at {obj.org_unit.code}, active={obj.is_active}')

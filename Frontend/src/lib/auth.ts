@@ -38,8 +38,9 @@ export const normalizeRole = (role?: string | null): string => {
     // the dedicated admin console lands. The server decides what they may do.
     NATIONAL_SYSTEM_ADMIN: "HQ_SYS_ADMIN",
     HQ_SYSTEM_ADMIN: "HQ_SYS_ADMIN",
-    PROVINCIAL_SYSTEM_ADMIN: "ADMIN_OFFICER",
-    PROV_SYS_ADMIN: "ADMIN_OFFICER",
+    // Provincial system admins use the console, limited to their province.
+    PROVINCIAL_SYSTEM_ADMIN: "PROV_SYS_ADMIN",
+    PROV_SYS_ADMIN: "PROV_SYS_ADMIN",
     STATION_SYSTEM_ADMIN: "ADMIN_OFFICER",
     STN_SYS_ADMIN: "ADMIN_OFFICER",
     SYS_ADMIN: "ADMIN_OFFICER",
@@ -56,6 +57,7 @@ export const getRoleDisplayName = (role?: string | null): string => {
 
   const roleMap: Record<string, string> = {
     HQ_SYS_ADMIN: "HQ System Admin",
+    PROV_SYS_ADMIN: "Provincial System Admin",
     SUPER_ADMIN: "Super Administrator",
     ADMIN_OFFICER: "Admin Officer",
     RECEPTION_OFFICER: "Reception Officer",
@@ -77,10 +79,14 @@ export const getRoleDisplayName = (role?: string | null): string => {
 /** Roles that use the HQ System Admin console (/hq). */
 export const HQ_CONSOLE_ROLES = ["HQ_SYS_ADMIN", "SUPER_ADMIN"];
 
+/** Roles that use the console at all. The server limits each one to its own area. */
+export const CONSOLE_ROLES = [...HQ_CONSOLE_ROLES, "PROV_SYS_ADMIN"];
+
 export const getDefaultRouteForRole = (role?: string | null): string => {
   switch (normalizeRole(role)) {
     case "HQ_SYS_ADMIN":
     case "SUPER_ADMIN":
+    case "PROV_SYS_ADMIN":
       return "/hq";
     case "ADMIN_OFFICER":
       return "/admin";
@@ -101,7 +107,7 @@ export const getLandingRouteForUser = (role?: string | null, orgUnitType?: strin
   const normalized = normalizeRole(role);
 
   // HQ System Admins (and legacy super admins) have their own console.
-  if (HQ_CONSOLE_ROLES.includes(normalized)) return '/hq';
+  if (CONSOLE_ROLES.includes(normalized)) return '/hq';
 
   // Administration officers use the station admin dashboard. (The per-level
   // /admin/nhq, /admin/phq and /admin/station pages were never built.)

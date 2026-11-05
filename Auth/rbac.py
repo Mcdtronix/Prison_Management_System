@@ -17,7 +17,7 @@ Two rules protect the hierarchy (plan §2.2):
 """
 from typing import Optional, Set
 
-from .capabilities import DEFAULT_ROLE_CAPABILITIES
+from .capabilities import DEFAULT_ROLE_CAPABILITIES, SYSTEM_ADMIN_LIMITS
 from .models import OrgUnit, Role, UserAssignment
 from .utils import normalize_role_code
 
@@ -219,6 +219,30 @@ def can_grant(actor, role, org_unit, target_user=None) -> Optional[str]:
     if wanted >= TIER_NATIONAL:
         return 'National administrators can only be appointed by a break-glass superuser.'
     return 'You can only grant roles below your own level, within your own unit or the units under it.'
+
+
+def system_admin_slots(role, org_unit, exclude_user=None):
+    """(used, limit) for a capped system-admin role at `org_unit`; limit is None if uncapped.
+
+    Only active assignments of active accounts use a slot, so disabling an
+    account or revoking its assignment frees one.
+    """
+    limit = SYSTEM_ADMIN_LIMITS.get(role.code) if role is not None else None
+    if limit is None or org_unit is None:
+        return 0, None
+    held = UserAssignment.objects.filter(role=role, org_unit=org_unit, is_active=True, user__is_active=True)
+    if exclude_user is not None:
+        held = held.exclude(user=exclude_user)
+    return held.values('user').distinct().count(), limit
+
+
+def system_admin_slot_problem(role, org_unit, exclude_user=None) -> Optional[str]:
+    """None if another `role` holder fits at `org_unit`, otherwise the reason."""
+    used, limit = system_admin_slots(role, org_unit, exclude_user)
+    if limit is not None and used >= limit:
+        return (f'{org_unit.name} already has {used} active {role.name}s (the limit is {limit}). '
+                'Disable one before adding another.')
+    return None
 
 
 def grantable_roles(actor, org_unit):

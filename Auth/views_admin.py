@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from .serializers_admin import CreatePHQSerializer, CreateAdminSerializer, CreateStationSerializer
 from .models import OrgUnit, UserAssignment, Department
 from .utils import create_audit_log, get_primary_assignment
-from .rbac import can, can_grant
+from .rbac import can, can_grant, system_admin_slot_problem
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -48,6 +48,9 @@ class AdminWorkflowViewSet(viewsets.ViewSet):
         reason = can_grant(request.user, serializer.validated_data['role'], org)
         if reason:
             return Response({'detail': reason}, status=status.HTTP_403_FORBIDDEN)
+        problem = system_admin_slot_problem(serializer.validated_data['role'], org)
+        if problem:
+            return Response({'role': [problem]}, status=status.HTTP_400_BAD_REQUEST)
         user = serializer.create(serializer.validated_data, org_unit=org)
 
         # The assignment goes in the role's home department (IT for system admins).

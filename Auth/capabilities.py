@@ -105,6 +105,18 @@ DEFAULT_ROLE_CAPABILITIES = {
     ],
 }
 
+# Most active holders of a system-admin role allowed at one org unit.
+SYSTEM_ADMIN_LIMITS = {
+    'PROV_SYS_ADMIN': 2,  # per province
+    'STN_SYS_ADMIN': 2,   # per station
+}
+
+# The system-admin role created at each unit type from the console.
+SYSTEM_ADMIN_ROLE_FOR_UNIT = {
+    'PROVINCIAL_HQ': 'PROV_SYS_ADMIN',
+    'STATION': 'STN_SYS_ADMIN',
+}
+
 # Roles that administer accounts; their tier is the level they are held at.
 # SUPER_ADMIN is the legacy equivalent of HQ System Admin.
 ADMIN_ROLE_CODES = {code for code, spec in BUILTIN_ROLES.items() if spec[2]} | {'SUPER_ADMIN'}

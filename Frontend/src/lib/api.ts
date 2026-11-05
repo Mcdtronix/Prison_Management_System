@@ -1212,6 +1212,11 @@ export const consoleApi = {
   endSession: (sessionId: string, reason: string) =>
     apiRequest<any>(`/auth/console/sessions/${sessionId}/end/`, { method: "POST", body: JSON.stringify({ reason }) }),
   grantableRoles: (orgUnitId: number) => apiRequest<any[]>(`/auth/console/grantable-roles/?org_unit=${orgUnitId}`),
+  /** Accounts assigned at one province or station, plus its system-admin slots. */
+  unitOfficers: (orgUnitId: number) => apiRequest<any>(`/auth/console/units/${orgUnitId}/officers/`),
+  /** Provincial admin (at a province) or station admin (at a station). The service number is the username. */
+  createSystemAdmin: (body: { org_unit: number; service_number: string; password: string }) =>
+    apiRequest<any>("/auth/console/system-admins/", { method: "POST", body: JSON.stringify(body) }),
   online: (params: Record<string, string | number | undefined | null> = {}) =>
     apiRequest<any[]>(`/auth/console/online/${qs(params)}`),
   activity: (params: Record<string, string | number | undefined | null> = {}) =>

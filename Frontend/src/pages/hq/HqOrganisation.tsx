@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, ChevronDown, ChevronRight, Landmark, Plus, Search } from 'lucide-react';
+import { Building2, ChevronDown, ChevronRight, Landmark, Plus, Search, ShieldCheck, Users } from 'lucide-react';
 import { consoleApi } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -12,10 +12,14 @@ import {
 import {
   EmptyState, LoadingRows, SectionCard, formatBytes, primaryButton,
 } from '@/components/console/ConsoleUI';
+import {
+  AdminKind, CreateSystemAdminDialog, UnitOfficersSheet, UnitOption,
+} from '@/components/console/SystemAdmins';
 
 type Unit = {
   id: number; code: string; name: string; location?: string; active: boolean;
   users: number; online: number; storage_bytes: number; records: number;
+  system_admins: number; system_admin_limit: number | null;
 };
 type Province = Unit & {
   stations: Unit[]; total_users: number; total_online: number; total_storage_bytes: number;
@@ -23,6 +27,29 @@ type Province = Unit & {
 
 const toCode = (name: string) =>
   name.toUpperCase().replace(/\b(PROVINCE|PRISON|METROPOLITAN)\b/g, '').trim().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+/** "1/2" system admins: amber when there are none, muted when full. */
+function AdminCount({ unit }: { unit: Unit }) {
+  if (unit.system_admin_limit == null) return null;
+  const n = unit.system_admins || 0;
+  const tone = n === 0 ? 'text-amber-700 dark:text-amber-400' : n >= unit.system_admin_limit
+    ? 'text-muted-foreground' : 'text-foreground';
+  return (
+    <span className={`inline-flex items-center gap-1 tabular-nums ${tone}`} title="System admins (limit)">
+      <ShieldCheck className="h-3.5 w-3.5" />{n}/{unit.system_admin_limit}
+    </span>
+  );
+}
+
+/** Opens the unit's officers table. */
+function OfficersButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-normal text-[#0b4f2a] hover:bg-[#0b4f2a]/10 dark:text-[#d7a928] dark:hover:bg-[#d7a928]/10">
+      <Users className="h-3.5 w-3.5" /> Officers
+    </button>
+  );
+}
 
 function CreateUnitDialog({
   kind, provinces, open, onOpenChange, onCreated,
@@ -124,6 +151,9 @@ const HqOrganisation = () => {
   const [dialog, setDialog] = useState<'province' | 'station' | null>(null);
   const [view, setView] = useState<'provinces' | 'stations'>('provinces');
   const [provinceFilter, setProvinceFilter] = useState('');
+  const [panelUnit, setPanelUnit] = useState<number | null>(null);
+  const [panelKey, setPanelKey] = useState(0);
+  const [adminDialog, setAdminDialog] = useState<{ kind: AdminKind; unitId?: number } | null>(null);
 
   const load = async () => {
     const res = await consoleApi.orgTree();
@@ -155,25 +185,55 @@ const HqOrganisation = () => {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [provinces, filter, provinceFilter]);
 
+  const provinceOptions: UnitOption[] = provinces.map((p) => ({
+    id: p.id, name: p.name, admins: p.system_admins, limit: p.system_admin_limit,
+  }));
+  const stationOptions: UnitOption[] = provinces.flatMap((p) => p.stations.map((s) => ({
+    id: s.id, name: s.name, group: p.name, admins: s.system_admins, limit: s.system_admin_limit,
+  })));
+
+  const adminCreated = (unitId: number) => {
+    // Show the new admin straight away in that unit's officers table.
+    setPanelUnit(unitId);
+    setPanelKey((k) => k + 1);
+    load();
+  };
+
   if (error) return <EmptyState>Could not load the organisation: {error}</EmptyState>;
   if (!tree) return <LoadingRows label="Loading provinces and stations…" />;
 
   const stationCount = provinces.reduce((n, p) => n + p.stations.length, 0);
   const goUsers = (id: number) => navigate(`/hq/users?org_unit=${id}`);
+  const national = tree.scope !== 'LIMITED';
 
   return (
     <div className="space-y-6">
       <SectionCard
-        title={tree.national ? tree.national.name : 'National HQ'}
-        description={`${provinces.length} provincial command centres · ${stationCount} stations`}
+        title={national ? (tree.national ? tree.national.name : 'National HQ') : (provinces[0]?.name || 'Your province')}
+        description={national
+          ? `${provinces.length} provincial command centres · ${stationCount} stations`
+          : `${stationCount} station${stationCount === 1 ? '' : 's'}`}
         action={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" onClick={() => setDialog('station')} disabled={!provinces.length}>
               <Plus className="mr-2 h-4 w-4" /> Station
             </Button>
-            <Button className={primaryButton} onClick={() => setDialog('province')}>
-              <Plus className="mr-2 h-4 w-4" /> Provincial command centre
-            </Button>
+            {national && (
+              <Button variant="outline" onClick={() => setDialog('province')}>
+                <Plus className="mr-2 h-4 w-4" /> Provincial command centre
+              </Button>
+            )}
+            {national ? (
+              <Button className={primaryButton} onClick={() => setAdminDialog({ kind: 'province' })}
+                disabled={!provinces.length}>
+                <ShieldCheck className="mr-2 h-4 w-4" /> Provincial admin
+              </Button>
+            ) : (
+              <Button className={primaryButton} onClick={() => setAdminDialog({ kind: 'station' })}
+                disabled={!stationCount}>
+                <ShieldCheck className="mr-2 h-4 w-4" /> Station admin
+              </Button>
+            )}
           </div>
         }
       >
@@ -214,6 +274,7 @@ const HqOrganisation = () => {
                     <th className="px-4 py-3 text-left">Station</th>
                     <th className="px-4 py-3 text-left">Command centre</th>
                     <th className="hidden px-4 py-3 text-left md:table-cell">Code</th>
+                    <th className="px-4 py-3 text-right">Admins</th>
                     <th className="px-4 py-3 text-right">Users</th>
                     <th className="hidden px-4 py-3 text-right sm:table-cell">Online</th>
                   </tr>
@@ -225,6 +286,7 @@ const HqOrganisation = () => {
                         <span className="flex items-center gap-2 text-foreground">
                           <Building2 className="h-4 w-4 text-muted-foreground" /> {s.name}
                           {!s.active && <span className="text-xs text-red-600">(inactive)</span>}
+                          <OfficersButton onClick={() => setPanelUnit(s.id)} />
                         </span>
                       </td>
                       <td className="px-4 py-2.5">
@@ -232,6 +294,7 @@ const HqOrganisation = () => {
                           onClick={() => setProvinceFilter(String(s.province.id))}>{s.province.name}</button>
                       </td>
                       <td className="hidden px-4 py-2.5 font-mono text-xs md:table-cell">{s.code}</td>
+                      <td className="px-4 py-2.5 text-right"><AdminCount unit={s} /></td>
                       <td className="px-4 py-2.5 text-right">
                         <button className="text-[#0b4f2a] dark:text-[#d7a928] underline-offset-2 hover:underline"
                           onClick={() => goUsers(s.id)}>{s.users}</button>
@@ -247,7 +310,7 @@ const HqOrganisation = () => {
             </div>
           )
         ) : (<>
-        {tree.national && (
+        {national && tree.national && (
           <button onClick={() => goUsers(tree.national.id)}
             className="mb-3 flex w-full items-center justify-between rounded-md bg-[#0b4f2a] px-4 py-3 text-left text-white">
             <span className="flex items-center gap-2 font-medium"><Landmark className="h-4 w-4 text-[#d7a928]" /> {tree.national.name}</span>
@@ -264,8 +327,9 @@ const HqOrganisation = () => {
                 <tr>
                   <th className="px-4 py-3 text-left">Unit</th>
                   <th className="hidden px-4 py-3 text-left md:table-cell">Code</th>
+                  <th className="px-4 py-3 text-right">Admins</th>
                   <th className="px-4 py-3 text-right">Users</th>
-                  <th className="px-4 py-3 text-right">Online</th>
+                  <th className="hidden px-4 py-3 text-right sm:table-cell">Online</th>
                   <th className="hidden px-4 py-3 text-right sm:table-cell">Storage</th>
                 </tr>
               </thead>
@@ -281,14 +345,16 @@ const HqOrganisation = () => {
                           <Landmark className="h-4 w-4 text-[#0b4f2a] dark:text-[#d7a928]" />
                           {p.name}
                           <span className="text-xs font-normal text-muted-foreground">({p.stations.length} stations)</span>
+                          <OfficersButton onClick={() => setPanelUnit(p.id)} />
                         </span>
                       </td>
                       <td className="hidden px-4 py-3 font-mono text-xs md:table-cell">{p.code}</td>
+                      <td className="px-4 py-3 text-right"><AdminCount unit={p} /></td>
                       <td className="px-4 py-3 text-right">
                         <button className="text-[#0b4f2a] dark:text-[#d7a928] underline-offset-2 hover:underline"
                           onClick={(e) => { e.stopPropagation(); goUsers(p.id); }}>{p.total_users}</button>
                       </td>
-                      <td className="px-4 py-3 text-right">{p.total_online}</td>
+                      <td className="hidden px-4 py-3 text-right sm:table-cell">{p.total_online}</td>
                       <td className="hidden px-4 py-3 text-right sm:table-cell">{formatBytes(p.total_storage_bytes)}</td>
                     </tr>,
                     ...(expanded
@@ -299,18 +365,20 @@ const HqOrganisation = () => {
                               <span className="flex items-center gap-2 text-foreground">
                                 <Building2 className="h-4 w-4 text-muted-foreground" /> {s.name}
                                 {!s.active && <span className="text-xs text-red-600">(inactive)</span>}
+                                <OfficersButton onClick={() => setPanelUnit(s.id)} />
                               </span>
                             </td>
                             <td className="hidden px-4 py-2.5 font-mono text-xs md:table-cell">{s.code}</td>
+                            <td className="px-4 py-2.5 text-right"><AdminCount unit={s} /></td>
                             <td className="px-4 py-2.5 text-right">
                               <button className="text-[#0b4f2a] dark:text-[#d7a928] underline-offset-2 hover:underline"
                                 onClick={() => goUsers(s.id)}>{s.users}</button>
                             </td>
-                            <td className="px-4 py-2.5 text-right">{s.online}</td>
+                            <td className="hidden px-4 py-2.5 text-right sm:table-cell">{s.online}</td>
                             <td className="hidden px-4 py-2.5 text-right sm:table-cell">{formatBytes(s.storage_bytes)}</td>
                           </tr>
                         ))
-                        : [<tr key={`e${p.id}`} className="border-t"><td colSpan={5} className="py-3 pl-14 text-xs text-muted-foreground">No stations yet.</td></tr>]
+                        : [<tr key={`e${p.id}`} className="border-t"><td colSpan={6} className="py-3 pl-14 text-xs text-muted-foreground">No stations yet.</td></tr>]
                       : []),
                   ];
                 })}
@@ -323,6 +391,15 @@ const HqOrganisation = () => {
 
       <CreateUnitDialog kind={dialog || 'province'} provinces={provinces} open={!!dialog}
         onOpenChange={(o) => !o && setDialog(null)} onCreated={load} />
+
+      <UnitOfficersSheet unitId={panelUnit} refreshKey={panelKey}
+        onOpenChange={(o) => !o && setPanelUnit(null)}
+        onAddAdmin={(unitId, kind) => setAdminDialog({ kind, unitId })} />
+
+      <CreateSystemAdminDialog open={!!adminDialog} kind={adminDialog?.kind || 'province'}
+        units={adminDialog?.kind === 'station' ? stationOptions : provinceOptions}
+        defaultUnitId={adminDialog?.unitId} onOpenChange={(o) => !o && setAdminDialog(null)}
+        onCreated={adminCreated} />
     </div>
   );
 };
