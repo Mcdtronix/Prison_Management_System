@@ -22,7 +22,9 @@ class MessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
         fields = ('id', 'thread', 'sender', 'body', 'created_at', 'attachments')
-        read_only_fields = ('created_at',)
+        # The sender is always the caller's own mailbox, set by the view.
+        read_only_fields = ('sender', 'created_at')
+        extra_kwargs = {'body': {'required': False, 'allow_blank': True}}
 
 
 class ThreadParticipantSerializer(serializers.ModelSerializer):

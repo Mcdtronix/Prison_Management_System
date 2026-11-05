@@ -467,3 +467,7 @@ MAX_THREAD_RECIPIENTS = config('MAX_THREAD_RECIPIENTS', default=50, cast=int)
 FILE_UPLOAD_MAX_MEMORY_SIZE = config('FILE_UPLOAD_MAX_MEMORY_SIZE', default=104857600, cast=int)  # 100MB
 ALLOWED_UPLOAD_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx', 'xls', 'xlsx']
 
+# Messaging attachments (types come from ALLOWED_UPLOAD_EXTENSIONS)
+MESSAGING_MAX_ATTACHMENT_BYTES = config('MESSAGING_MAX_ATTACHMENT_BYTES', default=10 * 1024 * 1024, cast=int)  # 10MB each
+MESSAGING_MAX_ATTACHMENTS = config('MESSAGING_MAX_ATTACHMENTS', default=5, cast=int)  # per message
+

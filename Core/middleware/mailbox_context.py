@@ -187,7 +187,7 @@ class MailboxContextMiddleware(MiddlewareMixin):
                     org_unit__parent=national,
                     department=department,
                     active=True,
-                    unit_type='PROVINCIAL_HQ'
+                    org_unit__unit_type='PROVINCIAL_HQ'
                 ).exclude(org_unit=org_unit)
                 for mailbox in peer_mailboxes:
                     recipients[mailbox.mailbox_address] = mailbox

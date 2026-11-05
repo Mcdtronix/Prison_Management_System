@@ -213,9 +213,10 @@ export default function Compose() {
                 
                 <div className="relative">
                   <input 
-                    type="file" 
-                    multiple 
-                    onChange={e => onFiles(e.target.files)} 
+                    type="file"
+                    multiple
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
+                    onChange={e => onFiles(e.target.files)}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     title="Attach files"
                   />
