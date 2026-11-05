@@ -702,8 +702,10 @@ export const adminApi = {
 
 // Messaging API helpers
 export const messagingApi = {
-  listMailboxes: async () => {
-    return apiRequest('/messaging/mailboxes/');
+  /** Active mailboxes; `q` matches address, unit or department (server-side). */
+  listMailboxes: async (q?: string) => {
+    const qs = q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
+    return apiRequest(`/messaging/mailboxes/${qs}`);
   },
   listThreads: async (folder?: string) => {
     const qs = folder ? `?folder=${folder}` : '';

@@ -103,6 +103,14 @@ class FlowTests(MessagingBase):
         bodies = [m['body'] for m in rows(self.a.get(MESSAGES))]
         self.assertEqual(bodies, ['Inmate 123 arriving Monday', 'Noted'])
 
+    def test_station_sees_conversation_started_by_its_province(self):
+        # Used to fail: the org-area filter hid threads owned by a unit above the station.
+        r = self.start(client=self.ph, to=self.rec_s1.mailbox_address, body='Audit on Friday')
+        self.assertEqual(r.status_code, 201, r.content)
+        thread_id = r.json()['id']
+        self.assertEqual([t['id'] for t in rows(self.a.get(THREADS))], [thread_id])
+        self.assertEqual(self.a.get(f'{THREADS}{thread_id}/').status_code, 200)
+
     def test_sent_folder_and_own_mailbox_views(self):
         self.start()
         self.assertEqual(len(rows(self.a.get(THREADS + '?folder=sent'))), 1)
@@ -175,16 +183,17 @@ class RecipientTests(MessagingBase):
         self.assertEqual(OrgUnitDepartment.objects.count(), before)
         self.assertFalse(Thread.objects.exists())
 
-    def test_recipient_outside_allowed_list(self):
-        # Station 1 reception may not start a conversation with a station in another province.
-        r = self.start(to=self.rec_s2.mailbox_address)
-        self.assertEqual(r.status_code, 403)
-        self.assertIn(self.rec_s2.mailbox_address, r.json()['detail'])
-        self.assertFalse(Thread.objects.exists())
+    def test_anyone_can_message_anyone(self):
+        # A station can write to a station in another province, and to several mailboxes at once.
+        r = self.start(to=f'{self.rec_s2.mailbox_address},{self.health_p1.mailbox_address}')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(rows(self.m.get(THREADS))[0]['id'], r.json()['id'])
+        # ...and a province can start a conversation with any station department.
+        self.assertEqual(self.start(client=self.ph, to=self.rec_s2.mailbox_address).status_code, 201)
 
     def test_one_bad_recipient_blocks_the_whole_send(self):
-        r = self.start(to=f'{self.health_p1.mailbox_address},{self.rec_s2.mailbox_address}')
-        self.assertEqual(r.status_code, 403)
+        r = self.start(to=f'{self.health_p1.mailbox_address},nobody@nowhere.pms.local')
+        self.assertEqual(r.status_code, 400)
         self.assertFalse(Thread.objects.exists())
 
     def test_inactive_mailbox_is_refused(self):
@@ -196,10 +205,43 @@ class RecipientTests(MessagingBase):
         self.assertEqual(self.start(to=self.rec_s1.mailbox_address).status_code, 400)  # only yourself
 
     def test_province_can_reach_its_own_departments(self):
-        # Used to fail: the provincial rule crashed before adding these.
         rec_p1 = self.mailbox(self.p1, self.reception)
         r = self.start(client=self.ph, to=rec_p1.mailbox_address)
         self.assertEqual(r.status_code, 201, r.content)
+
+
+class DirectoryTests(MessagingBase):
+    """The recipient search behind Compose."""
+
+    def search(self, q=''):
+        r = self.a.get('/api/messaging/mailboxes/', {'q': q} if q else {})
+        self.assertEqual(r.status_code, 200)
+        return {m['mailbox_address']: m for m in rows(r)}
+
+    def test_lists_every_active_mailbox_with_names(self):
+        found = self.search()
+        self.assertEqual(set(found), {self.rec_s1.mailbox_address, self.health_p1.mailbox_address,
+                                      self.rec_s2.mailbox_address})
+        entry = found[self.health_p1.mailbox_address]
+        self.assertEqual((entry['department_name'], entry['org_unit_name'], entry['unit_type']),
+                         (self.health.name, 'Province 1', 'PROVINCIAL_HQ'))
+
+    def test_search_by_unit_department_or_both(self):
+        self.assertEqual(set(self.search('Station 2')), {self.rec_s2.mailbox_address})
+        self.assertEqual(set(self.search(self.health.name)), {self.health_p1.mailbox_address})
+        self.assertEqual(set(self.search(f'{self.reception.name} Station 1')), {self.rec_s1.mailbox_address})
+
+    def test_new_department_is_searchable_before_anyone_uses_it(self):
+        # Used to fail: a mailbox record only appeared after a sign-in or a first message.
+        oud = OrgUnitDepartment.objects.create(org_unit=self.s2, department=self.health)
+        self.assertIn(oud.mailbox_address, self.search('Station 2'))
+        self.assertEqual(self.start(to=oud.mailbox_address).status_code, 201)
+
+    def test_inactive_mailboxes_are_hidden(self):
+        OrgUnitDepartment.objects.filter(pk=self.rec_s2.org_unit_department_id).update(active=False)
+        self.assertNotIn(self.rec_s2.mailbox_address, self.search())
+        OrgUnit.objects.filter(pk=self.p1.pk).update(active=False)
+        self.assertNotIn(self.health_p1.mailbox_address, self.search())
 
 
 class AttachmentTests(MessagingBase):

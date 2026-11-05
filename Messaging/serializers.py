@@ -5,9 +5,13 @@ from Auth.models import OrgUnitDepartment
 
 
 class MailboxSerializer(serializers.ModelSerializer):
+    org_unit_name = serializers.CharField(source='org_unit_department.org_unit.name', read_only=True)
+    unit_type = serializers.CharField(source='org_unit_department.org_unit.unit_type', read_only=True)
+    department_name = serializers.CharField(source='org_unit_department.department.name', read_only=True)
+
     class Meta:
         model = Mailbox
-        fields = ('id', 'mailbox_address', 'org_unit_department')
+        fields = ('id', 'mailbox_address', 'org_unit_department', 'org_unit_name', 'unit_type', 'department_name')
 
 
 class AttachmentSerializer(serializers.ModelSerializer):

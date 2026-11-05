@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { X, Paperclip, Send, ArrowLeft, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Compose() {
   const [query, setQuery] = useState('');
@@ -20,17 +21,24 @@ export default function Compose() {
   const { toast } = useToast();
   const timer = useRef<number | null>(null);
 
+  const { user } = useAuth();
+  const ownMailbox = (user?.mailboxAddress || '').toLowerCase();
+
   useEffect(() => {
-    if (!query.trim()) return setSuggestions([]);
     if (timer.current) window.clearTimeout(timer.current);
+    if (!query.trim()) { setSuggestions([]); return; }
+    const q = query;
     timer.current = window.setTimeout(async () => {
-      const res = await messagingApi.listMailboxes();
-      if (res.data) {
-        const q = query.toLowerCase();
-        setSuggestions((res.data as any[]).filter(m => m.mailbox_address.toLowerCase().includes(q) && !recipients.includes(m.mailbox_address)));
-      }
+      const res = await messagingApi.listMailboxes(q);
+      const payload: any = res.data;
+      const list: any[] = Array.isArray(payload) ? payload : payload?.results || [];
+      setSuggestions(list.filter(m => {
+        const addr = String(m.mailbox_address).toLowerCase();
+        return addr !== ownMailbox && !recipients.some(r => r.toLowerCase() === addr);
+      }));
     }, 250);
-  }, [query, recipients]);
+    return () => { if (timer.current) window.clearTimeout(timer.current); };
+  }, [query, recipients, ownMailbox]);
 
   const addRecipient = (addr: string) => {
     if (!recipients.includes(addr)) setRecipients([...recipients, addr]);
@@ -129,7 +137,7 @@ export default function Compose() {
                   ))}
                   <input
                     className="flex-1 outline-none min-w-[200px] text-sm py-1 bg-transparent"
-                    placeholder={recipients.length === 0 ? "Type mailbox address..." : ""}
+                    placeholder={recipients.length === 0 ? "Search by station, province or department..." : ""}
                     value={query}
                     onChange={e => setQuery(e.target.value)}
                     onKeyDown={e => {
@@ -151,8 +159,12 @@ export default function Compose() {
                         className="px-4 py-2 hover:bg-gray-50 cursor-pointer flex justify-between items-center" 
                         onClick={() => addRecipient(s.mailbox_address)}
                       >
-                        <div className="font-medium text-sm text-gray-900">{s.mailbox_address}</div>
-                        <div className="text-xs text-gray-500">{s.org_unit_department?.org_unit?.name || ''}</div>
+                        <div className="min-w-0">
+                          <div className="font-medium text-sm text-gray-900">
+                            {s.department_name} <span className="font-normal text-gray-500">· {s.org_unit_name}</span>
+                          </div>
+                          <div className="truncate text-xs text-gray-500">{s.mailbox_address}</div>
+                        </div>
                       </li>
                     ))}
                   </ul>

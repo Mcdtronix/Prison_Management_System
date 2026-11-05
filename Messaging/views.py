@@ -6,11 +6,10 @@ Access rules (every endpoint follows them):
   their org unit (`request.mailbox`, set by MailboxContextMiddleware).
 * You only ever see conversations your mailbox takes part in, and only the
   messages inside them.
-* Starting a conversation checks every recipient against the sender's allowed
-  recipients (`request.message_recipients`). An empty list allows no one.
-  Unknown addresses are refused; nothing is created from a typed address.
-* Anyone already in a conversation may reply in it. Recipients were checked
-  when the conversation started.
+* Any mailbox may start a conversation with any other active mailbox.
+  Unknown or inactive addresses are refused; nothing is created from a
+  typed address.
+* Anyone in a conversation may reply in it.
 * Messages and conversations cannot be edited or deleted through the API, so
   the record stays intact.
 """
@@ -92,11 +91,6 @@ def _resolve_recipient(address):
     return mailbox
 
 
-def _allowed_department_ids(request):
-    """Ids of the OrgUnitDepartments the caller may start a conversation with."""
-    return {oud.id for oud in (getattr(request, 'message_recipients', None) or {}).values()}
-
-
 def _add_message(thread, sender, body, files):
     message = Message.objects.create(thread=thread, sender=sender, body=body)
     message.read_by.add(sender)
@@ -109,20 +103,24 @@ def _add_message(thread, sender, body, files):
 
 class MailboxViewSet(viewsets.ReadOnlyModelViewSet):
     """Mailbox directory (addresses only) plus your own inbox, outbox and drafts."""
-    queryset = Mailbox.objects.select_related('org_unit_department').all()
+    queryset = Mailbox.objects.select_related(
+        'org_unit_department__org_unit', 'org_unit_department__department').all()
     serializer_class = MailboxSerializer
     permission_classes = (IsAuthenticated,)
 
     def get_queryset(self):
-        qs = super().get_queryset()
-        q = (self.request.query_params.get('q') or '').strip()
-        if q:
+        """Active mailboxes. ?q= matches address, unit or department (every word must match)."""
+        qs = super().get_queryset().filter(
+            org_unit_department__active=True, org_unit_department__org_unit__active=True)
+        for word in (self.request.query_params.get('q') or '').split():
             qs = qs.filter(
-                Q(mailbox_address__icontains=q) |
-                Q(org_unit_department__org_unit__name__icontains=q) |
-                Q(org_unit_department__org_unit__code__icontains=q)
+                Q(mailbox_address__icontains=word) |
+                Q(org_unit_department__org_unit__name__icontains=word) |
+                Q(org_unit_department__org_unit__code__icontains=word) |
+                Q(org_unit_department__department__name__icontains=word) |
+                Q(org_unit_department__department__code__icontains=word)
             )
-        return qs.order_by('mailbox_address')
+        return qs.order_by('org_unit_department__org_unit__name', 'org_unit_department__department__name')
 
     def _own(self, request):
         """The mailbox in the URL, which must be the caller's own."""
@@ -165,6 +163,9 @@ class ThreadViewSet(viewsets.ModelViewSet):
     serializer_class = ThreadSerializer
     permission_classes = (IsAuthenticated, MessagingPermission)
     http_method_names = READ_AND_CREATE
+    # Access is by participation (see get_queryset), not by org area: a
+    # conversation started elsewhere must still reach every participant.
+    filter_backends = []
 
     def get_queryset(self):
         mailbox = getattr(self.request, 'mailbox', None)
@@ -173,7 +174,11 @@ class ThreadViewSet(viewsets.ModelViewSet):
         qs = Thread.objects.filter(participants__mailbox=mailbox)
         if self.request.query_params.get('folder') == 'sent':
             qs = qs.filter(messages__sender=mailbox)
-        return qs.distinct().order_by('-created_at')
+        return qs.distinct().order_by('-created_at').prefetch_related(
+            'participants__mailbox__org_unit_department__org_unit',
+            'participants__mailbox__org_unit_department__department',
+            'messages__attachments',
+        )
 
     def create(self, request, *args, **kwargs):
         """Start a conversation.
@@ -193,11 +198,6 @@ class ThreadViewSet(viewsets.ModelViewSet):
             raise ValidationError({'participants': f'At most {settings.MAX_THREAD_RECIPIENTS} recipients.'})
 
         recipients = [_resolve_recipient(a) for a in addresses]
-        allowed = _allowed_department_ids(request)
-        refused = [m.mailbox_address for m in recipients if m.org_unit_department_id not in allowed]
-        if refused:
-            raise PermissionDenied(f'You may not message: {", ".join(refused)}')
-
         body = data.get('initial_body') or ''
         files = _uploaded_files(request)
 
@@ -237,6 +237,9 @@ class MessageViewSet(viewsets.ModelViewSet):
     serializer_class = MessageSerializer
     permission_classes = (IsAuthenticated, MessagingPermission)
     http_method_names = READ_AND_CREATE
+    # Access is by participation (see get_queryset), not by org area: a
+    # conversation started elsewhere must still reach every participant.
+    filter_backends = []
 
     def get_queryset(self):
         mailbox = getattr(self.request, 'mailbox', None)
