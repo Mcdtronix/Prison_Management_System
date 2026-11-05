@@ -1,0 +1,100 @@
+/* Message text: shared by the editor and the reading view so a message
+   looks the same while writing and after sending. */
+.pms-prose {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: hsl(var(--foreground));
+  overflow-wrap: anywhere;
+}
+.pms-prose > * + * { margin-top: 0.6em; }
+.pms-prose p { margin: 0; }
+.pms-prose p + p { margin-top: 0.6em; }
+.pms-prose h1 { font-size: 1.5rem; font-weight: 600; line-height: 1.25; }
+.pms-prose h2 { font-size: 1.25rem; font-weight: 600; line-height: 1.3; }
+.pms-prose h3 { font-size: 1.05rem; font-weight: 600; }
+.pms-prose ul { list-style: disc; padding-left: 1.6em; }
+.pms-prose ol { list-style: decimal; padding-left: 1.6em; }
+.pms-prose ul ul { list-style: circle; }
+.pms-prose li > p { margin: 0; }
+.pms-prose li + li { margin-top: 0.15em; }
+.pms-prose blockquote {
+  border-left: 3px solid hsl(var(--border));
+  padding-left: 0.9em;
+  color: hsl(var(--muted-foreground));
+}
+.pms-prose a { color: hsl(var(--primary)); text-decoration: underline; text-underline-offset: 2px; }
+.dark .pms-prose a { color: #d7a928; }
+.pms-prose hr { border: 0; border-top: 1px solid hsl(var(--border)); margin: 1em 0; }
+.pms-prose code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  background: hsl(var(--muted));
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+}
+.pms-prose pre {
+  background: hsl(var(--muted));
+  padding: 0.75em 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.pms-prose pre code { background: none; padding: 0; }
+.pms-prose mark { background-color: #fde68a; color: inherit; padding: 0 0.1em; border-radius: 2px; }
+.pms-prose img { max-width: 100%; height: auto; border-radius: 4px; }
+.pms-prose img.ProseMirror-selectednode { outline: 2px solid hsl(var(--primary)); }
+.pms-prose table { border-collapse: collapse; width: 100%; table-layout: fixed; margin: 0.4em 0; }
+.pms-prose th,
+.pms-prose td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.35em 0.6em;
+  vertical-align: top;
+  position: relative;
+  min-width: 2em;
+}
+.pms-prose th { background: hsl(var(--muted)); font-weight: 600; text-align: left; }
+.pms-prose .tableWrapper { overflow-x: auto; }
+
+/* ---- editor --------------------------------------------------------- */
+.pms-editor .ProseMirror { outline: none; min-height: inherit; }
+.pms-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: hsl(var(--muted-foreground));
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.pms-editor .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--primary) / 0.12);
+  pointer-events: none;
+}
+.pms-editor .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: hsl(var(--primary) / 0.5);
+  pointer-events: none;
+}
+.pms-editor.resize-cursor { cursor: col-resize; }
+
+/* ---- printing a conversation --------------------------------------- */
+@media print {
+  body * { visibility: hidden !important; }
+  .pms-print, .pms-print * { visibility: visible !important; }
+  .pms-print {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 0 !important;
+    overflow: visible !important;
+    color: #000 !important;
+    background: #fff !important;
+  }
+  .pms-no-print { display: none !important; }
+  .pms-print .pms-prose { color: #000; }
+  .pms-print a { color: #000; }
+}

@@ -9,7 +9,7 @@ import { getRoleDisplayName, normalizeRole } from "./auth";
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
-interface ApiResponse<T> {
+export interface ApiResponse<T> {
   data?: T;
   error?: string;
   status?: number;
@@ -90,7 +90,7 @@ interface ManagedUserProfile {
 }
 
 // Enhanced fetch function with comprehensive error handling
-async function apiRequest<T>(
+export async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<ApiResponse<T>> {
@@ -700,65 +700,12 @@ export const adminApi = {
   },
 };
 
-// Messaging API helpers
+// Messaging: the full client lives in ./messaging.ts. This stays for the
+// sidebar badge, which only needs the unread count.
 export const messagingApi = {
-  /** Active mailboxes; `q` matches address, unit or department (server-side). */
-  listMailboxes: async (q?: string) => {
-    const qs = q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
-    return apiRequest(`/messaging/mailboxes/${qs}`);
-  },
-  listThreads: async (folder?: string) => {
-    const qs = folder ? `?folder=${folder}` : '';
-    return apiRequest(`/messaging/threads/${qs}`);
-  },
-  getThread: async (id: number) => {
-    return apiRequest(`/messaging/threads/${id}/`);
-  },
-  /**
-   * Get unread messages count.
-   * Tries a dedicated endpoint first, falls back to scanning threads responses.
-   */
   getUnreadCount: async (): Promise<ApiResponse<number>> => {
-    try {
-      const res = await apiRequest('/messaging/unread_count/');
-      if (res.data && typeof res.data === 'object') {
-        const n = (res.data as any).count ?? (res.data as any).unread_count;
-        if (typeof n === 'number') return { data: n, status: res.status };
-      }
-
-      // Fallback: fetch threads and compute a heuristic unread count
-      const threadsRes = await apiRequest('/messaging/threads/');
-      if (threadsRes.data) {
-        const payload: any = threadsRes.data;
-        const items = Array.isArray(payload) ? payload : payload.results || [];
-        const unread = items.reduce((acc: number, t: any) => {
-          if (typeof t.unread_count === 'number') return acc + (t.unread_count || 0);
-          if (t.unread === true) return acc + 1;
-          return acc;
-        }, 0);
-        return { data: unread };
-      }
-    } catch (e) {
-      console.warn('Failed to fetch unread count', e);
-    }
-
-    return { data: 0 };
-  },
-    createThread: async (payload: any) => {
-      // Accept FormData (for attachments) or plain JSON payloads
-      if (payload instanceof FormData) {
-        return apiRequest('/messaging/threads/', { method: 'POST', body: payload });
-      }
-      return apiRequest('/messaging/threads/', { method: 'POST', body: JSON.stringify(payload) });
-    },
-    createMessage: async (payload: any) => {
-      if (payload instanceof FormData) {
-        return apiRequest('/messaging/messages/', { method: 'POST', body: payload });
-      }
-      return apiRequest('/messaging/messages/', { method: 'POST', body: JSON.stringify(payload) });
-    },
-  markThreadRead: async (id: number) => {
-    return apiRequest(`/messaging/threads/${id}/mark_read/`, { method: 'POST' });
+    const res = await apiRequest<{ count: number }>('/messaging/unread_count/');
+    return { data: res.data?.count ?? 0, status: res.status, error: res.error };
   },
 };
 

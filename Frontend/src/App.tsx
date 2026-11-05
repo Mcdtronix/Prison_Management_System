@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -43,11 +44,6 @@ import DischargeAssessments from "@/pages/health/DischargeAssessments";
 import StoresDashboard from "@/pages/stores/StoresDashboard";
 import FarmsDashboard from "@/pages/farms/FarmsDashboard";
 import InmateDetails from "@/pages/shared/InmateDetails";
-import MessagingInbox from "@/pages/messaging/Inbox";
-import ThreadView from "@/pages/messaging/ThreadView";
-import Compose from "@/pages/messaging/Compose";
-import Outbox from "@/pages/messaging/Outbox";
-import Drafts from "@/pages/messaging/Drafts";
 import { PrisonLayout } from "@/components/PrisonLayout";
 import HqOverview from "@/pages/hq/HqOverview";
 import HqOrganisation from "@/pages/hq/HqOrganisation";
@@ -57,6 +53,17 @@ import HqActivity from "@/pages/hq/HqActivity";
 import HqStorage from "@/pages/hq/HqStorage";
 import ChangePassword from "@/pages/shared/ChangePassword";
 import { HQ_CONSOLE_ROLES } from "@/lib/auth";
+
+// Messaging (and its rich-text editor) loads only when someone opens it.
+const MailFolder = lazy(() => import("@/pages/messaging/MailFolder"));
+const ThreadView = lazy(() => import("@/pages/messaging/ThreadView"));
+const Compose = lazy(() => import("@/pages/messaging/Compose"));
+const Drafts = lazy(() => import("@/pages/messaging/Drafts"));
+const MessagingLoading = () => (
+  <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading messages…</div>
+);
+
+const MESSAGING_ROLES = ["HQ_SYS_ADMIN","SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"];
 
 /** One HQ console page: role check + the standard app shell. */
 const hqPage = (title: string, description: string, page: JSX.Element) => (
@@ -505,47 +512,40 @@ function App() {
           />
 
           {/* 404 route */}
+          {/* Messaging */}
           <Route
             path="/messaging"
             element={<Navigate to="/messaging/inbox" replace />}
           />
           <Route
-            path="/messaging/inbox"
-            element={
-              <ProtectedRoute allowedRoles={["HQ_SYS_ADMIN","SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
-                <MessagingInbox />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/messaging/compose"
             element={
-              <ProtectedRoute allowedRoles={["HQ_SYS_ADMIN","SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
-                <Compose />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/messaging/threads/:id"
-            element={
-              <ProtectedRoute allowedRoles={["HQ_SYS_ADMIN","SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
-                <ThreadView />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/messaging/outbox"
-            element={
-              <ProtectedRoute allowedRoles={["HQ_SYS_ADMIN","SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
-                <Outbox />
+              <ProtectedRoute allowedRoles={MESSAGING_ROLES}>
+                <Suspense fallback={<MessagingLoading />}><Compose /></Suspense>
               </ProtectedRoute>
             }
           />
           <Route
             path="/messaging/drafts"
             element={
-              <ProtectedRoute allowedRoles={["HQ_SYS_ADMIN","SUPER_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"]}>
-                <Drafts />
+              <ProtectedRoute allowedRoles={MESSAGING_ROLES}>
+                <Suspense fallback={<MessagingLoading />}><Drafts /></Suspense>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/messaging/threads/:id"
+            element={
+              <ProtectedRoute allowedRoles={MESSAGING_ROLES}>
+                <Suspense fallback={<MessagingLoading />}><ThreadView /></Suspense>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/messaging/:folder"
+            element={
+              <ProtectedRoute allowedRoles={MESSAGING_ROLES}>
+                <Suspense fallback={<MessagingLoading />}><MailFolder /></Suspense>
               </ProtectedRoute>
             }
           />

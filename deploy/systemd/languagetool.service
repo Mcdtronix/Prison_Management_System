@@ -1,0 +1,43 @@
+# LanguageTool grammar checker for PMS messaging (optional).
+# Installed to /etc/systemd/system/languagetool.service; see deploy/LANGUAGETOOL.md.
+#
+# Listens on 127.0.0.1:8081 only. Django (Messaging/views.py grammar_view)
+# is its only client. The network rules below stop it from opening any
+# connection off this machine, so message text cannot leave the server.
+
+[Unit]
+Description=LanguageTool grammar checker (PMS messaging)
+After=network.target
+
+[Service]
+Type=simple
+User=languagetool
+Group=languagetool
+WorkingDirectory=/opt/languagetool
+# HTTPServer binds to localhost unless --public is given; it is not.
+ExecStart=/usr/bin/java -Xms128m -Xmx768m -cp /opt/languagetool/languagetool-server.jar \
+    org.languagetool.server.HTTPServer --port 8081 --allow-origin ""
+
+Restart=on-failure
+RestartSec=5
+MemoryMax=1G
+
+# Network: loopback only, in and out.
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadOnlyPaths=/opt/languagetool
+
+[Install]
+WantedBy=multi-user.target

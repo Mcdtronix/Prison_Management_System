@@ -470,4 +470,12 @@ ALLOWED_UPLOAD_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx', 'xls', 
 # Messaging attachments (types come from ALLOWED_UPLOAD_EXTENSIONS)
 MESSAGING_MAX_ATTACHMENT_BYTES = config('MESSAGING_MAX_ATTACHMENT_BYTES', default=10 * 1024 * 1024, cast=int)  # 10MB each
 MESSAGING_MAX_ATTACHMENTS = config('MESSAGING_MAX_ATTACHMENTS', default=5, cast=int)  # per message
+MESSAGING_MAX_INLINE_IMAGE_BYTES = config('MESSAGING_MAX_INLINE_IMAGE_BYTES', default=5 * 1024 * 1024, cast=int)
+# Production: Django approves a download and nginx streams it from its internal
+# /media/ location. Development: Django streams the file itself.
+MESSAGING_X_ACCEL_REDIRECT = config('MESSAGING_X_ACCEL_REDIRECT', default=not DEBUG, cast=bool)
+# Optional grammar checking through a LanguageTool server on this machine
+# (see deploy/LANGUAGETOOL.md). Empty = the "Check grammar" button is hidden.
+LANGUAGETOOL_URL = config('LANGUAGETOOL_URL', default='')
+LANGUAGETOOL_LANGUAGE = config('LANGUAGETOOL_LANGUAGE', default='en-GB')
 

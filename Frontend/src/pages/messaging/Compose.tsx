@@ -1,260 +1,177 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { messagingApi } from '@/lib/api';
-import MailLayout from './MailLayout';
+/** New message, with automatic draft saving. ?draft=<id> reopens a draft. */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Loader2, Send, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { X, Paperclip, Send, ArrowLeft, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
+import { friendlyError, mail, type Importance } from '@/lib/messaging';
+import { RecipientInput, type Recipient } from '@/components/messaging/RecipientInput';
+import { RichTextEditor, type RichTextEditorHandle } from '@/components/messaging/RichTextEditor';
+import { AttachButton, PendingFiles } from '@/components/messaging/Attachments';
+import { ImportancePicker } from '@/components/messaging/ImportancePicker';
+import { withSignature } from '@/components/messaging/SignatureDialog';
+import MailLayout, { useMail } from './MailLayout';
 
-export default function Compose() {
-  const [query, setQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [recipients, setRecipients] = useState<string[]>([]);
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-  const [files, setFiles] = useState<File[]>([]);
-  const [isSending, setIsSending] = useState(false);
+const AUTOSAVE_MS = 2500;
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+
+function ComposeForm() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const timer = useRef<number | null>(null);
+  const { config, signature } = useMail();
+  const [params] = useSearchParams();
+  const draftParam = params.get('draft');
 
-  const { user } = useAuth();
-  const ownMailbox = (user?.mailboxAddress || '').toLowerCase();
+  const editor = useRef<RichTextEditorHandle>(null);
+  const [ready, setReady] = useState(!draftParam);
+  const [initialHtml, setInitialHtml] = useState('');
+  const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [subject, setSubject] = useState('');
+  const [importance, setImportance] = useState<Importance>('NORMAL');
+  const [bodyHtml, setBodyHtml] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [sending, setSending] = useState(false);
 
+  const draftId = useRef<number | null>(draftParam ? Number(draftParam) : null);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const dirty = useRef(false);
+  const finished = useRef(false); // sent or discarded: stop saving
+
+  // Reopen a draft.
   useEffect(() => {
-    if (timer.current) window.clearTimeout(timer.current);
-    if (!query.trim()) { setSuggestions([]); return; }
-    const q = query;
-    timer.current = window.setTimeout(async () => {
-      const res = await messagingApi.listMailboxes(q);
-      const payload: any = res.data;
-      const list: any[] = Array.isArray(payload) ? payload : payload?.results || [];
-      setSuggestions(list.filter(m => {
-        const addr = String(m.mailbox_address).toLowerCase();
-        return addr !== ownMailbox && !recipients.some(r => r.toLowerCase() === addr);
-      }));
-    }, 250);
-    return () => { if (timer.current) window.clearTimeout(timer.current); };
-  }, [query, recipients, ownMailbox]);
+    if (!draftParam) return;
+    mail.draft(draftParam).then((res) => {
+      if (res.error || !res.data) {
+        toast({ title: 'Draft not found', description: 'Starting a new message instead.', variant: 'destructive' });
+        draftId.current = null;
+      } else {
+        setRecipients(res.data.recipients.map((address) => ({ address })));
+        setSubject(res.data.subject);
+        setImportance(res.data.importance);
+        setInitialHtml(res.data.body_html);
+        setBodyHtml(res.data.body_html);
+        setSavedAt(new Date(res.data.updated_at));
+        setSaveState('saved');
+      }
+      setReady(true);
+    });
+  }, [draftParam, toast]);
 
-  const addRecipient = (addr: string) => {
-    if (!recipients.includes(addr)) setRecipients([...recipients, addr]);
-    setQuery('');
-    setSuggestions([]);
-  };
+  // New message: start with the signature once it has loaded.
+  const signatureApplied = useRef(false);
+  useEffect(() => {
+    if (draftParam || signatureApplied.current || !signature) return;
+    signatureApplied.current = true;
+    const html = withSignature(signature);
+    if (html && editor.current?.isEmpty()) editor.current.setHTML(html);
+  }, [signature, draftParam]);
 
-  const removeRecipient = (addr: string) => {
-    setRecipients(recipients.filter(r => r !== addr));
-  };
+  const hasSomething = recipients.length > 0 || subject.trim() !== '' || bodyHtml.replace(/<[^>]*>/g, '').trim() !== '';
 
-  const onFiles = (fList: FileList | null) => {
-    if (!fList) return;
-    setFiles([...files, ...Array.from(fList)]);
-  };
+  const saveDraft = useCallback(async () => {
+    if (finished.current || !dirty.current) return;
+    dirty.current = false;
+    setSaveState('saving');
+    const res = await mail.saveDraft(draftId.current, {
+      recipients: recipients.map((r) => r.address), subject, importance, body_html: editor.current?.getHTML() || '',
+    });
+    if (finished.current) return;
+    if (res.error || !res.data) { setSaveState('error'); dirty.current = true; return; }
+    draftId.current = res.data.id;
+    setSavedAt(new Date());
+    setSaveState('saved');
+  }, [recipients, subject, importance]);
 
-  const removeFile = (index: number) => {
-    setFiles(files.filter((_, i) => i !== index));
-  };
+  // Save a moment after the last change.
+  useEffect(() => {
+    if (!ready || !hasSomething) return;
+    dirty.current = true;
+    const t = window.setTimeout(saveDraft, AUTOSAVE_MS);
+    return () => window.clearTimeout(t);
+  }, [recipients, subject, importance, bodyHtml, ready, hasSomething, saveDraft]);
 
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    onFiles(e.dataTransfer.files);
-  };
+  // Leaving the page: save whatever is pending.
+  const saveRef = useRef(saveDraft);
+  saveRef.current = saveDraft;
+  useEffect(() => () => { saveRef.current(); }, []);
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    let finalRecipients = [...recipients];
-    if (query.trim() && !finalRecipients.includes(query.trim())) {
-      finalRecipients.push(query.trim());
-      setRecipients(finalRecipients);
-      setQuery('');
-    }
-
-    if (finalRecipients.length === 0) {
-      toast({ title: "Recipient required", description: "Please add at least one recipient.", variant: "destructive" });
+  const send = async () => {
+    if (sending) return;
+    if (!recipients.length) { toast({ title: 'Add a recipient', description: 'Search for a station, province or department in the To field.' }); return; }
+    if (!subject.trim()) { toast({ title: 'Add a subject' }); return; }
+    if ((editor.current?.isEmpty() ?? true) && !files.length) { toast({ title: 'Write a message', description: 'Type a message or attach a file.' }); return; }
+    setSending(true);
+    finished.current = true;
+    const res = await mail.start({
+      subject: subject.trim(), recipients: recipients.map((r) => r.address), bodyHtml: editor.current?.getHTML() || '',
+      importance, files, draftId: draftId.current,
+    });
+    setSending(false);
+    if (res.error || !res.data) {
+      finished.current = false;
+      dirty.current = true;
+      toast({ title: 'Message not sent', description: friendlyError(res.error), variant: 'destructive' });
       return;
     }
-    if (!subject.trim()) {
-      toast({ title: "Subject required", description: "Please enter a subject.", variant: "destructive" });
-      return;
-    }
-
-    setIsSending(true);
-    const form = new FormData();
-    form.append('subject', subject);
-    form.append('initial_body', body);
-    form.append('participants', finalRecipients.join(','));
-    files.forEach(f => form.append('attachments', f));
-
-    const res = await messagingApi.createThread(form);
-    setIsSending(false);
-
-    if (res.data && (res.data as any).id) {
-      toast({ title: "Message Sent", description: "Your message has been sent successfully." });
-      navigate(`/messaging/threads/${(res.data as any).id}`);
-    } else {
-      toast({ title: "Send Failed", description: res.error || 'Failed to send message', variant: "destructive" });
-    }
+    toast({ title: 'Message sent' });
+    navigate(`/messaging/threads/${res.data.id}`, { replace: true });
   };
+
+  const discard = async () => {
+    if (hasSomething && !window.confirm('Discard this message? The saved draft will be deleted.')) return;
+    finished.current = true;
+    if (draftId.current) await mail.deleteDraft(draftId.current);
+    navigate('/messaging/inbox');
+  };
+
+  if (!ready) {
+    return <div className="flex items-center justify-center gap-2 p-12 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Opening draft…</div>;
+  }
+
+  const status = saveState === 'saving' ? 'Saving draft…'
+    : saveState === 'error' ? 'Draft not saved'
+      : savedAt ? `Draft saved ${savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
 
   return (
-    <MailLayout title="Compose Message">
-      <div className="flex flex-col h-full bg-white">
-        {/* Toolbar */}
-        <div className="h-14 border-b flex items-center px-4 justify-between bg-white shrink-0">
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} title="Discard and go back">
-              <ArrowLeft className="h-4 w-4 text-gray-600" />
-            </Button>
-            <h2 className="text-lg font-medium text-gray-700 ml-2">New Message</h2>
-          </div>
+    <form className="flex h-full flex-col" onSubmit={(e) => { e.preventDefault(); send(); }}>
+      <div className="flex-1 space-y-3 overflow-y-auto p-3 sm:p-6">
+        <div className="flex items-start gap-3 border-b pb-1">
+          <label htmlFor="compose-to" className="w-16 shrink-0 pt-2 text-sm text-muted-foreground">To</label>
+          <RecipientInput id="compose-to" value={recipients} onChange={setRecipients} ownAddress={config?.mailbox?.address} autoFocus={!draftParam} />
+        </div>
+        <div className="flex items-center gap-3 border-b pb-1">
+          <label htmlFor="compose-subject" className="w-16 shrink-0 text-sm text-muted-foreground">Subject</label>
+          <input id="compose-subject" value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={255}
+            className="flex-1 bg-transparent py-2 text-sm font-medium outline-none placeholder:text-muted-foreground" placeholder="What is this about?" />
+          <ImportancePicker value={importance} onChange={setImportance} />
         </div>
 
-        {/* Compose Form */}
-        <div className="flex-1 overflow-y-auto p-6 md:px-12 lg:px-24">
-          <form onSubmit={onSubmit} className="max-w-4xl mx-auto flex flex-col h-full">
-            
-            {/* To Field */}
-            <div className="flex items-start border-b py-3">
-              <label className="w-16 text-gray-500 text-sm pt-2">To</label>
-              <div className="flex-1 relative">
-                <div 
-                  className="flex flex-wrap gap-2 items-center w-full min-h-[36px]"
-                  onDrop={onDrop} 
-                  onDragOver={(e) => e.preventDefault()}
-                >
-                  {recipients.map(r => (
-                    <div key={r} className="bg-[#d7a928]/10 border border-[#d7a928] text-blue-700 px-2 py-1 rounded-full flex items-center gap-1 text-sm">
-                      <span>{r}</span>
-                      <button type="button" onClick={() => removeRecipient(r)} className="text-[#0b4f2a] hover:text-[#063f20] focus:outline-none">
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                  <input
-                    className="flex-1 outline-none min-w-[200px] text-sm py-1 bg-transparent"
-                    placeholder={recipients.length === 0 ? "Search by station, province or department..." : ""}
-                    value={query}
-                    onChange={e => setQuery(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' || e.key === ',') {
-                        e.preventDefault();
-                        if (query.trim()) {
-                          addRecipient(query.trim());
-                        }
-                      }
-                    }}
-                  />
-                </div>
-                
-                {suggestions.length > 0 && (
-                  <ul className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-auto">
-                    {suggestions.map(s => (
-                      <li 
-                        key={s.id} 
-                        className="px-4 py-2 hover:bg-gray-50 cursor-pointer flex justify-between items-center" 
-                        onClick={() => addRecipient(s.mailbox_address)}
-                      >
-                        <div className="min-w-0">
-                          <div className="font-medium text-sm text-gray-900">
-                            {s.department_name} <span className="font-normal text-gray-500">· {s.org_unit_name}</span>
-                          </div>
-                          <div className="truncate text-xs text-gray-500">{s.mailbox_address}</div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-
-            {/* Subject Field */}
-            <div className="flex items-center border-b py-3">
-              <label className="w-16 text-gray-500 text-sm">Subject</label>
-              <input 
-                className="flex-1 outline-none text-sm font-medium py-1 bg-transparent" 
-                placeholder="Enter subject" 
-                value={subject} 
-                onChange={e => setSubject(e.target.value)} 
-              />
-            </div>
-
-            {/* Message Body */}
-            <div className="flex-1 flex flex-col py-4 min-h-[300px]">
-              <textarea 
-                className="flex-1 w-full outline-none resize-none text-sm leading-relaxed" 
-                placeholder="Write your message here..." 
-                value={body} 
-                onChange={e => setBody(e.target.value)} 
-              />
-            </div>
-
-            {/* Attachments */}
-            {files.length > 0 && (
-              <div className="py-4 border-t border-gray-100">
-                <p className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wider">Attachments</p>
-                <div className="flex flex-wrap gap-2">
-                  {files.map((f, i) => (
-                    <div key={i} className="flex items-center gap-2 bg-gray-50 border rounded-md px-3 py-2 text-sm">
-                      <Paperclip className="h-4 w-4 text-gray-400" />
-                      <span className="truncate max-w-[200px] text-gray-700">{f.name}</span>
-                      <span className="text-gray-400 text-xs">({(f.size/1024).toFixed(0)} KB)</span>
-                      <button type="button" onClick={() => removeFile(i)} className="text-gray-400 hover:text-red-500 ml-2">
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Bottom Actions */}
-            <div className="pt-4 pb-8 flex items-center justify-between border-t mt-auto shrink-0">
-              <div className="flex items-center gap-4 relative z-20">
-                <Button type="submit" disabled={isSending || (recipients.length === 0 && !query.trim())} className="bg-[#0b4f2a] hover:bg-[#063f20] px-6 rounded-full">
-                  {isSending ? 'Sending...' : (
-                    <>
-                      Send <Send className="ml-2 h-4 w-4" />
-                    </>
-                  )}
-                </Button>
-                
-                <div className="relative">
-                  <input 
-                    type="file"
-                    multiple
-                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
-                    onChange={e => onFiles(e.target.files)}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    title="Attach files"
-                  />
-                  <Button type="button" variant="ghost" size="icon" className="text-gray-500 hover:bg-gray-100 rounded-full">
-                    <Paperclip className="h-5 w-5" />
-                  </Button>
-                </div>
-              </div>
-
-              <Button 
-                type="button" 
-                variant="ghost" 
-                size="icon" 
-                className="text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full"
-                title="Discard draft"
-                onClick={() => {
-                  if (window.confirm("Discard this message?")) navigate(-1);
-                }}
-              >
-                <Trash2 className="h-5 w-5" />
-              </Button>
-            </div>
-
-          </form>
-        </div>
+        <RichTextEditor ref={editor} initialHtml={initialHtml} minHeight={280} grammarEnabled={!!config?.grammar_enabled}
+          onChange={setBodyHtml} onSubmitShortcut={send}
+          toolbarEnd={<AttachButton files={files} onChange={setFiles} config={config} />} />
+        <PendingFiles files={files} onRemove={(i) => setFiles(files.filter((_, j) => j !== i))} />
+        {files.length > 0 && <p className="text-xs text-muted-foreground">Attachments are sent with the message; they are not kept in drafts.</p>}
       </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2 sm:px-6">
+        <Button type="submit" disabled={sending} className="bg-[#0b4f2a] text-white hover:bg-[#063f20]">
+          {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />} Send
+        </Button>
+        <span className="hidden text-xs text-muted-foreground sm:inline">Ctrl+Enter to send</span>
+        <span className="ml-auto text-xs text-muted-foreground" aria-live="polite">{status}</span>
+        <Button type="button" variant="ghost" size="icon" onClick={discard} title="Discard" aria-label="Discard"
+          className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </form>
+  );
+}
+
+export default function Compose() {
+  return (
+    <MailLayout title="New message">
+      <ComposeForm />
     </MailLayout>
   );
 }

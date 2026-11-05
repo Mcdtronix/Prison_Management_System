@@ -1,38 +1,20 @@
-from django.urls import path, include
+from django.urls import include, path
 from rest_framework import routers
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
 
-from .views import MailboxViewSet, ThreadViewSet, MessageViewSet
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def unread_count_view(request):
-    mailbox = getattr(request, 'mailbox', None)
-    if not mailbox:
-        return Response({'count': 0})
-    
-    from .models import ThreadParticipant, Message
-    # Count messages in threads where the user is a participant, and the message created_at > last_read_at
-    # Or just return 0 for now as a quick fix if the query is complex
-    # A correct implementation:
-    participants = ThreadParticipant.objects.filter(mailbox=mailbox)
-    count = 0
-    for p in participants:
-        # messages in thread not read by mailbox
-        unread = p.thread.messages.exclude(read_by=mailbox).count()
-        count += unread
-    return Response({'count': count})
-
-from .views import MailboxViewSet, ThreadViewSet, MessageViewSet
+from . import files, views
 
 router = routers.DefaultRouter()
-router.register(r'mailboxes', MailboxViewSet)
-router.register(r'threads', ThreadViewSet)
-router.register(r'messages', MessageViewSet)
+router.register(r'mailboxes', views.MailboxViewSet, basename='mailbox')
+router.register(r'threads', views.ThreadViewSet, basename='thread')
+router.register(r'messages', views.MessageViewSet, basename='message')
+router.register(r'drafts', views.DraftViewSet, basename='draft')
 
 urlpatterns = [
-    path('unread_count/', unread_count_view, name='unread-count'),
+    path('unread_count/', views.unread_count_view, name='unread-count'),
+    path('config/', views.config_view, name='messaging-config'),
+    path('signature/', views.signature_view, name='messaging-signature'),
+    path('inline-images/', views.inline_image_view, name='messaging-inline-image'),
+    path('grammar/', views.grammar_view, name='messaging-grammar'),
+    path('files/<str:kind>/<str:obj_id>/', files.download, name='messaging-file'),
     path('', include(router.urls)),
 ]
