@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { KeyRound, RefreshCw, ShieldPlus, UserPlus, UserMinus, UserCheck } from "lucide-react";
 
-import { authApi, hrApi } from "@/lib/api";
+import { authApi, hrApi, type AccountRow } from "@/lib/api";
+import { normalizeRole } from "@/lib/auth";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,20 +41,6 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-
-interface ManagedUserProfile {
-  id: number;
-  username: string;
-  email: string;
-  officer_service_number: string | null;
-  officer_name: string | null;
-  role_name: string;
-  role_code: string;
-  station_name: string;
-  station_code: string;
-  is_active: boolean;
-  created_at: string;
-}
 
 interface OfficerOption {
   service_number: string;
@@ -98,12 +86,16 @@ const userAccountSchema = z.object({
 const OfficerManagement = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
+  // Creating and (de)activating accounts is the system administrators' job.
+  // Administration officers see the account list read-only.
+  const canManageAccounts = normalizeRole(currentUser?.role) === "SUPER_ADMIN";
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [addOfficerDialogOpen, setAddOfficerDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [users, setUsers] = useState<ManagedUserProfile[]>([]);
+  const [users, setUsers] = useState<AccountRow[]>([]);
   const [officers, setOfficers] = useState<FullOfficer[]>([]);
   const [officerOptions, setOfficerOptions] = useState<OfficerOption[]>([]);
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
@@ -143,7 +135,7 @@ const OfficerManagement = () => {
     try {
       const [usersResponse, optionsResponse, officersResponse] = await Promise.all([
         authApi.getUsers(),
-        authApi.getUserCreationOptions(),
+        canManageAccounts ? authApi.getUserCreationOptions() : Promise.resolve({ data: undefined, error: undefined }),
         hrApi.getOfficers(),
       ]);
 
@@ -151,7 +143,7 @@ const OfficerManagement = () => {
       if (optionsResponse.error) throw new Error(optionsResponse.error);
       if (officersResponse.error) throw new Error(officersResponse.error);
 
-      setUsers((usersResponse.data as ManagedUserProfile[]) || []);
+      setUsers(usersResponse.data || []);
       setOfficerOptions(optionsResponse.data?.officers || []);
       setRoleOptions(optionsResponse.data?.roles || []);
       setOfficers(officersResponse.data || []);
@@ -224,7 +216,8 @@ const OfficerManagement = () => {
     loadData(true);
   };
 
-  const handleToggleUserStatus = async (user: ManagedUserProfile) => {
+  const handleToggleUserStatus = async (user: AccountRow) => {
+    if (user.id === null) return;
     const newStatus = !user.is_active;
     const response = await authApi.updateUserStatus(user.id, newStatus);
     
@@ -310,6 +303,7 @@ const OfficerManagement = () => {
           </Dialog>
 
           {/* CREATE SYSTEM USER DIALOG */}
+          {canManageAccounts && (
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) userAccountForm.reset(); }}>
             <DialogTrigger asChild>
               <Button disabled={officerOptions.length === 0}>
@@ -371,6 +365,7 @@ const OfficerManagement = () => {
               </Form>
             </DialogContent>
           </Dialog>
+          )}
         </div>
       </CardHeader>
 
@@ -465,7 +460,7 @@ const OfficerManagement = () => {
                       </TableRow>
                     ) : (
                       filteredUsers.map((user) => (
-                        <TableRow key={user.id}>
+                        <TableRow key={user.user_id}>
                           <TableCell className="font-medium">
                             {user.officer_name || `${user.first_name} ${user.last_name}`.trim() || "-"}
                           </TableCell>
@@ -488,14 +483,18 @@ const OfficerManagement = () => {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                             <Button 
-                               variant={user.is_active ? "destructive" : "default"} 
-                               size="sm" 
+                            {canManageAccounts && user.id !== null ? (
+                             <Button
+                               variant={user.is_active ? "destructive" : "default"}
+                               size="sm"
                                onClick={() => handleToggleUserStatus(user)}
                              >
                                {user.is_active ? <UserMinus className="w-4 h-4 mr-1" /> : <UserCheck className="w-4 h-4 mr-1" />}
                                {user.is_active ? "Deactivate" : "Activate"}
                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Managed in the system admin console</span>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))

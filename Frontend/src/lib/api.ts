@@ -69,6 +69,25 @@ interface OfficerOption {
   current_station_name?: string | null;
 }
 
+/** One row of the station account list (GET /auth/users/). */
+export interface AccountRow {
+  /** Legacy profile id, used to (de)activate. Null for accounts made from the console. */
+  id: number | null;
+  user_id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  officer_service_number: string | null;
+  officer_name: string | null;
+  role_name: string;
+  role_code: string;
+  station_name: string;
+  station_code: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 interface ManagedUserProfile {
   id: number;
   username: string;
@@ -369,8 +388,8 @@ export const authApi = {
     return apiRequest<UserProfile>("/auth/me/");
   },
 
-  getUsers: async (): Promise<ApiResponse<ManagedUserProfile[]>> => {
-    return apiRequest<ManagedUserProfile[]>("/auth/users/");
+  getUsers: async (): Promise<ApiResponse<AccountRow[]>> => {
+    return apiRequest<AccountRow[]>("/auth/users/");
   },
 
   getUserCreationOptions: async (): Promise<ApiResponse<{ officers: OfficerOption[]; roles: RoleOption[] }>> => {

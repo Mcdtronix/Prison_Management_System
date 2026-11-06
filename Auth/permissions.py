@@ -56,6 +56,7 @@ class IsSuperAdminOrReadOnly(BasePermission):
 # Older names, now capability-based.
 IsAdminOfficer = Capability.of('reception.approve')        # station approvals (admission, discharge…)
 CanManageUsers = Capability.of('users.manage')             # account management screens
+CanViewUsers = Capability.of('users.view', 'users.manage')  # read-only account lists
 IsReceptionOfficer = Capability.of('reception.access')
 IsHealthOfficer = Capability.of('health.access')
 IsStoresOfficer = Capability.of('stores.access')

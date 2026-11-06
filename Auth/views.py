@@ -6,7 +6,7 @@ JWT-based authentication endpoints with role-based access control.
 
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -26,7 +26,8 @@ from .serializers import (
     UserProfileSerializer,
 )
 from .utils import get_officer_current_station, get_primary_assignment, log_action, normalize_role_code
-from .permissions import CanManageUsers, IsSuperAdmin
+from .permissions import CanManageUsers, CanViewUsers, IsSuperAdmin
+from .scoping import accounts_in_scope, people_scope
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -207,42 +208,22 @@ def _current_user_payload(request):
 class UserManagementView(APIView):
     """
     Admin-only user management endpoint.
-    GET lists users at the current admin station.
+    GET lists accounts at the requester's station (or below; see Auth/scoping.py).
     POST creates a Django user and linked UserProfile from an existing officer.
+
+    Listing needs `users.view` (Administration officers hold it); creating
+    needs `users.manage`, which only system administrators hold.
     """
 
-    permission_classes = [IsAuthenticated, CanManageUsers]
-
-    def get_queryset(self):
-        queryset = UserProfile.objects.select_related("user", "role", "station", "officer")
-        requester_assignment = get_primary_assignment(self.request.user)
-
-        if requester_assignment and normalize_role_code(requester_assignment.role.code) == "SUPER_ADMIN":
-            return queryset
-
-        if requester_assignment and requester_assignment.org_unit:
-            station = None
-            try:
-                station = self.request.user.userprofile.station
-            except AttributeError:
-                station = None
-            if station:
-                return queryset.filter(station=station)
-
-        try:
-            requester_profile = self.request.user.userprofile
-        except AttributeError:
-            return queryset.none()
-
-        if normalize_role_code(requester_profile.role.code) == "SUPER_ADMIN":
-            return queryset
-
-        return queryset.filter(station=requester_profile.station)
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            return [IsAuthenticated(), CanViewUsers()]
+        return [IsAuthenticated(), CanManageUsers()]
 
     def get(self, request):
-        profiles = self.get_queryset().filter(is_active=True)
-        serializer = UserProfileSerializer(profiles, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        # Everyone with an account at the requester's station (or below),
+        # however the account was created: console or legacy profile.
+        return Response(accounts_in_scope(people_scope(request.user)), status=status.HTTP_200_OK)
 
     def post(self, request):
         serializer = UserCreateSerializer(data=request.data, context={"request": request})

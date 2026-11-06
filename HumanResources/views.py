@@ -54,6 +54,12 @@ class OfficerViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     serializer_class = OfficerSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        # Only officers currently at the requester's station (or below).
+        # Officers elsewhere 404, so they cannot be opened by URL either.
+        from Auth.scoping import officers_in_scope, people_scope
+        return officers_in_scope(super().get_queryset(), people_scope(self.request.user))
+
     def perform_create(self, serializer):
         officer = serializer.save()
         try:
