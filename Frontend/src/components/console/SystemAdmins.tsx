@@ -33,7 +33,7 @@ export type UnitOption = { id: number; name: string; group?: string; admins?: nu
 const cleanError = (e: string) => e.replace(/^(org_unit|service_number|password|Password|role|is_active):\s*/, '');
 
 type SlotInfo = {
-  role_code: string; role_name: string; used: number; limit: number | null;
+  role_code: string; role_name: string; used: number; limit: number | null; allowed: boolean;
   can_create: boolean; reason: string | null;
 };
 
@@ -185,18 +185,10 @@ export function CreateSystemAdminDialog({
   );
 }
 
-// ---------------------------------------------------------------- officers panel
+// ---------------------------------------------------------------- officers table
 
-export function UnitOfficersSheet({
-  unitId, onOpenChange, onAddAdmin, refreshKey,
-}: {
-  unitId: number | null;
-  onOpenChange: (o: boolean) => void;
-  onAddAdmin: (unitId: number, kind: AdminKind) => void;
-  /** Bump to reload, e.g. after an admin was created. */
-  refreshKey: number;
-}) {
-  const navigate = useNavigate();
+/** Loads one unit's officers and system-admin slots. Bump `refreshKey` to reload. */
+export function useUnitOfficers(unitId: number | null, refreshKey = 0) {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -213,16 +205,119 @@ export function UnitOfficersSheet({
   }, [unitId, refreshKey]);
 
   const current = data && data.unit?.id === unitId ? data : null;
+  return { current, error };
+}
+
+export const officersTitle = (unitType?: string) =>
+  unitType === 'PROVINCIAL_HQ' ? 'Provincial Command officers' : 'Station officers';
+
+/** The officers table for one unit, with its system-admin slots on top. */
+export function UnitOfficersTable({
+  current, error, onAddAdmin,
+}: {
+  current: any;
+  error: string | null;
+  onAddAdmin?: (unitId: number, kind: AdminKind) => void;
+}) {
+  const navigate = useNavigate();
+  if (error) return <EmptyState>Could not load officers: {error}</EmptyState>;
+  if (!current) return <LoadingRows label="Loading officers…" />;
+
+  const isProvince = current.unit.unit_type === 'PROVINCIAL_HQ';
+  const slots: SlotInfo | null = current.system_admins || null;
+  const officers: OfficerRow[] = current.officers || [];
+
+  return (
+    <div className="space-y-4">
+      {slots && (
+        <div className="flex flex-col gap-3 rounded-md border border-[#0b4f2a]/20 bg-[#0b4f2a]/5 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-[#d7a928]/30 dark:bg-[#d7a928]/10">
+          <div className="flex items-start gap-2 text-sm">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#0b4f2a] dark:text-[#d7a928]" />
+            <div>
+              <p className="font-medium text-foreground">
+                {slots.role_name}s: {slots.used} of {slots.limit}
+              </p>
+              {slots.allowed && !slots.can_create && slots.reason && (
+                <p className="text-xs text-muted-foreground">{slots.reason}</p>
+              )}
+              {!slots.allowed && (
+                <p className="text-xs text-muted-foreground">
+                  {isProvince ? 'Appointed by National HQ.' : 'Appointed by the provincial system admin.'}
+                </p>
+              )}
+            </div>
+          </div>
+          {slots.allowed && onAddAdmin && (
+            <Button size="sm" className={primaryButton} disabled={!slots.can_create}
+              onClick={() => onAddAdmin(current.unit.id, isProvince ? 'province' : 'station')}>
+              <UserPlus className="mr-2 h-4 w-4" /> Add system admin
+            </Button>
+          )}
+        </div>
+      )}
+
+      {officers.length === 0 ? (
+        <EmptyState>No accounts are assigned here yet.</EmptyState>
+      ) : (
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2.5 text-left">Service no.</th>
+                <th className="px-3 py-2.5 text-left">Name</th>
+                <th className="px-3 py-2.5 text-left">Role</th>
+                <th className="hidden px-3 py-2.5 text-left sm:table-cell">Status</th>
+                <th className="hidden px-3 py-2.5 text-left md:table-cell">Last seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {officers.map((o) => (
+                <tr key={o.id} className="cursor-pointer border-t hover:bg-muted/40"
+                  onClick={() => navigate(`/hq/users/${o.id}`)}>
+                  <td className="px-3 py-2.5 font-mono text-xs">
+                    <span className="flex items-center gap-2"><OnlineDot online={o.online} label={false} />{o.username}</span>
+                  </td>
+                  <td className="px-3 py-2.5 text-foreground">{o.full_name || <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex flex-wrap gap-1">
+                      {o.roles_here.map((r) => (
+                        <RolePill key={r.role_code} name={r.role_name} admin={r.role_code === slots?.role_code} />
+                      ))}
+                    </div>
+                  </td>
+                  <td className="hidden px-3 py-2.5 sm:table-cell">
+                    <StatusBadge active={o.is_active} mustChange={o.password?.must_change} />
+                  </td>
+                  <td className="hidden px-3 py-2.5 text-xs text-muted-foreground md:table-cell">{timeAgo(o.last_seen)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- officers panel
+
+export function UnitOfficersSheet({
+  unitId, onOpenChange, onAddAdmin, refreshKey,
+}: {
+  unitId: number | null;
+  onOpenChange: (o: boolean) => void;
+  onAddAdmin: (unitId: number, kind: AdminKind) => void;
+  /** Bump to reload, e.g. after an admin was created. */
+  refreshKey: number;
+}) {
+  const { current, error } = useUnitOfficers(unitId, refreshKey);
   const isProvince = current?.unit.unit_type === 'PROVINCIAL_HQ';
-  const title = isProvince ? 'Provincial Command officers' : 'Station officers';
-  const slots: SlotInfo | null = current?.system_admins || null;
-  const officers: OfficerRow[] = current?.officers || [];
 
   return (
     <Sheet open={!!unitId} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-2xl">
         <SheetHeader className="pr-6 text-left">
-          <SheetTitle>{current ? `${title}: ${current.unit.name}` : 'Officers'}</SheetTitle>
+          <SheetTitle>{current ? `${officersTitle(current.unit.unit_type)}: ${current.unit.name}` : 'Officers'}</SheetTitle>
           <SheetDescription>
             {current
               ? isProvince
@@ -231,75 +326,9 @@ export function UnitOfficersSheet({
               : 'Loading…'}
           </SheetDescription>
         </SheetHeader>
-
-        {error ? (
-          <div className="mt-6"><EmptyState>Could not load officers: {error}</EmptyState></div>
-        ) : !current ? (
-          <div className="mt-6"><LoadingRows label="Loading officers…" /></div>
-        ) : (
-          <div className="mt-6 space-y-4">
-            {slots && (
-              <div className="flex flex-col gap-3 rounded-md border border-[#0b4f2a]/20 bg-[#0b4f2a]/5 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-[#d7a928]/30 dark:bg-[#d7a928]/10">
-                <div className="flex items-start gap-2 text-sm">
-                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#0b4f2a] dark:text-[#d7a928]" />
-                  <div>
-                    <p className="font-medium text-foreground">
-                      {slots.role_name}s: {slots.used} of {slots.limit}
-                    </p>
-                    {!slots.can_create && slots.reason && (
-                      <p className="text-xs text-muted-foreground">{slots.reason}</p>
-                    )}
-                  </div>
-                </div>
-                <Button size="sm" className={primaryButton} disabled={!slots.can_create}
-                  onClick={() => onAddAdmin(current.unit.id, isProvince ? 'province' : 'station')}>
-                  <UserPlus className="mr-2 h-4 w-4" /> Add system admin
-                </Button>
-              </div>
-            )}
-
-            {officers.length === 0 ? (
-              <EmptyState>No accounts are assigned here yet.</EmptyState>
-            ) : (
-              <div className="overflow-x-auto rounded-md border">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2.5 text-left">Service no.</th>
-                      <th className="px-3 py-2.5 text-left">Name</th>
-                      <th className="px-3 py-2.5 text-left">Role</th>
-                      <th className="hidden px-3 py-2.5 text-left sm:table-cell">Status</th>
-                      <th className="hidden px-3 py-2.5 text-left md:table-cell">Last seen</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {officers.map((o) => (
-                      <tr key={o.id} className="cursor-pointer border-t hover:bg-muted/40"
-                        onClick={() => navigate(`/hq/users/${o.id}`)}>
-                        <td className="px-3 py-2.5 font-mono text-xs">
-                          <span className="flex items-center gap-2"><OnlineDot online={o.online} label={false} />{o.username}</span>
-                        </td>
-                        <td className="px-3 py-2.5 text-foreground">{o.full_name || <span className="text-muted-foreground">—</span>}</td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex flex-wrap gap-1">
-                            {o.roles_here.map((r) => (
-                              <RolePill key={r.role_code} name={r.role_name}
-                                admin={r.role_code === slots?.role_code} />
-                            ))}
-                          </div>
-                        </td>
-                        <td className="hidden px-3 py-2.5 sm:table-cell">
-                          <StatusBadge active={o.is_active} mustChange={o.password?.must_change} />
-                        </td>
-                        <td className="hidden px-3 py-2.5 text-xs text-muted-foreground md:table-cell">{timeAgo(o.last_seen)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+        <div className="mt-6">
+          <UnitOfficersTable current={current} error={error} onAddAdmin={onAddAdmin} />
+        </div>
       </SheetContent>
     </Sheet>
   );

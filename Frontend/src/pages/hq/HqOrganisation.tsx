@@ -13,7 +13,7 @@ import {
   EmptyState, LoadingRows, SectionCard, formatBytes, primaryButton,
 } from '@/components/console/ConsoleUI';
 import {
-  AdminKind, CreateSystemAdminDialog, UnitOfficersSheet, UnitOption,
+  AdminKind, CreateSystemAdminDialog, UnitOfficersSheet, UnitOfficersTable, UnitOption, useUnitOfficers,
 } from '@/components/console/SystemAdmins';
 
 type Unit = {
@@ -48,6 +48,46 @@ function OfficersButton({ onClick }: { onClick: () => void }) {
       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-normal text-[#0b4f2a] hover:bg-[#0b4f2a]/10 dark:text-[#d7a928] dark:hover:bg-[#d7a928]/10">
       <Users className="h-3.5 w-3.5" /> Officers
     </button>
+  );
+}
+
+/** A station system admin's own station: its figures and its officers. Nothing outside it. */
+function StationHome({ station, provinceName }: { station: Unit; provinceName?: string | null }) {
+  const navigate = useNavigate();
+  const { current, error } = useUnitOfficers(station.id);
+  const facts: [string, string | number][] = [
+    ['Accounts', station.users],
+    ['Online now', station.online],
+    ['Stored', formatBytes(station.storage_bytes)],
+  ];
+  return (
+    <div className="space-y-6">
+      <SectionCard
+        title={station.name}
+        description={[provinceName, station.code].filter(Boolean).join(' · ')}
+        action={
+          <Button variant="outline" onClick={() => navigate(`/hq/users?org_unit=${station.id}`)}>
+            <Users className="mr-2 h-4 w-4" /> Manage accounts
+          </Button>
+        }
+      >
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {facts.map(([label, value]) => (
+            <div key={label} className="rounded-md border p-3">
+              <dt className="text-xs text-muted-foreground">{label}</dt>
+              <dd className="mt-1 text-lg font-semibold text-foreground">{value}</dd>
+            </div>
+          ))}
+          <div className="rounded-md border p-3">
+            <dt className="text-xs text-muted-foreground">System admins</dt>
+            <dd className="mt-1 text-lg font-semibold"><AdminCount unit={station} /></dd>
+          </div>
+        </dl>
+      </SectionCard>
+      <SectionCard title="Station officers" description="Every account assigned at this station.">
+        <UnitOfficersTable current={current} error={error} />
+      </SectionCard>
+    </div>
   );
 }
 
@@ -205,6 +245,13 @@ const HqOrganisation = () => {
   const stationCount = provinces.reduce((n, p) => n + p.stations.length, 0);
   const goUsers = (id: number) => navigate(`/hq/users?org_unit=${id}`);
   const national = tree.scope !== 'LIMITED';
+
+  if (tree.scope_level === 'STATION') {
+    const own: Unit | undefined = tree.stations?.[0] || provinces[0]?.stations[0];
+    return own
+      ? <StationHome station={own} provinceName={tree.scope_unit?.parent_name} />
+      : <EmptyState>Your station could not be found.</EmptyState>;
+  }
 
   return (
     <div className="space-y-6">

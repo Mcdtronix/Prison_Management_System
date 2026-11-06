@@ -64,6 +64,35 @@ def _scope(request):
     return admin_scope(request.user, 'users.view')
 
 
+SCOPE_LEVELS = {'NATIONAL_HQ': 'NATIONAL', 'PROVINCIAL_HQ': 'PROVINCIAL', 'STATION': 'STATION'}
+
+
+def _scope_info(request):
+    """The caller's area for the UI: its level and its top unit.
+
+    {'scope': 'NATIONAL' | 'LIMITED', 'scope_level': 'NATIONAL' | 'PROVINCIAL' | 'STATION' | None,
+     'scope_unit': {id, code, name, unit_type, parent_name} | None}
+    """
+    ids = _scope(request)
+    if ids is None:
+        top = OrgUnit.objects.filter(unit_type='NATIONAL_HQ').first()
+        level = 'NATIONAL'
+    else:
+        roots = [u for u in OrgUnit.objects.filter(id__in=ids).select_related('parent') if u.parent_id not in ids]
+        order = list(SCOPE_LEVELS)
+        roots.sort(key=lambda u: (order.index(u.unit_type) if u.unit_type in order else 9, u.name))
+        top = roots[0] if roots else None
+        level = SCOPE_LEVELS.get(top.unit_type) if top else None
+    return {
+        'scope': 'NATIONAL' if ids is None else 'LIMITED',
+        'scope_level': level,
+        'scope_unit': None if top is None else {
+            'id': top.pk, 'code': top.code, 'name': top.name, 'unit_type': top.unit_type,
+            'parent_name': top.parent.name if top.parent_id else None,
+        },
+    }
+
+
 def _units_in_scope(request):
     ids = _scope(request)
     qs = OrgUnit.objects.all()
@@ -129,13 +158,13 @@ def _admin_role_for(unit):
     return Role.objects.select_related('department').filter(code=code, is_active=True).first() if code else None
 
 
-def _system_admin_problem(user, role, unit):
-    """None if `user` may add another `role` holder at `unit` now, otherwise the reason."""
+def _system_admin_authority(user, role, unit):
+    """None if `user` may appoint `role` holders at `unit` at all (ignoring the limit), otherwise the reason."""
     if role is None:
         return 'System admins are created at a province or a station.'
     if not (user.is_superuser or can(user, 'users.create', unit)):
         return 'You cannot create accounts here.'
-    return can_grant(user, role, unit) or system_admin_slot_problem(role, unit)
+    return can_grant(user, role, unit)
 
 
 def _officer_names(service_number):
@@ -321,7 +350,7 @@ class ConsoleViewSet(viewsets.ViewSet):
         failed = logins.filter(success=False).order_by('-at')[:6]
 
         return Response({
-            'scope': 'NATIONAL' if scope is None else 'LIMITED',
+            **_scope_info(request),
             'counts': {
                 'provinces': units.filter(unit_type='PROVINCIAL_HQ').count(),
                 'stations': units.filter(unit_type='STATION').count(),
@@ -397,10 +426,15 @@ class ConsoleViewSet(viewsets.ViewSet):
             provinces.append(p)
 
         national = next((node(u) for u in units if u.unit_type == 'NATIONAL_HQ'), None)
+        # Stations whose province is outside the caller's area (a station admin's own station).
+        province_ids = {p['id'] for p in provinces}
+        own_stations = [s for parent_id, rows in stations_by_parent.items() if parent_id not in province_ids
+                        for s in rows]
         return Response({
-            'scope': 'NATIONAL' if _scope(request) is None else 'LIMITED',
+            **_scope_info(request),
             'national': national,
             'provinces': provinces,
+            'stations': own_stations,
             'storage': {'captured_at': captured, 'unassigned': unassigned, 'shared': shared},
         })
 
@@ -601,9 +635,10 @@ class ConsoleViewSet(viewsets.ViewSet):
         admins = None
         if role is not None:
             used, limit = system_admin_slots(role, unit)
-            problem = _system_admin_problem(request.user, role, unit)
+            authority = _system_admin_authority(request.user, role, unit)
+            problem = authority or system_admin_slot_problem(role, unit)
             admins = {'role_code': role.code, 'role_name': role.name, 'used': used, 'limit': limit,
-                      'can_create': problem is None, 'reason': problem}
+                      'allowed': authority is None, 'can_create': problem is None, 'reason': problem}
         return Response({
             'unit': {'id': unit.pk, 'code': unit.code, 'name': unit.name, 'unit_type': unit.unit_type,
                      'active': unit.active, 'parent_id': unit.parent_id,
@@ -624,9 +659,7 @@ class ConsoleViewSet(viewsets.ViewSet):
         role = _admin_role_for(unit)
         if role is None:
             raise ValidationError({'org_unit': ['System admins are created at a province or a station.']})
-        if not (request.user.is_superuser or can(request.user, 'users.create', unit)):
-            raise PermissionDenied('You cannot create accounts here.')
-        problem = can_grant(request.user, role, unit)
+        problem = _system_admin_authority(request.user, role, unit)
         if problem:
             raise PermissionDenied(problem)
         problem = system_admin_slot_problem(role, unit)
@@ -775,6 +808,7 @@ class ConsoleViewSet(viewsets.ViewSet):
                 row['total_rows'] = row['rows'] + sum(k['rows'] for k in kids)
 
         return Response({
+            **_scope_info(request),
             'captured_at': captured,
             'database_bytes': database_size() if scope is None else None,
             'units': sorted(unit_rows, key=lambda r: -r.get('total_bytes', r['bytes'])),

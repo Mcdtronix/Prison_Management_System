@@ -63,14 +63,24 @@ const MessagingLoading = () => (
   <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading messages…</div>
 );
 
-const MESSAGING_ROLES = ["HQ_SYS_ADMIN","SUPER_ADMIN","PROV_SYS_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"];
+const MESSAGING_ROLES = ["HQ_SYS_ADMIN","SUPER_ADMIN","PROV_SYS_ADMIN","STN_SYS_ADMIN","ADMIN_OFFICER","RECEPTION_OFFICER","HEALTH_OFFICER","STORES_OFFICER","FARMS_OFFICER"];
 
-/** One console page: role check + the standard app shell. Provincial admins see their province only. */
-const hqPage = (title: string, description: string, page: JSX.Element, roles: string[] = CONSOLE_ROLES) => (
+type ConsoleText = string | Partial<Record<"HQ" | "PROV_SYS_ADMIN" | "STN_SYS_ADMIN", string>>;
+
+/** The page title for the signed-in admin's level (HQ, province or station). */
+function ConsoleLayout({ title, description, children }: { title: ConsoleText; description: ConsoleText; children: JSX.Element }) {
+  const { user } = useAuth();
+  const level = user?.role === "PROV_SYS_ADMIN" || user?.role === "STN_SYS_ADMIN" ? user.role : "HQ";
+  const pick = (t: ConsoleText) => (typeof t === "string" ? t : t[level] ?? t.HQ ?? "");
+  return <PrisonLayout title={pick(title)} description={pick(description)}>{children}</PrisonLayout>;
+}
+
+/** One console page: role check + the standard app shell. Provincial and station admins see only their own area. */
+const hqPage = (title: ConsoleText, description: ConsoleText, page: JSX.Element, roles: string[] = CONSOLE_ROLES) => (
   <ProtectedRoute allowedRoles={roles}>
-    <PrisonLayout title={title} description={description}>
+    <ConsoleLayout title={title} description={description}>
       {page}
-    </PrisonLayout>
+    </ConsoleLayout>
   </ProtectedRoute>
 );
 import { getDefaultRouteForRole, getLandingRouteForUser } from "@/lib/auth";
@@ -484,6 +494,7 @@ function App() {
                   "HQ_SYS_ADMIN",
                   "SUPER_ADMIN",
                   "PROV_SYS_ADMIN",
+                  "STN_SYS_ADMIN",
                   "ADMIN_OFFICER",
                   "RECEPTION_OFFICER",
                   "HEALTH_OFFICER",
@@ -551,12 +562,18 @@ function App() {
             }
           />
           {/* HQ System Admin console */}
-          <Route path="/hq" element={hqPage("HQ System Administration", "The whole system at a glance", <HqOverview />)} />
-          <Route path="/hq/organisation" element={hqPage("Provinces & Stations", "Provincial command centres and the stations under them", <HqOrganisation />)} />
-          <Route path="/hq/users" element={hqPage("User Accounts", "Every account, its roles and its status", <HqUsers />)} />
+          <Route path="/hq" element={hqPage(
+            { HQ: "HQ System Administration", PROV_SYS_ADMIN: "Provincial System Administration", STN_SYS_ADMIN: "Station System Administration" },
+            { HQ: "The whole system at a glance", PROV_SYS_ADMIN: "Your province at a glance", STN_SYS_ADMIN: "Your station at a glance" },
+            <HqOverview />)} />
+          <Route path="/hq/organisation" element={hqPage(
+            { HQ: "Provinces & Stations", PROV_SYS_ADMIN: "Province & Stations", STN_SYS_ADMIN: "My Station" },
+            { HQ: "Provincial command centres and the stations under them", PROV_SYS_ADMIN: "Your provincial command centre and its stations", STN_SYS_ADMIN: "Your station and its officers" },
+            <HqOrganisation />)} />
+          <Route path="/hq/users" element={hqPage("User Accounts", "Accounts in your area, their roles and status", <HqUsers />)} />
           <Route path="/hq/users/:id" element={hqPage("User Account", "Details, roles, sessions and activity", <HqUserDetail />)} />
           <Route path="/hq/activity" element={hqPage("Activity & Sign-ins", "Who did what, when, and who is online", <HqActivity />)} />
-          <Route path="/hq/storage" element={hqPage("Storage", "How much data each province and station holds", <HqStorage />)} />
+          <Route path="/hq/storage" element={hqPage("Storage", "How much data each unit in your area holds", <HqStorage />)} />
           <Route path="/hq/roles" element={hqPage("Roles", "Built-in and custom roles", <RoleManagement />, HQ_CONSOLE_ROLES)} />
           <Route path="/hq/departments" element={hqPage("Departments", "Built-in and custom departments", <DepartmentManagement />, HQ_CONSOLE_ROLES)} />
 

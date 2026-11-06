@@ -30,6 +30,8 @@ export async function loadUnitOptions(): Promise<UnitOption[]> {
     out.push({ id: p.id, label: `— ${p.name}`, type: 'PROVINCIAL_HQ' });
     for (const s of p.stations) out.push({ id: s.id, label: `—— ${s.name}`, type: 'STATION' });
   }
+  // A station admin's own station (its province is outside their area).
+  for (const s of t.stations || []) out.push({ id: s.id, label: s.name, type: 'STATION' });
   return out;
 }
 

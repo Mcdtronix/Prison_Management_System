@@ -68,30 +68,46 @@ const HqStorage = () => {
 
   const unassigned = data.unassigned || { bytes: 0, rows: 0 };
   const shared = data.shared || { bytes: 0, rows: 0 };
+  // Provincial and station admins see only their own units; system-wide figures stay with HQ.
+  const level: 'NATIONAL' | 'PROVINCIAL' | 'STATION' = data.scope_level || 'NATIONAL';
+  const national = level === 'NATIONAL';
+  const records = (data.units as any[]).reduce((n, u) => n + u.rows, 0);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
+          {!national && data.scope_unit ? `${data.scope_unit.name} only. ` : ''}
           {data.captured_at ? `Measured ${timeAgo(data.captured_at)}. Figures refresh nightly.` : 'Not measured yet.'}
         </p>
-        <Button variant="outline" onClick={refresh} disabled={busy}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${busy ? 'animate-spin' : ''}`} /> Measure now
-        </Button>
+        {national && (
+          <Button variant="outline" onClick={refresh} disabled={busy}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${busy ? 'animate-spin' : ''}`} /> Measure now
+          </Button>
+        )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Whole database" value={formatBytes(data.database_bytes)} icon={<HardDrive className="h-4 w-4" />}
-          hint={data.database_bytes ? 'Size on disk, including indexes' : 'Available on the production database'} />
-        <StatCard title="Held by provinces & stations" value={formatBytes(view.attributed)} icon={<Database className="h-4 w-4" />}
-          hint="Records with an owning unit" />
-        <StatCard title="Not yet assigned to a unit" value={formatBytes(unassigned.bytes)} icon={<Layers className="h-4 w-4" />}
-          tone={unassigned.bytes > view.attributed ? 'warn' : 'default'} hint={`${formatNumber(unassigned.rows)} records`} />
-        <StatCard title="System-wide data" value={formatBytes(shared.bytes)} icon={<Share2 className="h-4 w-4" />}
-          hint="Settings, lists and logs not owned by one unit" />
-      </div>
+      {national ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard title="Whole database" value={formatBytes(data.database_bytes)} icon={<HardDrive className="h-4 w-4" />}
+            hint={data.database_bytes ? 'Size on disk, including indexes' : 'Available on the production database'} />
+          <StatCard title="Held by provinces & stations" value={formatBytes(view.attributed)} icon={<Database className="h-4 w-4" />}
+            hint="Records with an owning unit" />
+          <StatCard title="Not yet assigned to a unit" value={formatBytes(unassigned.bytes)} icon={<Layers className="h-4 w-4" />}
+            tone={unassigned.bytes > view.attributed ? 'warn' : 'default'} hint={`${formatNumber(unassigned.rows)} records`} />
+          <StatCard title="System-wide data" value={formatBytes(shared.bytes)} icon={<Share2 className="h-4 w-4" />}
+            hint="Settings, lists and logs not owned by one unit" />
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <StatCard title={level === 'STATION' ? 'Held by your station' : 'Held by your province'}
+            value={formatBytes(view.attributed)} icon={<Database className="h-4 w-4" />}
+            hint={level === 'STATION' ? 'Records owned by this station' : 'Your command centre and its stations'} />
+          <StatCard title="Records" value={formatNumber(records)} icon={<Layers className="h-4 w-4" />} />
+        </div>
+      )}
 
-      {unassigned.bytes > 0 && (
+      {national && unassigned.bytes > 0 && (
         <div className="flex gap-3 rounded-md border border-[#d7a928]/50 bg-[#d7a928]/10 p-4 text-sm text-foreground">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#b08a1a]" />
           <p>
@@ -101,7 +117,9 @@ const HqStorage = () => {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      {level !== 'STATION' && (
+      <div className={`grid gap-6 ${national ? 'lg:grid-cols-2' : ''}`}>
+        {national && (
         <SectionCard title="By provincial command centre" description="Each province including its stations. Hover a bar for the exact figures.">
           {view.provinces.length === 0 && !view.national ? <EmptyState>No units yet.</EmptyState> : (
             <div>
@@ -116,6 +134,7 @@ const HqStorage = () => {
             </div>
           )}
         </SectionCard>
+        )}
 
         <SectionCard title="By station" description="Largest first.">
           {view.stations.length === 0 ? <EmptyState>No stations yet.</EmptyState> : (
@@ -129,6 +148,7 @@ const HqStorage = () => {
           )}
         </SectionCard>
       </div>
+      )}
 
       <SectionCard title="All units" description={data.note}>
         <div className="overflow-x-auto rounded-md border">

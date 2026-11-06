@@ -7,7 +7,7 @@ The service number is the username.
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from Auth.models import AuditLog, UserAssignment, UserSecurity
+from Auth.models import AuditLog, OrgUnit, UserAssignment, UserSecurity
 from Auth.testing import assign, role
 from Auth.tests_console import PW, ConsoleBase
 
@@ -165,3 +165,83 @@ class SystemAdminTests(ConsoleBase):
         tree = c.get('/api/auth/console/org-tree/').json()
         self.assertEqual(tree['scope'], 'LIMITED')
         self.assertEqual([p['code'] for p in tree['provinces']], ['PRV'])
+
+
+class StationConsoleScopeTests(ConsoleBase):
+    """A station system admin uses the same console as HQ, but sees only their own station."""
+
+    def setUp(self):
+        super().setUp()
+        self.prov_admin = self.make('1000005E', 'PROV_SYS_ADMIN', self.prv)
+        self.sta_b = OrgUnit.objects.create(code='STB', name='Station B', code_short='STB', unit_type='STATION',
+                                            parent=self.prv)
+        self.sibling_clerk = self.make('1000006F', 'RECEPTION_OFFICER', self.sta_b)
+        self.stn, _ = self.signed_in(self.stn_admin)
+
+    def test_scope_level_for_each_admin_tier(self):
+        for user, level, unit in ((self.hq, 'NATIONAL', 'NAT'), (self.prov_admin, 'PROVINCIAL', 'PRV'),
+                                  (self.stn_admin, 'STATION', 'STA')):
+            c, _ = self.signed_in(user)
+            for url in ('overview', 'org-tree', 'storage'):
+                body = c.get(f'/api/auth/console/{url}/').json()
+                self.assertEqual(body['scope_level'], level, (user.username, url))
+                self.assertEqual(body['scope_unit']['code'], unit, (user.username, url))
+
+    def test_org_tree_holds_only_own_station(self):
+        tree = self.stn.get('/api/auth/console/org-tree/').json()
+        self.assertEqual(tree['provinces'], [])
+        self.assertIsNone(tree['national'])
+        self.assertEqual([s['code'] for s in tree['stations']], ['STA'])
+        self.assertEqual(tree['scope_unit']['parent_name'], 'Province A')
+
+    def test_overview_counts_only_own_station(self):
+        counts = self.stn.get('/api/auth/console/overview/').json()['counts']
+        self.assertEqual((counts['provinces'], counts['stations']), (0, 1))
+        self.assertEqual(counts['users'], 2)  # the station admin and the clerk at Station A
+
+    def test_users_list_and_details_stay_inside_the_station(self):
+        names = {u['username'] for u in self.stn.get('/api/auth/console/users/').json()['results']}
+        self.assertEqual(names, {self.stn_admin.username, self.clerk.username})
+        for outsider in (self.sibling_clerk, self.far_clerk, self.prov_admin, self.hq):
+            self.assertEqual(self.stn.get(f'/api/auth/console/users/{outsider.pk}/').status_code, 404)
+        self.assertEqual(self.stn.get('/api/auth/console/users/', {'org_unit': self.sta_b.pk}).status_code, 403)
+
+    def test_station_officers_table(self):
+        body = self.stn.get(officers_url(self.sta)).json()
+        self.assertEqual({o['username'] for o in body['officers']}, {self.stn_admin.username, self.clerk.username})
+        slots = body['system_admins']
+        self.assertEqual((slots['used'], slots['limit'], slots['allowed'], slots['can_create']), (1, 2, False, False))
+        for other in (self.sta_b, self.prv, self.stc, self.nat):
+            self.assertEqual(self.stn.get(officers_url(other)).status_code, 403, other.code)
+
+    def test_provincial_admin_is_allowed_on_station_slots(self):
+        c, _ = self.signed_in(self.prov_admin)
+        slots = c.get(officers_url(self.sta)).json()['system_admins']
+        self.assertEqual((slots['allowed'], slots['can_create']), (True, True))
+
+    def test_activity_and_sign_ins_stay_inside_the_station(self):
+        self.signed_in(self.sibling_clerk)
+        self.signed_in(self.far_clerk)
+        logins = {e['username'] for e in self.stn.get('/api/auth/console/logins/').json()['results']}
+        self.assertNotIn(self.sibling_clerk.username, logins)
+        self.assertNotIn(self.far_clerk.username, logins)
+        online = {s['username'] for s in self.stn.get('/api/auth/console/online/').json()}
+        self.assertFalse(online & {self.sibling_clerk.username, self.far_clerk.username})
+
+    def test_storage_is_own_station_only_and_read_only(self):
+        body = self.stn.get('/api/auth/console/storage/').json()
+        self.assertEqual([u['id'] for u in body['units']], [self.sta.pk])
+        self.assertIsNone(body['database_bytes'])
+        self.assertEqual(self.stn.post('/api/auth/console/storage/').status_code, 403)
+
+    def test_station_admin_creates_officers_at_own_station_only(self):
+        body = {'username': '5000001A', 'first_name': 'New', 'last_name': 'Clerk',
+                'role': role('RECEPTION_OFFICER').pk, 'org_unit': self.sta.pk}
+        self.assertEqual(self.stn.post('/api/auth/console/users/', body, format='json').status_code, 201)
+        r = self.stn.post('/api/auth/console/users/', dict(body, username='5000002A', org_unit=self.sta_b.pk),
+                          format='json')
+        self.assertEqual(r.status_code, 403)
+        roles = {r['code'] for r in self.stn.get('/api/auth/console/grantable-roles/',
+                                                 {'org_unit': self.sta.pk}).json()}
+        self.assertNotIn('STN_SYS_ADMIN', roles)
+        self.assertIn('RECEPTION_OFFICER', roles)

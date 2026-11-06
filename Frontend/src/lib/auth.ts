@@ -41,8 +41,9 @@ export const normalizeRole = (role?: string | null): string => {
     // Provincial system admins use the console, limited to their province.
     PROVINCIAL_SYSTEM_ADMIN: "PROV_SYS_ADMIN",
     PROV_SYS_ADMIN: "PROV_SYS_ADMIN",
-    STATION_SYSTEM_ADMIN: "ADMIN_OFFICER",
-    STN_SYS_ADMIN: "ADMIN_OFFICER",
+    // Station system admins use the console, limited to their station.
+    STATION_SYSTEM_ADMIN: "STN_SYS_ADMIN",
+    STN_SYS_ADMIN: "STN_SYS_ADMIN",
     SYS_ADMIN: "ADMIN_OFFICER",
     ADMINISTRATION: "ADMIN_OFFICER",
     SECURITY: "SECURITY_OFFICER",
@@ -58,6 +59,7 @@ export const getRoleDisplayName = (role?: string | null): string => {
   const roleMap: Record<string, string> = {
     HQ_SYS_ADMIN: "HQ System Admin",
     PROV_SYS_ADMIN: "Provincial System Admin",
+    STN_SYS_ADMIN: "Station System Admin",
     SUPER_ADMIN: "Super Administrator",
     ADMIN_OFFICER: "Admin Officer",
     RECEPTION_OFFICER: "Reception Officer",
@@ -80,13 +82,14 @@ export const getRoleDisplayName = (role?: string | null): string => {
 export const HQ_CONSOLE_ROLES = ["HQ_SYS_ADMIN", "SUPER_ADMIN"];
 
 /** Roles that use the console at all. The server limits each one to its own area. */
-export const CONSOLE_ROLES = [...HQ_CONSOLE_ROLES, "PROV_SYS_ADMIN"];
+export const CONSOLE_ROLES = [...HQ_CONSOLE_ROLES, "PROV_SYS_ADMIN", "STN_SYS_ADMIN"];
 
 export const getDefaultRouteForRole = (role?: string | null): string => {
   switch (normalizeRole(role)) {
     case "HQ_SYS_ADMIN":
     case "SUPER_ADMIN":
     case "PROV_SYS_ADMIN":
+    case "STN_SYS_ADMIN":
       return "/hq";
     case "ADMIN_OFFICER":
       return "/admin";

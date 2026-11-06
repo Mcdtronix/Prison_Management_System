@@ -97,10 +97,15 @@ export const Sidebar = ({ userRole, mobileOpen = false, onMobileOpenChange }: Si
       ];
       break;
     case "PROV_SYS_ADMIN":
-      // Same console as HQ, limited to their province; roles and departments stay with HQ.
+    case "STN_SYS_ADMIN":
+      // Same console as HQ, limited to their province or station; roles and departments stay with HQ.
       navItems = [
         { title: "Overview", href: "/hq", icon: <Home size={18} /> },
-        { title: "Province & Stations", href: "/hq/organisation", icon: <Landmark size={18} /> },
+        {
+          title: normalizedRole === "STN_SYS_ADMIN" ? "My Station" : "Province & Stations",
+          href: "/hq/organisation",
+          icon: <Landmark size={18} />,
+        },
         { title: "User Accounts", href: "/hq/users", icon: <Users size={18} /> },
         { title: "Activity & Sign-ins", href: "/hq/activity", icon: <Activity size={18} /> },
         { title: "Storage", href: "/hq/storage", icon: <Database size={18} /> },
