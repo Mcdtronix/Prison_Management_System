@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 
 from Auth.models import AuditLog, OrgUnit, UserAssignment, UserSecurity
 from Auth.testing import assign, role
-from Auth.tests_console import PW, ConsoleBase
+from Auth.tests_console import NEW_OFFICER_HR, PW, ConsoleBase
 
 User = get_user_model()
 URL = '/api/auth/console/system-admins/'
@@ -236,8 +236,9 @@ class StationConsoleScopeTests(ConsoleBase):
 
     def test_station_admin_creates_officers_at_own_station_only(self):
         body = {'username': '5000001A', 'first_name': 'New', 'last_name': 'Clerk',
-                'role': role('RECEPTION_OFFICER').pk, 'org_unit': self.sta.pk}
-        self.assertEqual(self.stn.post('/api/auth/console/users/', body, format='json').status_code, 201)
+                'role': role('RECEPTION_OFFICER').pk, 'org_unit': self.sta.pk, **NEW_OFFICER_HR}
+        r = self.stn.post('/api/auth/console/users/', body, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
         r = self.stn.post('/api/auth/console/users/', dict(body, username='5000002A', org_unit=self.sta_b.pk),
                           format='json')
         self.assertEqual(r.status_code, 403)

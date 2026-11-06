@@ -16,6 +16,8 @@ export interface ApiResponse<T> {
   error_code?: string;
   details?: string;
   resolution?: string;
+  /** Per-field validation messages from a DRF 400, e.g. { national_id: ["..."] }. */
+  fieldErrors?: Record<string, string[]>;
 }
 
 interface LoginRequest {
@@ -221,9 +223,17 @@ export async function apiRequest<T>(
         errorMessage = responseData;
       }
 
+      const fieldErrors =
+        typeof responseData === "object" && responseData !== null
+          ? Object.fromEntries(
+              Object.entries(responseData).filter(([, value]) => Array.isArray(value)),
+            ) as Record<string, string[]>
+          : undefined;
+
       return {
         error: errorMessage,
         status: response.status,
+        fieldErrors: fieldErrors && Object.keys(fieldErrors).length ? fieldErrors : undefined,
       };
     }
 
@@ -1209,14 +1219,40 @@ const qs = (params: Record<string, string | number | undefined | null>) => {
   return entries.length ? "?" + new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString() : "";
 };
 
+/** An HR officer as the admin console lists them. */
+export interface ConsoleOfficer {
+  service_number: string;
+  full_name: string;
+  first_name: string;
+  surname: string;
+  other_names: string | null;
+  national_id: string;
+  gender: string;
+  date_of_birth: string;
+  date_of_attestation: string;
+  current_status: string;
+  /** Where they are currently posted, if anywhere. */
+  station: string | null;
+  posted_since: string | null;
+  account: { id: number; username: string; is_active: boolean } | null;
+}
+
 export const consoleApi = {
   overview: () => apiRequest<any>("/auth/console/overview/"),
   orgTree: () => apiRequest<any>("/auth/console/org-tree/"),
   users: (params: Record<string, string | number | undefined | null> = {}) =>
     apiRequest<any>(`/auth/console/users/${qs(params)}`),
   user: (id: number | string) => apiRequest<any>(`/auth/console/users/${id}/`),
+  /**
+   * Existing officer: { officer: serviceNumber, role, org_unit, email? }.
+   * New officer: { username, first_name, last_name, other_names?, national_id, gender,
+   *   date_of_birth, date_of_attestation, role, org_unit, email? } — also registers them in HR.
+   */
   createUser: (body: Record<string, unknown>) =>
     apiRequest<any>("/auth/console/users/", { method: "POST", body: JSON.stringify(body) }),
+  /** HR officers in the caller's area. Filters: q, org_unit, account ("none" | "has"), page, page_size. */
+  officers: (params: Record<string, string | number | undefined | null> = {}) =>
+    apiRequest<{ count: number; results: ConsoleOfficer[] }>(`/auth/console/officers/${qs(params)}`),
   updateProfile: (id: number, body: Record<string, unknown>) =>
     apiRequest<any>(`/auth/console/users/${id}/update-profile/`, { method: "POST", body: JSON.stringify(body) }),
   resetPassword: (id: number, reason: string) =>

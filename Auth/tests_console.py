@@ -9,6 +9,10 @@ from Auth.testing import assign, role
 User = get_user_model()
 PW = 'Kx9!vTq2#mLw7pZ'
 
+# HR details needed when a console account registers a brand-new officer.
+NEW_OFFICER_HR = {'national_id': '63-1234567 A 12', 'gender': 'Female',
+                  'date_of_birth': '1990-05-01', 'date_of_attestation': '2012-03-01'}
+
 
 class ConsoleBase(TestCase):
     def setUp(self):
@@ -156,7 +160,7 @@ class ConsoleScopeTests(ConsoleBase):
     def test_create_account(self):
         hq, _ = self.signed_in(self.hq)
         body = {'username': '2000001X', 'first_name': 'New', 'last_name': 'Officer', 'email': 'n@example.com',
-                'role': role('HEALTH_OFFICER').pk, 'org_unit': self.sta.pk}
+                'role': role('HEALTH_OFFICER').pk, 'org_unit': self.sta.pk, **NEW_OFFICER_HR}
         r = hq.post('/api/auth/console/users/', body, format='json')
         self.assertEqual(r.status_code, 201, r.content)
         _, login = self.login('2000001X', r.json()['temporary_password'])

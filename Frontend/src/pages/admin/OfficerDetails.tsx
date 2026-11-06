@@ -16,7 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-export default function OfficerDetails() {
+/** `backTo`: the list the back button returns to (Officer Management, or the console's Officers page). */
+export default function OfficerDetails({ backTo = "/admin/officers" }: { backTo?: string } = {}) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -124,7 +125,7 @@ export default function OfficerDetails() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="outline" size="icon" onClick={() => navigate("/admin/officers")}>
+        <Button variant="outline" size="icon" onClick={() => navigate(backTo)}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>

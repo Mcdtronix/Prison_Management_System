@@ -17,7 +17,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Prefetch, Q, Sum
+from django.db.models.functions import Upper
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -28,11 +29,12 @@ from rest_framework.response import Response
 from .models import (AuditLog, Department, LoginEvent, OrgUnit, Role, UserAssignment, UserSecurity,
                      UserSession)
 from .capabilities import SYSTEM_ADMIN_LIMITS, SYSTEM_ADMIN_ROLE_FOR_UNIT
+from .scoping import officers_in_scope, scope_for_units
 from .rbac import (admin_scope, can, can_grant, can_manage_user, descendant_ids, grantable_roles, is_national_admin,
                    system_admin_slot_problem, system_admin_slots)
 from .sessions import ONLINE_WINDOW, online_sessions, revoke_sessions
 from .usage import compute_org_usage, database_size, latest_snapshot
-from .utils import create_audit_log, get_primary_assignment, revoke_user_tokens
+from .utils import create_audit_log, get_primary_assignment, legacy_station_for_unit, revoke_user_tokens
 from .views_audit import visible_audit_logs
 
 User = get_user_model()
@@ -318,6 +320,36 @@ def _usage_by_unit(rows):
     return per_unit, unassigned, shared
 
 
+def _officer_row(officer, account):
+    posting = officer.open_postings[0] if officer.open_postings else None
+    if posting is None:
+        unit_name = None
+    elif posting.posting_org_unit_id:
+        unit_name = posting.posting_org_unit.name
+    else:
+        unit_name = posting.station.name
+    return {
+        'service_number': officer.service_number,
+        'full_name': ' '.join(n for n in (officer.first_name, officer.other_names, officer.surname) if n),
+        'first_name': officer.first_name, 'surname': officer.surname, 'other_names': officer.other_names,
+        'national_id': officer.national_id, 'gender': officer.gender,
+        'date_of_birth': officer.date_of_birth, 'date_of_attestation': officer.date_of_attestation,
+        'current_status': officer.current_status,
+        'station': unit_name, 'posted_since': posting.date_posted if posting else None,
+        'account': None if account is None else {
+            'id': account.pk, 'username': account.username, 'is_active': account.is_active,
+        },
+    }
+
+
+# HR model field -> console form field, for validation errors.
+_OFFICER_FIELDS = {'service_number': 'username', 'surname': 'last_name', '__all__': 'date_of_attestation'}
+
+
+def _officer_errors(exc):
+    return {_OFFICER_FIELDS.get(field, field): messages for field, messages in exc.message_dict.items()}
+
+
 # ------------------------------------------------------------------ viewset
 
 class ConsoleViewSet(viewsets.ViewSet):
@@ -475,18 +507,52 @@ class ConsoleViewSet(viewsets.ViewSet):
         return paginator.get_paginated_response([_user_row(u, online_ids) for u in page])
 
     def _create_user(self, request):
-        data = request.data
-        username = (data.get('username') or '').strip().upper()
-        if not SERVICE_NUMBER.match(username):
-            raise ValidationError({'username': ['Use the officer\'s service number, e.g. 1234567A.']})
-        if User.objects.filter(username=username).exists():
-            raise ValidationError({'username': ['An account with this service number already exists.']})
-        first = (data.get('first_name') or '').strip()
-        last = (data.get('last_name') or '').strip()
-        if not first or not last:
-            raise ValidationError({'first_name': ['First name and surname are required.']})
-        email = (data.get('email') or '').strip()
+        """Create an account for an officer, in one of two ways.
 
+        - Existing officer: `officer` is the service number of an HR record in
+          the caller's area. Names come from that record.
+        - New officer: `username` (service number), names and the HR details
+          (`national_id`, `gender`, `date_of_birth`, `date_of_attestation`).
+          The officer is registered in the HR database and posted to the unit,
+          so every account belongs to a real officer record.
+
+        Either way a one-time password is generated and must be changed at
+        first sign-in.
+        """
+        data = request.data
+        role, unit, department = self._grantable_role_at_unit(request, data)
+        email = (data.get('email') or '').strip()
+        existing_sn = (data.get('officer') or '').strip().upper()
+
+        with transaction.atomic():
+            if existing_sn:
+                officer, registered = self._officer_in_area(request, existing_sn), False
+            else:
+                officer, registered = self._register_officer(request, data, unit), True
+            username = officer.service_number
+            if (User.objects.filter(username__iexact=username).exists()
+                    or getattr(officer, 'system_account', None) is not None):
+                raise ValidationError({'officer': ['This officer already has an account.']})
+
+            user = User(username=username, first_name=officer.first_name, last_name=officer.surname, email=email)
+            password = temporary_password(user)
+            user.set_password(password)
+            user.save()
+            UserSecurity.objects.create(user=user, must_change_password=True, password_reset_at=timezone.now(),
+                                        password_reset_by=request.user)
+            UserAssignment.objects.create(user=user, role=role, org_unit=unit, department=department,
+                                          is_primary=True, created_by=get_primary_assignment(request.user))
+        source = 'new officer registered in HR' if registered else 'existing HR officer'
+        _audit(request, 'CREATE_ACCOUNT', user, f'{username} as {role.code} at {unit.code} ({source})')
+        return Response({
+            'id': user.id, 'username': user.username, 'temporary_password': password,
+            'officer_registered': registered,
+            'message': 'Give this one-time password to the officer in person. They must change it at first sign-in.',
+        }, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def _grantable_role_at_unit(request, data):
+        """The role, unit and department of a new account, or 403/400 if the caller cannot grant it."""
         role = Role.objects.filter(pk=data.get('role'), is_active=True).first()
         unit = OrgUnit.objects.filter(pk=data.get('org_unit'), active=True).first()
         if role is None or unit is None:
@@ -500,21 +566,104 @@ class ConsoleViewSet(viewsets.ViewSet):
         department = role.department or Department.objects.filter(pk=data.get('department'), active=True).first()
         if department is None:
             raise ValidationError({'department': ['Choose a department for this role.']})
+        return role, unit, department
 
-        with transaction.atomic():
-            user = User(username=username, first_name=first, last_name=last, email=email)
-            password = temporary_password(user)
-            user.set_password(password)
-            user.save()
-            UserSecurity.objects.create(user=user, must_change_password=True, password_reset_at=timezone.now(),
-                                        password_reset_by=request.user)
-            UserAssignment.objects.create(user=user, role=role, org_unit=unit, department=department,
-                                          is_primary=True, created_by=get_primary_assignment(request.user))
-        _audit(request, 'CREATE_ACCOUNT', user, f'{username} as {role.code} at {unit.code}')
-        return Response({
-            'id': user.id, 'username': user.username, 'temporary_password': password,
-            'message': 'Give this one-time password to the officer in person. They must change it at first sign-in.',
-        }, status=status.HTTP_201_CREATED)
+    @staticmethod
+    def _officer_in_area(request, service_number):
+        """An active HR officer currently in the caller's area, or a 400."""
+        from HumanResources.models import Officer
+        officer = officers_in_scope(Officer.objects.filter(service_number=service_number),
+                                    scope_for_units(_scope(request))).first()
+        if officer is None:
+            raise ValidationError({'officer': ['No officer with this service number in your area.']})
+        if officer.current_status != 'ACTIVE':
+            raise ValidationError({'officer': [f'This officer is {officer.get_current_status_display().lower()}.']})
+        return officer
+
+    @staticmethod
+    def _register_officer(request, data, unit):
+        """Register a new officer in HR and post them to `unit` (stations only)."""
+        from HumanResources.models import Officer, OfficerStationHistory
+
+        service_number = (data.get('username') or '').strip().upper()
+        if not SERVICE_NUMBER.match(service_number):
+            raise ValidationError({'username': ["Use the officer's service number, e.g. 1234567A."]})
+        if Officer.objects.filter(service_number=service_number).exists():
+            in_area = officers_in_scope(Officer.objects.filter(service_number=service_number),
+                                        scope_for_units(_scope(request))).exists()
+            raise ValidationError({'username': [
+                'This officer is already in the officer database. Choose them under "Existing officer".'
+                if in_area else
+                'This service number is registered to an officer at another unit. '
+                'They must be posted to your area before they can get an account here.'
+            ]})
+
+        officer = Officer(
+            service_number=service_number,
+            first_name=(data.get('first_name') or '').strip(),
+            surname=(data.get('last_name') or '').strip(),
+            other_names=(data.get('other_names') or '').strip() or None,
+            national_id=(data.get('national_id') or '').strip().upper(),
+            gender=data.get('gender') or '',
+            date_of_birth=data.get('date_of_birth') or None,
+            date_of_attestation=data.get('date_of_attestation') or None,
+            current_status='ACTIVE',
+        )
+        try:
+            officer.full_clean()
+        except DjangoValidationError as exc:
+            raise ValidationError(_officer_errors(exc))
+        officer.save()
+
+        # Post them here so they appear in this station's officer lists. A
+        # province or HQ has no legacy station row to post to; their account
+        # assignment places them there instead (see Auth/scoping.py).
+        station = legacy_station_for_unit(unit) if unit.unit_type == 'STATION' else None
+        if station is not None:
+            OfficerStationHistory.objects.create(
+                officer=officer, station=station, posting_org_unit=unit,
+                date_posted=max(timezone.localdate(), officer.date_of_attestation),
+                posted_by=request.user.username,
+            )
+        return officer
+
+    # ---- officers (HR records) ------------------------------------------
+
+    @action(detail=False, methods=['get'])
+    def officers(self, request):
+        """HR officers currently in the caller's area, with their account if they have one.
+
+        Filters: ?q= (name, service number, national ID), ?org_unit=, ?account=none|has.
+        """
+        from HumanResources.models import Officer, OfficerStationHistory
+
+        qs = officers_in_scope(Officer.objects.all(), scope_for_units(_org_filter(request)))
+        q = (request.query_params.get('q') or '').strip()
+        if q:
+            qs = qs.filter(Q(service_number__icontains=q) | Q(first_name__icontains=q) | Q(surname__icontains=q)
+                           | Q(other_names__icontains=q) | Q(national_id__icontains=q))
+        account = request.query_params.get('account')
+        if account in ('none', 'has'):
+            has_account = (Q(sn_upper__in=User.objects.annotate(u=Upper('username')).values('u'))
+                           | Q(system_account__isnull=False))
+            qs = qs.annotate(sn_upper=Upper('service_number'))
+            qs = qs.exclude(has_account) if account == 'none' else qs.filter(has_account)
+
+        qs = qs.prefetch_related(Prefetch(
+            'station_history',
+            queryset=OfficerStationHistory.objects.filter(date_transferred__isnull=True)
+            .select_related('station', 'posting_org_unit').order_by('-date_posted'),
+            to_attr='open_postings',
+        ))
+        paginator = ConsolePage()
+        page = paginator.paginate_queryset(qs, request, view=self)
+
+        numbers = [o.service_number.upper() for o in page]
+        accounts = {u.username.upper(): u for u in User.objects.filter(username__in=numbers)}
+        for u in User.objects.filter(userprofile__officer_id__in=numbers).select_related('userprofile'):
+            accounts.setdefault(u.userprofile.officer_id.upper(), u)
+        return paginator.get_paginated_response([_officer_row(o, accounts.get(o.service_number.upper()))
+                                                 for o in page])
 
     @action(detail=False, methods=['get'], url_path=r'users/(?P<user_id>\d+)')
     def user_detail(self, request, user_id=None):

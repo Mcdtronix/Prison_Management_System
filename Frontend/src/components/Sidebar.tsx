@@ -81,6 +81,7 @@ export const Sidebar = ({ userRole, mobileOpen = false, onMobileOpenChange }: Si
         { title: "Overview", href: "/hq", icon: <Home size={18} /> },
         { title: "Provinces & Stations", href: "/hq/organisation", icon: <Landmark size={18} /> },
         { title: "User Accounts", href: "/hq/users", icon: <Users size={18} /> },
+        { title: "Officers", href: "/hq/officers", icon: <UserCheck size={18} /> },
         {
           title: "Roles & Departments",
           href: "/hq/roles",
@@ -107,6 +108,7 @@ export const Sidebar = ({ userRole, mobileOpen = false, onMobileOpenChange }: Si
           icon: <Landmark size={18} />,
         },
         { title: "User Accounts", href: "/hq/users", icon: <Users size={18} /> },
+        { title: "Officers", href: "/hq/officers", icon: <UserCheck size={18} /> },
         { title: "Activity & Sign-ins", href: "/hq/activity", icon: <Activity size={18} /> },
         { title: "Storage", href: "/hq/storage", icon: <Database size={18} /> },
         { title: "Messaging", href: "/messaging", icon: <MessageSquare size={18} /> },

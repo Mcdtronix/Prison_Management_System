@@ -48,6 +48,19 @@ EVERYWHERE = PeopleScope(unit_ids=None)
 NOWHERE = PeopleScope(unit_ids=frozenset())
 
 
+def scope_for_units(unit_ids) -> PeopleScope:
+    """Scope covering exactly `unit_ids` (already expanded to descendants); None means everywhere."""
+    if unit_ids is None:
+        return EVERYWHERE
+    unit_ids = frozenset(unit_ids)
+    station_ids = frozenset(
+        station.pk
+        for unit in OrgUnit.objects.filter(pk__in=unit_ids, unit_type='STATION')
+        if (station := legacy_station_for_unit(unit)) is not None
+    )
+    return PeopleScope(unit_ids, station_ids)
+
+
 def _active_profile(user):
     profile = getattr(user, 'userprofile', None)
     return profile if profile is not None and profile.is_active else None
@@ -66,13 +79,7 @@ def people_scope(user) -> PeopleScope:
 
     roots = {a.org_unit_id for a in _assignments(user)}
     if roots:
-        unit_ids = descendant_ids(roots)
-        station_ids = {
-            station.pk
-            for unit in OrgUnit.objects.filter(pk__in=unit_ids, unit_type='STATION')
-            if (station := legacy_station_for_unit(unit)) is not None
-        }
-        return PeopleScope(frozenset(unit_ids), frozenset(station_ids))
+        return scope_for_units(descendant_ids(roots))
 
     # Old-style accounts with no assignments: their profile's station only.
     if profile is not None:

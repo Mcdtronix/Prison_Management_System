@@ -49,6 +49,7 @@ import HqOverview from "@/pages/hq/HqOverview";
 import HqOrganisation from "@/pages/hq/HqOrganisation";
 import HqUsers from "@/pages/hq/HqUsers";
 import HqUserDetail from "@/pages/hq/HqUserDetail";
+import HqOfficers from "@/pages/hq/HqOfficers";
 import HqActivity from "@/pages/hq/HqActivity";
 import HqStorage from "@/pages/hq/HqStorage";
 import ChangePassword from "@/pages/shared/ChangePassword";
@@ -572,6 +573,8 @@ function App() {
             <HqOrganisation />)} />
           <Route path="/hq/users" element={hqPage("User Accounts", "Accounts in your area, their roles and status", <HqUsers />)} />
           <Route path="/hq/users/:id" element={hqPage("User Account", "Details, roles, sessions and activity", <HqUserDetail />)} />
+          <Route path="/hq/officers" element={hqPage("Officers", "The officer database for your area and who has a system account", <HqOfficers />)} />
+          <Route path="/hq/officers/:id" element={hqPage("Officer", "Service record, postings, qualifications and documents", <OfficerDetails backTo="/hq/officers" />)} />
           <Route path="/hq/activity" element={hqPage("Activity & Sign-ins", "Who did what, when, and who is online", <HqActivity />)} />
           <Route path="/hq/storage" element={hqPage("Storage", "How much data each unit in your area holds", <HqStorage />)} />
           <Route path="/hq/roles" element={hqPage("Roles", "Built-in and custom roles", <RoleManagement />, HQ_CONSOLE_ROLES)} />
