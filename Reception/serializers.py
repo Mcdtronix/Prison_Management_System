@@ -348,6 +348,7 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
             "id", "prison_number", "crb_number", "first_name", "surname", "other_names",
             "national_id", "date_of_birth", "gender", "nationality", "admission_type",
             "admission_date", "current_status", "admission_status", "created_at", "updated_at",
+            "discharge_date", "discharged_by",
             # Personal particulars and local home history
             "address", "marital_status", "educational_level", "is_first_time_offender",
             "race", "fathers_name", "headman", "chief", "district", "occupation",

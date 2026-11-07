@@ -61,6 +61,8 @@ interface Inmate {
   admission_date: string;
   current_status: string;
   crb_number?: string | null;
+  discharge_date?: string | null;
+  discharged_by?: string | null;
   marital_status?: string | null;
   educational_level?: string | null;
   is_first_time_offender?: boolean;
@@ -477,7 +479,7 @@ const InmateDetails = () => {
       case "ESCAPED":
         return <Badge className="bg-red-500">Escaped</Badge>;
       case "DISCHARGED":
-        return <Badge className="bg-[#0b4f2a]">Discharged</Badge>;
+        return <Badge className="bg-slate-700 hover:bg-slate-700">Discharged – Not in Custody</Badge>;
       case "DECEASED":
         return <Badge className="bg-gray-500">Deceased</Badge>;
       default:
@@ -685,6 +687,21 @@ const InmateDetails = () => {
       title="Inmate Details"
       description="View comprehensive inmate information"
     >
+      {inmate.current_status === "DISCHARGED" && (
+        <div
+          role="status"
+          className="mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+        >
+          <Badge className="bg-slate-700 hover:bg-slate-700">Discharged – Not in Custody</Badge>
+          <span className="text-sm">
+            {inmate.discharge_date
+              ? `Discharged on ${new Date(inmate.discharge_date).toLocaleDateString()}`
+              : "Discharged"}
+            {inmate.discharged_by ? `, approved by ${inmate.discharged_by}` : ""}. This record is kept for reference
+            and appears in the Discharge Diary.
+          </span>
+        </div>
+      )}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-1">
           <Card>

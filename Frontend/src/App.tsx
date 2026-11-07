@@ -22,6 +22,7 @@ import ReceptionDashboard from "@/pages/reception/ReceptionDashboard";
 import InmateRegistration from "@/pages/reception/InmateRegistration";
 import OffenceRegistration from "@/pages/reception/OffenceRegistration";
 import InmateList from "@/pages/reception/InmateList";
+import DischargeDiary from "@/pages/reception/DischargeDiary";
 import RecordCourtOutcome from "@/pages/reception/RecordCourtOutcome";
 import Courts from "@/pages/reception/Courts";
 import Analysis from "@/pages/reception/Analysis";
@@ -298,6 +299,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
                 <InmateList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reception/discharge-diary"
+            element={
+              <ProtectedRoute allowedRoles={["RECEPTION_OFFICER"]}>
+                <DischargeDiary />
               </ProtectedRoute>
             }
           />

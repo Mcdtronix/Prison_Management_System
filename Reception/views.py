@@ -202,10 +202,9 @@ class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
         release = pending_releases.latest('id')
         release.approval_status = "APPROVED"
         release.save(update_fields=['approval_status'])
-        
-        # Update current status to discharged
-        inmate.current_status = "DISCHARGED"
-        inmate.save(update_fields=['current_status'])
+
+        from .discharge import discharge_inmate
+        discharge_inmate(inmate, request.user, remarks="Discharge approved")
         
         return Response({"status": "Discharge approved successfully."})
 
@@ -1001,6 +1000,9 @@ class InmateListView(APIView):
                 Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True)
             )
 
+        # Discharged inmates are no longer in custody: they live in the Discharge Diary.
+        queryset = queryset.exclude(current_status='DISCHARGED')
+
         # Search functionality
         search_query = request.query_params.get('search', None)
         if search_query:
@@ -1454,9 +1456,11 @@ class DischargeApprovalViewSet(OrgUnitContextMixin, viewsets.ViewSet):
         workflow.save()
 
         # Execute discharge
-        inmate = workflow.inmate
-        inmate.current_status = 'DISCHARGED'
-        inmate.save(update_fields=['current_status'])
+        from .discharge import discharge_inmate
+        discharge_inmate(
+            workflow.inmate, request.user, when=workflow.approved_date,
+            remarks="; ".join(filter(None, [workflow.reception_reason, workflow.admin_remarks])),
+        )
 
         return Response({"message": "Discharge approved successfully."}, status=status.HTTP_200_OK)
 
@@ -1472,3 +1476,106 @@ class DischargeApprovalViewSet(OrgUnitContextMixin, viewsets.ViewSet):
         workflow.save()
 
         return Response({"message": "Discharge rejected."}, status=status.HTTP_200_OK)
+
+
+class DischargeDiaryView(APIView):
+    """
+    Inmates discharged from custody in the last five years (Reception/discharge.py),
+    newest first, scoped to the user's station. Older discharges are archived.
+
+    GET ?search=&from=YYYY-MM-DD&to=YYYY-MM-DD&page=1&page_size=50
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        import datetime
+        from django.db.models import Count, OuterRef, Q, Subquery
+        from django.db.models.functions import ExtractYear
+        from .models import ReleaseHistory
+        from Auth.rbac import can
+        from Auth.scoping import people_scope
+        from Reports.catalogue import INMATES
+        from .discharge import DIARY_YEARS, diary_start
+
+        if not can(request.user, 'reception.view'):
+            return Response({"error": "Your role cannot view the discharge diary."}, status=status.HTTP_403_FORBIDDEN)
+
+        today = timezone.localdate()
+        window_start = diary_start(today)
+
+        def parse(name, default):
+            raw = request.query_params.get(name)
+            if not raw:
+                return default
+            try:
+                return datetime.date.fromisoformat(raw)
+            except ValueError:
+                return None
+
+        start, end = parse('from', window_start), parse('to', today)
+        if start is None or end is None:
+            return Response({"error": "Dates must be YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+        start, end = max(start, window_start), min(end, today)
+
+        scoped = INMATES.scope(Inmate.objects.filter(current_status='DISCHARGED'), people_scope(request.user))
+        window = scoped.filter(discharge_date__gte=window_start, discharge_date__lte=today)
+
+        rows = window.filter(discharge_date__gte=start, discharge_date__lte=end)
+        search = (request.query_params.get('search') or '').strip()
+        if search:
+            rows = rows.filter(
+                Q(prison_number__icontains=search) | Q(first_name__icontains=search) | Q(surname__icontains=search)
+            )
+
+        reason = Subquery(
+            ReleaseWorkflow.objects.filter(inmate=OuterRef('pk'), status='APPROVED_BY_ADMIN')
+            .order_by('-approved_date').values('reception_reason')[:1]
+        )
+        odr = Subquery(ReleaseHistory.objects.filter(inmate=OuterRef('pk')).order_by('-id').values('active_odr')[:1])
+        rows = (rows.annotate(reason=reason, odr=odr)
+                .prefetch_related('offences', 'owner_org_unit')
+                .order_by('-discharge_date', 'prison_number'))
+
+        try:
+            page = max(int(request.query_params.get('page', 1)), 1)
+            page_size = min(max(int(request.query_params.get('page_size', 50)), 1), 200)
+        except ValueError:
+            return Response({"error": "Invalid page."}, status=status.HTTP_400_BAD_REQUEST)
+
+        total = rows.count()
+        results = []
+        for inmate in rows[(page - 1) * page_size: page * page_size]:
+            results.append({
+                "id": inmate.id,
+                "prison_number": inmate.prison_number,
+                "name": f"{inmate.first_name} {inmate.surname}".strip(),
+                "gender": inmate.gender,
+                "admission_date": inmate.admission_date,
+                "discharge_date": inmate.discharge_date,
+                "days_in_custody": (inmate.discharge_date - inmate.admission_date).days + 1
+                if inmate.discharge_date and inmate.admission_date else None,
+                "official_release_date": inmate.odr,
+                "reason": inmate.reason,
+                "discharged_by": inmate.discharged_by,
+                "station": inmate.owner_org_unit.name if inmate.owner_org_unit else None,
+                "offences": [o.offence_description for o in inmate.offences.all()],
+            })
+
+        by_year = {
+            row['year']: row['n']
+            for row in window.annotate(year=ExtractYear('discharge_date')).values('year').annotate(n=Count('id'))
+        }
+        return Response({
+            "window": {"start": window_start, "end": today, "years": DIARY_YEARS},
+            "range": {"start": start, "end": end},
+            "summary": {
+                "total": window.count(),
+                "this_year": window.filter(discharge_date__year=today.year).count(),
+                "this_month": window.filter(discharge_date__year=today.year, discharge_date__month=today.month).count(),
+                "by_year": [{"year": y, "count": by_year.get(y, 0)} for y in range(today.year, window_start.year - 1, -1)],
+            },
+            "results": results,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        })

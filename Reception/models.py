@@ -73,6 +73,9 @@ class Inmate(models.Model):
         ],
         default="IN_CUSTODY",
     )
+    # Set when the discharge is approved (Reception/discharge.py); drives the Discharge Diary.
+    discharge_date = models.DateField(null=True, blank=True)
+    discharged_by = models.CharField(max_length=100, null=True, blank=True)
     owner_org_unit = models.ForeignKey(
         'Auth.OrgUnit',
         on_delete=models.PROTECT,
@@ -88,6 +91,10 @@ class Inmate(models.Model):
     class Meta:
         db_table = "inmate"
         ordering = ["-admission_date"]
+        indexes = [
+            # Inmate list (status filter) and Discharge Diary (status + date range).
+            models.Index(fields=["current_status", "discharge_date"], name="inmate_status_discharge_idx"),
+        ]
 
     def save(self, *args, **kwargs):
         if not self.prison_number:

@@ -884,6 +884,14 @@ export const receptionApi = {
     });
   },
 
+  /** Inmates discharged in the last five years at the user's station, newest first. */
+  getDischargeDiary: async (params: { search?: string; from?: string; to?: string; page?: number; page_size?: number } = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== "") query.append(k, String(v));
+    });
+    return fetchApi(`/reception/discharge-diary/?${query.toString()}`);
+  },
   getInmateList: async (searchTerm?: string, filters?: Record<string, string>) => {
     const params = new URLSearchParams();
     if (searchTerm) {
