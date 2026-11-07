@@ -347,6 +347,7 @@ export const Sidebar = ({ userRole, mobileOpen = false, onMobileOpenChange }: Si
 
   const dashboardUrl = getDefaultRouteForRole(normalizedRole);
   const { user } = useAuth();
+  const accountName = user?.fullName || user?.username || "";
   const [openDropdowns, setOpenDropdowns] = useState<Record<string, boolean>>({});
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
@@ -514,18 +515,33 @@ export const Sidebar = ({ userRole, mobileOpen = false, onMobileOpenChange }: Si
             })}
           </nav>
           
-          {/* User Mailbox Address at the bottom */}
+          {/* Signed-in account: name, email and department mailbox */}
           <div className="p-4 border-t border-[#063f20] bg-[#0b4f2a] shrink-0">
-            <div className={cn("flex items-center gap-3", !isOpen && "justify-center")}>
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d7a928] text-[#0b4f2a] font-bold">
-                {user?.mailboxAddress ? user.mailboxAddress[0].toUpperCase() : <UserCheck size={16} />}
+            <div
+              className={cn("flex items-center gap-3", !isOpen && "justify-center")}
+              title={!isOpen ? [accountName, user?.email].filter(Boolean).join("\n") : undefined}
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#d7a928] text-[#0b4f2a] font-bold">
+                {accountName ? accountName[0].toUpperCase() : <UserCheck size={16} />}
               </div>
               {isOpen && (
-                <div className="flex flex-col overflow-hidden">
-                  <span className="text-xs text-gray-300 font-medium truncate">Mailbox</span>
-                  <span className="text-sm text-white font-semibold truncate" title={user?.mailboxAddress || 'None'}>
-                    {user?.mailboxAddress || 'Not Assigned'}
+                <div className="flex min-w-0 flex-col">
+                  <span className="truncate text-sm font-semibold text-white" title={accountName}>
+                    {accountName}
                   </span>
+                  {user?.email && (
+                    <span className="truncate text-xs text-gray-200" title={user.email}>
+                      {user.email}
+                    </span>
+                  )}
+                  {user?.mailboxAddress && (
+                    <span
+                      className="mt-0.5 truncate text-[11px] text-gray-400"
+                      title={`Department mailbox: ${user.mailboxAddress}`}
+                    >
+                      Mailbox · {user.mailboxAddress}
+                    </span>
+                  )}
                 </div>
               )}
             </div>

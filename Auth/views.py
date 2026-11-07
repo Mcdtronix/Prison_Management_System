@@ -120,6 +120,10 @@ def current_user_view(request):
         response.data["must_change_password"] = UserSecurity.objects.filter(
             user=request.user, must_change_password=True).exists()
         response.data["is_superuser"] = request.user.is_superuser
+        # Identity shown in the sidebar footer and the header profile menu,
+        # whichever account model (legacy profile or org-unit assignment) the user has.
+        response.data["email"] = request.user.email or None
+        response.data["full_name"] = request.user.get_full_name() or None
     return response
 
 

@@ -280,7 +280,14 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
                         'fine_amount': data.get('fine_amount')
                     }
                 )
-                
+
+                # Concurrent or consecutive, as ordered by the court.
+                from .sentencing import resolve_concurrent_target, set_concurrency
+                target = resolve_concurrent_target(
+                    inmate, data.get('concurrent_with_offence_id'), exclude_offence_id=offence.id
+                )
+                set_concurrency(convicted, target)
+
                 if data.get('has_restitution'):
                     Restitution.objects.update_or_create(
                         offence=offence,

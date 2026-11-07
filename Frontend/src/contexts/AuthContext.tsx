@@ -15,6 +15,9 @@ interface User {
   };
   orgUnitType?: string | null;
   mailboxAddress?: string | null;
+  /** The account's own email address (Django user.email). */
+  email?: string | null;
+  fullName?: string | null;
   /** Set after an admin password reset; the app only allows the change-password page. */
   mustChangePassword?: boolean;
   isSuperuser?: boolean;
@@ -94,6 +97,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             },
             orgUnitType: (response.data as any).org_unit_unit_type || undefined,
             mailboxAddress: (response.data as any).mailbox_address || undefined,
+            email: (response.data as any).email || null,
+            fullName: (response.data as any).full_name || null,
             mustChangePassword: !!(response.data as any).must_change_password,
             isSuperuser: !!(response.data as any).is_superuser,
           };
@@ -131,6 +136,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const userData: User = JSON.parse(userInfo);
           setUser(userData);
         }
+        // The login response is minimal; load the full profile (email, mailbox,
+        // display name) now rather than waiting for the next page load.
+        await checkAuthStatus();
 
         return { success: true };
       } else {

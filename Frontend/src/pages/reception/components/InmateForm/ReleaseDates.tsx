@@ -1,59 +1,37 @@
 import React, { useMemo } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { FormValues } from './index';
 import { Calendar, AlertCircle, Info, Calculator } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { computeEffectiveSentence, type SentenceCount } from '@/lib/sentence';
 
 interface ReleaseDatesProps {
     form: UseFormReturn<any>;
+    /** Counts already on record for this inmate; they share the same release dates. */
+    existingCounts?: SentenceCount[];
 }
 
-/**
- * Sentence length in calendar days, matching the backend (dateutil relativedelta):
- * add years and months (clamping to month end, e.g. 31 Jan + 1 month = 28/29 Feb),
- * then days, and count the days between. Falls back to 365/30-day units when no
- * sentence date has been entered yet.
- */
-const calendarDays = (start: string | undefined, years: number, months: number, days: number) => {
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(start || "");
-    if (!match) return years * 365 + months * 30 + days;
-    const [y, m, d] = [Number(match[1]), Number(match[2]) - 1, Number(match[3])];
-    const totalMonths = m + years * 12 + months;
-    const endYear = y + Math.floor(totalMonths / 12);
-    const endMonth = ((totalMonths % 12) + 12) % 12;
-    const lastDayOfMonth = new Date(Date.UTC(endYear, endMonth + 1, 0)).getUTCDate();
-    const end = Date.UTC(endYear, endMonth, Math.min(d, lastDayOfMonth) + days);
-    return Math.round((end - Date.UTC(y, m, d)) / 86_400_000);
-};
-
-const ReleaseDates: React.FC<ReleaseDatesProps> = ({ form }) => {
+const ReleaseDates: React.FC<ReleaseDatesProps> = ({ form, existingCounts = [] }) => {
     const offences = form.watch("offences") || [];
     const restitutions = form.watch("restitutions") || [];
-    const sentenceGroup = form.watch("sentenceGroup");
 
     const summary = useMemo(() => {
-        let totalDays = 0;
-
-        if (sentenceGroup?.isGrouped && sentenceGroup?.duration) {
-            // Grouped sentence: duration is in months, from the group's sentence date.
-            totalDays = calendarDays(sentenceGroup.date, 0, parseInt(sentenceGroup.duration) || 0, 0);
-        } else {
-            // Consecutive sentences: the backend adds up years, months and days,
-            // then counts them from the earliest sentence date.
-            let years = 0, months = 0, days = 0;
-            let earliest: string | undefined;
-            offences.forEach((o: any) => {
-                if (o.convictionStatus === 'convicted') {
-                    years += parseInt(o.sentenceYears) || 0;
-                    months += parseInt(o.sentenceMonths) || 0;
-                    days += parseInt(o.sentenceDays) || 0;
-                    if (o.sentenceDate && (!earliest || o.sentenceDate < earliest)) earliest = o.sentenceDate;
-                }
-            });
-            totalDays = calendarDays(earliest, years, months, days);
-        }
-
+        // Same rule as the backend: concurrent counts count once (longest),
+        // everything else runs one after another from the earliest sentence date.
+        const newCounts: SentenceCount[] = offences
+            .map((o: any, i: number) => ({ o, i }))
+            .filter(({ o }: any) => o.convictionStatus === 'convicted')
+            .map(({ o, i }: any) => ({
+                key: `new:${i}`,
+                years: parseInt(o.sentenceYears) || 0,
+                months: parseInt(o.sentenceMonths) || 0,
+                days: parseInt(o.sentenceDays) || 0,
+                sentenceDate: o.sentenceDate,
+                concurrentWith: o.concurrentWith || null,
+            }));
+        const effective = computeEffectiveSentence([...existingCounts, ...newCounts]);
+        const totalDays = effective.totalDays;
+        const concurrentSets = effective.concurrentSets.length;
         const standardRemission = Math.floor(totalDays / 3);
         const standardEffective = totalDays;
 
@@ -75,9 +53,11 @@ const ReleaseDates: React.FC<ReleaseDatesProps> = ({ form }) => {
             restitutionDays,
             netDays,
             restitutionRemission,
-            hasRestitution: restitutions.length > 0
+            hasRestitution: restitutions.length > 0,
+            months: effective.months,
+            concurrentSets,
         };
-    }, [offences, restitutions, sentenceGroup]);
+    }, [offences, restitutions, existingCounts]);
 
     return (
         <Card className="border-indigo-200 bg-indigo-50/30">
@@ -97,7 +77,7 @@ const ReleaseDates: React.FC<ReleaseDatesProps> = ({ form }) => {
                         <div className="space-y-2 text-sm">
                             <div className="flex justify-between border-b pb-1">
                                 <span className="text-gray-600">Total Effective Sentence:</span>
-                                <span className="font-semibold">{summary.totalDays} Days (~{Math.floor(summary.totalDays / 30)} Months)</span>
+                                <span className="font-semibold">{summary.months} Months ({summary.totalDays} Days)</span>
                             </div>
                             <div className="flex justify-between border-b pb-1">
                                 <span className="text-gray-600">Remission (1/3):</span>
@@ -107,6 +87,11 @@ const ReleaseDates: React.FC<ReleaseDatesProps> = ({ form }) => {
                                 <span className="text-gray-600">Net Days Served:</span>
                                 <span className="font-bold text-indigo-700">{summary.totalDays - summary.standardRemission} Days</span>
                             </div>
+                            {summary.concurrentSets > 0 && (
+                                <p className="pt-1 text-xs text-indigo-600">
+                                    Includes {summary.concurrentSets} set{summary.concurrentSets > 1 ? 's' : ''} of concurrent counts, each counted once at its longest sentence.
+                                </p>
+                            )}
                         </div>
                     </div>
 

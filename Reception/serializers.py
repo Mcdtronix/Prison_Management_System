@@ -256,6 +256,8 @@ class CourtSessionCreateSerializer(serializers.Serializer):
     sentence_date = serializers.DateField(required=False, allow_null=True)
     has_fine = serializers.BooleanField(required=False, default=False)
     fine_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
+    # Offence (count) this sentence runs concurrently with; empty = consecutive.
+    concurrent_with_offence_id = serializers.IntegerField(required=False, allow_null=True)
 
     # Restitution fields
     has_restitution = serializers.BooleanField(required=False, default=False)
@@ -428,7 +430,10 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
 
             if hasattr(offence, 'conviction') and offence.conviction:
                 convicted = offence.conviction
+                from .sentencing import concurrent_offence_ids
                 offence_data.update({
+                    # Offence ids whose sentences run alongside this one (empty = consecutive).
+                    'concurrent_with': concurrent_offence_ids(convicted),
                     'has_fine': convicted.has_fine,
                     'fine_amount': convicted.fine_amount,
                     'sentence': convicted.sentence,
@@ -512,7 +517,9 @@ class OffenceDataSerializer(serializers.Serializer):
     bailAmount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
     hasFine = serializers.BooleanField(default=False, required=False)
     fineAmount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
-    
+    # "new:<index>" | "existing:<offence id>" | "" (consecutive)
+    concurrentWith = serializers.RegexField(r'^((new|existing):\d+)?$', required=False, allow_blank=True)
+
     # Discharged fields
     dischargeReason = serializers.CharField(max_length=50, required=False, allow_blank=True)
     dischargeDate = FlexibleDateField(required=False, allow_null=True, input_formats=["%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "iso-8601"])
@@ -1218,6 +1225,32 @@ class OffenceRegistrationSerializer(serializers.Serializer):
                     action=f"Changed conviction status of offence '{offence.offence_description[:30]}' to {offence_data['convictionStatus'].upper()}",
                     performed_by=username
                 )
+
+        # Concurrent / consecutive sentencing, per count (same rule as Record Court Outcome).
+        # concurrentWith is "new:<index>" for a count in this submission or
+        # "existing:<offence id>" for a count already on record; empty = consecutive.
+        if not sentence_group_instance:
+            from .models import calculate_inmate_release_dates
+            from .sentencing import resolve_concurrent_target, set_concurrency
+            for i, offence_data in enumerate(offences_data):
+                if offence_data['convictionStatus'] != 'convicted':
+                    continue
+                conviction = Convicted.objects.get(offence=processed_offences[i])
+                link = (offence_data.get('concurrentWith') or '').strip()
+                target = None
+                if link.startswith('new:'):
+                    j = int(link.split(':', 1)[1])
+                    if j == i or not (0 <= j < len(processed_offences)) or offences_data[j]['convictionStatus'] != 'convicted':
+                        raise serializers.ValidationError(
+                            {'offences': f"Count {i + 1} must run concurrently with a different convicted count."}
+                        )
+                    target = Convicted.objects.get(offence=processed_offences[j])
+                elif link.startswith('existing:'):
+                    target = resolve_concurrent_target(
+                        inmate, int(link.split(':', 1)[1]), exclude_offence_id=processed_offences[i].id
+                    )
+                set_concurrency(conviction, target, recalculate=False)
+            calculate_inmate_release_dates(inmate)
 
         # Process restitutions (only for created/updated offences in this payload)
         # For simplicity, we delete old restitutions for updated offences and recreate them.

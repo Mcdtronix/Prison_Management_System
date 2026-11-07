@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,7 +11,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { FileText, Plus, Trash2, Pencil, Check, X } from "lucide-react";
-import { receptionApi } from "@/lib/api";
+import { inmateApi, receptionApi } from "@/lib/api";
+import { formatSentence, type SentenceCount } from "@/lib/sentence";
+import type { ConcurrentOption } from "@/components/sentence/SentenceRunsField";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 
 // Form Sections
@@ -38,6 +40,8 @@ export const offenceDataSchema = z.discriminatedUnion("convictionStatus", [
     nextCourtDate: z.string().optional(),
     hasFine: z.boolean().optional(),
     fineAmount: z.string().optional(),
+    // "new:<index>" (count in this registration) | "existing:<offence id>" | "" (consecutive)
+    concurrentWith: z.string().optional(),
   }).merge(baseOffenceSchema),
   z.object({
     convictionStatus: z.literal("unconvicted"),
@@ -98,22 +102,7 @@ const offenceFormSchema = z.object({
   // Release dates are now automatically calculated by the backend upon save,
   // so we no longer require the user to input them.
 
-  if (data.sentenceGroup?.isGrouped && hasConvicted) {
-    if (!data.sentenceGroup.duration) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Grouped sentence duration is required",
-        path: ["sentenceGroup", "duration"]
-      });
-    }
-    if (!data.sentenceGroup.date) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Grouped sentence date is required",
-        path: ["sentenceGroup", "date"]
-      });
-    }
-  } else if (!data.sentenceGroup?.isGrouped && hasConvicted) {
+  if (hasConvicted) {
     data.offences?.forEach((offence, index) => {
       if (offence.convictionStatus === 'convicted') {
         if (!offence.sentenceYears && !offence.sentenceMonths && !offence.sentenceDays) {
@@ -177,6 +166,8 @@ const OffenceRegistrationForm = ({
   >([]);
   const [inmate, setInmate] = useState<any>(null);
   const [offencesSummary, setOffencesSummary] = useState<any[]>([]);
+  // Convicted counts already on record; new counts may run concurrently with them.
+  const [recordedConvictions, setRecordedConvictions] = useState<any[]>([]);
   // Track live draft values from the Offences subform to control conditional sections
   const [draftConvictionStatus, setDraftConvictionStatus] = useState<
     "convicted" | "unconvicted"
@@ -199,6 +190,7 @@ const OffenceRegistrationForm = ({
     bailAmount: '',
     hasFine: false,
     fineAmount: '',
+    concurrentWith: '',
   });
 
   const resolvedInmateId =
@@ -342,6 +334,56 @@ const OffenceRegistrationForm = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedInmateId, editMode, offenceToEditId]);
 
+  useEffect(() => {
+    if (!resolvedInmateId) return;
+    inmateApi.getInmateDetails(String(resolvedInmateId)).then((res: any) => {
+      const convicted = (res?.data?.offences || []).filter((o: any) => o.conviction_status === "convicted");
+      setRecordedConvictions(convicted);
+    });
+  }, [resolvedInmateId]);
+
+  const recordedCounts: SentenceCount[] = useMemo(
+    () =>
+      recordedConvictions.map((o: any) => ({
+        key: `existing:${o.id}`,
+        years: o.sentence_years || 0,
+        months: o.sentence_months || 0,
+        days: o.sentence_days || 0,
+        sentenceDate: o.sentence_date || undefined,
+        concurrentWith: o.concurrent_with?.length ? `existing:${o.concurrent_with[0]}` : null,
+      })),
+    [recordedConvictions],
+  );
+
+  // Counts a new convicted count can run alongside: earlier counts in this
+  // registration, then counts already on record. Same choices as Record Court Outcome.
+  const concurrentOptions: ConcurrentOption[] = useMemo(
+    () => [
+      ...offences
+        .map((o: any, i) => ({ o, i }))
+        .filter(({ o }) => o.convictionStatus === "convicted")
+        .map(({ o, i }) => ({
+          value: `new:${i}`,
+          label: `Count ${i + 1}: ${o.offence}`,
+          detail: formatSentence(Number(o.sentenceYears) || 0, Number(o.sentenceMonths) || 0, Number(o.sentenceDays) || 0),
+          group: "this registration",
+        })),
+      ...recordedConvictions.map((o: any) => ({
+        value: `existing:${o.id}`,
+        label: o.offence_description,
+        detail: formatSentence(o.sentence_years || 0, o.sentence_months || 0, o.sentence_days || 0),
+        group: "already on record",
+      })),
+    ],
+    [offences, recordedConvictions],
+  );
+
+  const describeLink = (link?: string) => {
+    if (!link) return "Runs consecutively";
+    const option = concurrentOptions.find((o) => o.value === link);
+    return option ? `Concurrent with ${option.label}` : "Runs consecutively";
+  };
+
   const form = useForm<OffenceFormValues>({
     resolver: zodResolver(offenceFormSchema),
     defaultValues: {
@@ -378,6 +420,14 @@ const OffenceRegistrationForm = ({
   const removeOffence = (index: number) => {
     const updatedOffences = [...offences];
     updatedOffences.splice(index, 1);
+    // Keep "runs concurrently with" links pointing at the right counts.
+    updatedOffences.forEach((o: any, i) => {
+      const link = o.concurrentWith as string | undefined;
+      if (!link?.startsWith("new:")) return;
+      const target = Number(link.slice(4));
+      if (target === index) updatedOffences[i] = { ...o, concurrentWith: "" };
+      else if (target > index) updatedOffences[i] = { ...o, concurrentWith: `new:${target - 1}` };
+    });
     setOffences(updatedOffences);
     form.setValue("offences", updatedOffences);
 
@@ -648,66 +698,6 @@ const OffenceRegistrationForm = ({
           </Card>
         )}
 
-        {/* Sentencing Strategy Toggle */}
-        {(offences.some((o) => o.convictionStatus === "convicted") || draftConvictionStatus === "convicted") && (
-          <Card className="p-4 border-[#d7a928] bg-[#d7a928]/10">
-            <h4 className="text-md font-medium text-blue-800 mb-4">Sentencing Strategy</h4>
-            <FormField
-              control={form.control}
-              name="sentenceGroup.isGrouped"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-[#d7a928] bg-white p-4 shadow-sm mb-4">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel className="text-blue-900 font-semibold">
-                      Apply Grouped / Concurrent Sentence
-                    </FormLabel>
-                    <p className="text-sm text-blue-700">
-                      Check this if the magistrate imposed a single combined sentence for all convicted offences.
-                    </p>
-                  </div>
-                </FormItem>
-              )}
-            />
-
-            {form.watch("sentenceGroup.isGrouped") && (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-4 p-4 bg-white rounded border border-blue-100">
-                <FormField
-                  control={form.control}
-                  name="sentenceGroup.duration"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Grouped Sentence Duration (Months)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g. 24" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="sentenceGroup.date"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Date of Grouped Sentence</FormLabel>
-                      <FormControl>
-                        <Input type="date" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            )}
-          </Card>
-        )}
-
         {offences.length > 0 && (
           <Card className="p-4 border-emerald-200 bg-emerald-50/30 shadow-sm">
             <h4 className="text-md font-medium text-emerald-800 mb-3 flex items-center">
@@ -742,6 +732,11 @@ const OffenceRegistrationForm = ({
                           ? (`${o.sentenceYears}Y ${o.sentenceMonths}M ${o.sentenceDays}D (from ${o.sentenceDate})`)
                           : (o.nextCourtDate ? `Next Court: ${o.nextCourtDate}` : '-')
                         }
+                        {o.convictionStatus === 'convicted' && (
+                          <span className="mt-0.5 block text-xs text-slate-500">
+                            {describeLink((o as any).concurrentWith)}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {o.hasRestitution ? <span className="text-emerald-600 font-semibold">Yes</span> : <span className="text-gray-400">No</span>}
@@ -777,7 +772,7 @@ const OffenceRegistrationForm = ({
           }}
           draftOffence={draftOffence}
           onDraftOffenceChange={setDraftOffence}
-          isGrouped={form.watch("sentenceGroup.isGrouped")}
+          concurrentOptions={concurrentOptions}
         />
 
         {/* Show Restitution if any offence (or current draft) is convicted AND has restitution */}
@@ -813,7 +808,7 @@ const OffenceRegistrationForm = ({
         {/* Show ReleaseDates if any offence (or current draft) is convicted */}
         {(offences.some((o) => o.convictionStatus === "convicted") ||
           draftConvictionStatus === "convicted") && (
-            <ReleaseDates form={form} />
+            <ReleaseDates form={form} existingCounts={recordedCounts} />
           )}
 
         {/* Reclassification (Optional) */}

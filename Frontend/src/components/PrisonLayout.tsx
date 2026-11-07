@@ -28,10 +28,7 @@ export const PrisonLayout = ({
   const { user, logout } = useAuth();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  const getUserDisplayName = () => {
-    // In a real app, this would come from user profile
-    return user?.username || "User";
-  };
+  const getUserDisplayName = () => user?.fullName || user?.username || "User";
 
   const getUserRoleDisplay = () => {
     if (!user?.role) return "User";
@@ -80,28 +77,55 @@ export const PrisonLayout = ({
                       {getUserDisplayName().charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="hidden md:flex flex-col items-start">
-                    <span className="text-sm font-medium text-white">
+                  <div className="hidden md:flex min-w-0 max-w-[240px] flex-col items-start leading-tight">
+                    <span className="max-w-full truncate text-sm font-medium text-white">
                       {getUserDisplayName()}
                     </span>
-                    <span className="text-xs text-gray-300">
-                      {getUserRoleDisplay()}
+                    <span
+                      className="max-w-full truncate text-xs text-gray-300"
+                      title={user?.email || undefined}
+                    >
+                      {user?.email || getUserRoleDisplay()}
                     </span>
                   </div>
                   <User className="h-4 w-4 text-gray-300" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  <div className="flex flex-col">
-                    <span className="font-medium">{getUserDisplayName()}</span>
-                    <span className="text-xs text-gray-500 mb-1">{getUserRoleDisplay()}</span>
-                    {user?.mailboxAddress && (
-                      <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1 py-0.5 rounded w-max mt-1">
-                        {user.mailboxAddress}
-                      </span>
-                    )}
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex items-start gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback className="bg-[#0b4f2a] text-white">
+                        {getUserDisplayName().charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex min-w-0 flex-col">
+                      <span className="truncate font-semibold text-gray-900">{getUserDisplayName()}</span>
+                      <span className="text-xs text-gray-500">{getUserRoleDisplay()}</span>
+                    </div>
                   </div>
+                  <dl className="mt-3 space-y-1.5 border-t pt-3 text-xs">
+                    {user?.email && (
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-gray-500">Email</dt>
+                        <dd className="truncate text-gray-900" title={user.email}>
+                          {user.email}
+                        </dd>
+                      </div>
+                    )}
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-gray-500">Service no.</dt>
+                      <dd className="font-mono text-gray-900">{user?.username}</dd>
+                    </div>
+                    {user?.mailboxAddress && (
+                      <div className="flex justify-between gap-3">
+                        <dt className="shrink-0 text-gray-500">Mailbox</dt>
+                        <dd className="truncate font-mono text-gray-700" title={user.mailboxAddress}>
+                          {user.mailboxAddress}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout} className="text-red-600">

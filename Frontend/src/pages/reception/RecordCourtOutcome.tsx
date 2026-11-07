@@ -37,6 +37,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Checkbox } from "@/components/ui/checkbox";
 
 import { adminApi, inmateApi } from "@/lib/api";
+import { calendarDays, computeEffectiveSentence, formatSentence, type SentenceCount } from "@/lib/sentence";
+import { SentenceRunsField, type ConcurrentOption } from "@/components/sentence/SentenceRunsField";
 
 const courtOutcomeSchema = z.object({
   session_date: z.date({
@@ -51,6 +53,8 @@ const courtOutcomeSchema = z.object({
   sentence_months: z.number().min(0).optional(),
   sentence_days: z.number().min(0).optional(),
   sentence_date: z.date().optional(),
+  // Offence id of the count this sentence runs concurrently with; "" = consecutive.
+  concurrent_with: z.string().optional(),
   has_fine: z.boolean().default(false).optional(),
   fine_amount: z.string().optional(),
   
@@ -88,6 +92,7 @@ export default function RecordCourtOutcome() {
       sentence_years: 0,
       sentence_months: 0,
       sentence_days: 0,
+      concurrent_with: "",
       restitution_sentence_years: 0,
       restitution_sentence_months: 0,
       restitution_sentence_days: 0,
@@ -96,6 +101,18 @@ export default function RecordCourtOutcome() {
   });
 
   const outcome = form.watch("outcome");
+
+  // The inmate's other convicted counts: choices for "Sentence runs" and the
+  // basis of the combined release summary (same rule as offence registration).
+  const otherConvictions: any[] = (inmate?.offences || []).filter(
+    (o: any) => o.conviction_status === "convicted" && String(o.id) !== String(offenceId),
+  );
+  const concurrentOptions: ConcurrentOption[] = otherConvictions.map((o: any) => ({
+    value: String(o.id),
+    label: o.offence_description,
+    detail: formatSentence(o.sentence_years || 0, o.sentence_months || 0, o.sentence_days || 0),
+    group: "already on record",
+  }));
   const hasFine = form.watch("has_fine");
   const hasRestitution = form.watch("has_restitution");
 
@@ -115,8 +132,12 @@ export default function RecordCourtOutcome() {
       if (matchedOffence) {
         setOffence(matchedOffence);
         // Pre-fill reclassification if classification history exists
-        if (response.data.classification) {
-          form.setValue("reclassification", response.data.classification);
+        const currentClass = response.data.classification?.classification;
+        if (currentClass) {
+          form.setValue("reclassification", currentClass);
+        }
+        if (matchedOffence.concurrent_with?.length) {
+          form.setValue("concurrent_with", String(matchedOffence.concurrent_with[0]));
         }
       } else {
         toast.error("Offence not found.");
@@ -162,6 +183,7 @@ export default function RecordCourtOutcome() {
         payload.sentence_months = data.sentence_months || 0;
         payload.sentence_days = data.sentence_days || 0;
         payload.sentence_date = format(data.sentence_date!, "yyyy-MM-dd");
+        payload.concurrent_with_offence_id = data.concurrent_with ? Number(data.concurrent_with) : null;
         
         payload.has_fine = data.has_fine;
         if (data.has_fine) payload.fine_amount = data.fine_amount;
@@ -465,6 +487,22 @@ export default function RecordCourtOutcome() {
                         )}
                       />
 
+                      <FormField
+                        control={form.control}
+                        name="concurrent_with"
+                        render={({ field }) => (
+                          <FormItem>
+                            <SentenceRunsField
+                              id="outcome-sentence-runs"
+                              value={field.value}
+                              onChange={field.onChange}
+                              options={concurrentOptions}
+                            />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
                       <div className="pt-4 border-t border-red-200">
                         <FormField
                           control={form.control}
@@ -622,8 +660,26 @@ export default function RecordCourtOutcome() {
                             const y = form.watch("sentence_years") || 0;
                             const m = form.watch("sentence_months") || 0;
                             const d = form.watch("sentence_days") || 0;
-                            const totalDays = (y * 365) + (m * 30) + d;
-                            const standardRemission = Math.floor(totalDays / 3);
+                            const sentenceDate = form.watch("sentence_date");
+                            const isoDate = sentenceDate ? format(sentenceDate, "yyyy-MM-dd") : undefined;
+                            const concurrentWith = form.watch("concurrent_with");
+
+                            // Whole sentence once this count is recorded, honouring concurrency.
+                            const counts: SentenceCount[] = [
+                              ...otherConvictions.map((o: any) => ({
+                                key: String(o.id),
+                                years: o.sentence_years || 0,
+                                months: o.sentence_months || 0,
+                                days: o.sentence_days || 0,
+                                sentenceDate: o.sentence_date || undefined,
+                                concurrentWith: o.concurrent_with?.length ? String(o.concurrent_with[0]) : null,
+                              })),
+                              { key: String(offenceId), years: y, months: m, days: d, sentenceDate: isoDate, concurrentWith: concurrentWith || null },
+                            ];
+                            const whole = computeEffectiveSentence(counts);
+                            const totalDays = whole.totalDays;
+                            const standardRemission = whole.remissionDays;
+                            const thisCountDays = calendarDays(isoDate, y, m, d);
 
                             const ry = form.watch("restitution_sentence_years") || 0;
                             const rm = form.watch("restitution_sentence_months") || 0;
@@ -638,8 +694,12 @@ export default function RecordCourtOutcome() {
                                   <h5 className="text-xs font-bold text-gray-500 uppercase mb-2">Standard Computation</h5>
                                   <div className="space-y-1 text-sm">
                                     <div className="flex justify-between border-b border-gray-200 pb-1">
-                                      <span className="text-gray-600">Total Effective Sentence:</span>
-                                      <span className="font-semibold">{totalDays} Days</span>
+                                      <span className="text-gray-600">This count:</span>
+                                      <span className="font-semibold">{thisCountDays} Days</span>
+                                    </div>
+                                    <div className="flex justify-between border-b border-gray-200 pb-1">
+                                      <span className="text-gray-600">Total Effective Sentence{otherConvictions.length ? " (all counts)" : ""}:</span>
+                                      <span className="font-semibold">{whole.months} Months ({totalDays} Days)</span>
                                     </div>
                                     <div className="flex justify-between border-b border-gray-200 pb-1">
                                       <span className="text-gray-600">Remission (1/3):</span>

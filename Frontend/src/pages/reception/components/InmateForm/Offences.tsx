@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { Plus, X, Check, FileText, Pencil } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import { SentenceRunsField, type ConcurrentOption } from '@/components/sentence/SentenceRunsField';
 
 interface OffencesProps {
   form: UseFormReturn<OffenceFormValues>;
@@ -29,7 +30,8 @@ interface OffencesProps {
   // Props for controlling the local form from the parent
   draftOffence: z.infer<typeof offenceDataSchema>;
   onDraftOffenceChange: (offence: z.infer<typeof offenceDataSchema>) => void;
-  isGrouped?: boolean;
+  /** Convicted counts this one may run concurrently with (shared with Record Court Outcome). */
+  concurrentOptions?: ConcurrentOption[];
 }
 
 const Offences: React.FC<OffencesProps> = ({ 
@@ -41,11 +43,11 @@ const Offences: React.FC<OffencesProps> = ({
   onDraftChange,
   draftOffence,
   onDraftOffenceChange,
-  isGrouped = false,
+  concurrentOptions = [],
 }) => {
   const localSchema = useMemo(() => {
     return offenceDataSchema.superRefine((data, ctx) => {
-      if (data.convictionStatus === 'convicted' && !isGrouped) {
+      if (data.convictionStatus === 'convicted') {
         if (!data.sentenceYears && !data.sentenceMonths && !data.sentenceDays) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -62,7 +64,7 @@ const Offences: React.FC<OffencesProps> = ({
         }
       }
     });
-  }, [isGrouped]);
+  }, []);
 
   const localForm = useForm<z.infer<typeof offenceDataSchema>>({
     resolver: zodResolver(localSchema),
@@ -113,6 +115,7 @@ const Offences: React.FC<OffencesProps> = ({
       bailAmount: '',
       hasFine: false,
       fineAmount: '',
+      concurrentWith: '',
     };
     onDraftOffenceChange(defaultOffence);
   };
@@ -192,7 +195,7 @@ const Offences: React.FC<OffencesProps> = ({
 
               {convictionStatus === 'convicted' ? (
                 <div className="space-y-4">
-                  {!isGrouped && (
+                  {(
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div className="grid grid-cols-3 gap-2">
                         <FormField
@@ -250,6 +253,21 @@ const Offences: React.FC<OffencesProps> = ({
                       />
                     </div>
                   )}
+                  <FormField
+                    control={localForm.control}
+                    name="concurrentWith"
+                    render={({ field }) => (
+                      <FormItem>
+                        <SentenceRunsField
+                          id="draft-sentence-runs"
+                          value={field.value as string | undefined}
+                          onChange={field.onChange}
+                          options={concurrentOptions}
+                        />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border p-4 rounded-md shadow-sm">
                     <FormField
                       control={localForm.control}

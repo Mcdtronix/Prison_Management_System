@@ -799,17 +799,20 @@ def calculate_inmate_release_dates(inmate):
         active_odr = odr_restitution_paid
         active_total_days = net_sentences_days
         active_remission_days = net_remission_days
+        active_months = net_sentences_days // 30  # remitted days do not map to whole months
     else:
         active_edr = edr_standard
         active_odr = odr_standard
         active_total_days = total_sentences_days
         active_remission_days = total_remission_days
+        # Whole calendar months as sentenced (72 months stays 72, not days / 30).
+        active_months = total_years * 12 + total_months
 
     rh, created = ReleaseHistory.objects.get_or_create(
         inmate=inmate, 
         defaults={
             'earliest_date_of_release': active_edr or timezone.now().date(),
-            'total_effective_sentence': active_total_days // 30,
+            'total_effective_sentence': active_months,
         }
     )
     rh.total_sentences_days = active_total_days
@@ -821,7 +824,7 @@ def calculate_inmate_release_dates(inmate):
     rh.active_edr = active_edr
     rh.active_odr = active_odr
     rh.earliest_date_of_release = active_edr or timezone.now().date()
-    rh.total_effective_sentence = active_total_days // 30
+    rh.total_effective_sentence = active_months
     rh.remission = active_remission_days / 30.0
     rh.save()
 

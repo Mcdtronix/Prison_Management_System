@@ -136,6 +136,8 @@ interface Inmate {
     bail_amount?: string | number | null;
     has_fine?: boolean;
     fine_amount?: string | number | null;
+    /** Offence ids whose sentences run concurrently with this one. */
+    concurrent_with?: number[];
   }>;
   station_history?: Array<any>;
   name?: string; // Adding some fields used later
@@ -1044,6 +1046,17 @@ const InmateDetails = () => {
                                   <p className="text-sm">
                                     {offense.sentence_years}Y {offense.sentence_months}M {offense.sentence_days}D
                                     <br/><span className="text-xs text-gray-500">Effective: {offense.effective_sentence_days} days</span>
+                                    <br/>
+                                    <span className="text-xs text-gray-500">
+                                      {offense.concurrent_with?.length
+                                        ? `Runs concurrently with ${offense.concurrent_with
+                                            .map((otherId) => {
+                                              const n = inmate.offences!.findIndex((o) => String(o.id) === String(otherId));
+                                              return n >= 0 ? `Offense #${n + 1}` : "another count";
+                                            })
+                                            .join(", ")}`
+                                        : "Runs consecutively"}
+                                    </span>
                                   </p>
                                 </div>
                                 {offense.has_fine && (
