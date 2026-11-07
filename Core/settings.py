@@ -277,6 +277,8 @@ DEFAULT_CORS_ORIGINS = 'http://localhost:8080,http://127.0.0.1:8080,http://local
 CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=False, cast=bool)
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', cast=Csv(), default=DEFAULT_CORS_ORIGINS)
 CORS_ALLOW_CREDENTIALS = True
+# Lets the frontend read download filenames (report exports, documents).
+CORS_EXPOSE_HEADERS = ['Content-Disposition']
 
 CORS_ALLOW_HEADERS = [
     'accept',

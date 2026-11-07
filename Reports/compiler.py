@@ -1,11 +1,16 @@
 import dateutil.parser
 from django.db.models import Q
 from datetime import datetime, timedelta
-from .registry import get_field_registry
 
 class QueryCompiler:
-    def __init__(self, model_name, filter_tree):
-        self.registry = {f['key']: f for f in get_field_registry(model_name)}
+    """
+    Compiles a filter tree ({operator: AND|OR, conditions: [...]}) into a Q object.
+    `registry` maps column key -> {"field": ORM path, "type", "operators"}; only
+    those keys can be filtered, so a filter can never reach outside its source.
+    """
+
+    def __init__(self, registry, filter_tree):
+        self.registry = registry
         self.filter_tree = filter_tree
         self.errors = []
 
@@ -139,7 +144,6 @@ class QueryCompiler:
             return (start, start + timedelta(days=6))
         if op == 'this_month':
             start = today.replace(day=1)
-            # Rough end of month
             end = (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
             return (start, end)
         if op == 'this_year':

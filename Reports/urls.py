@@ -1,12 +1,14 @@
-from django.urls import path, include
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from .views import ReportTemplateViewSet, AvailableFieldsAPIView, GenerateReportAPIView
+
+from .views import CatalogueView, ExportReportView, ReportTemplateViewSet, RunReportView
 
 router = DefaultRouter()
-router.register(r'templates', ReportTemplateViewSet, basename='report-template')
+router.register(r"templates", ReportTemplateViewSet, basename="report-template")
 
 urlpatterns = [
-    path('available-fields/', AvailableFieldsAPIView.as_view(), name='available-fields'),
-    path('generate/', GenerateReportAPIView.as_view(), name='generate-report'),
-    path('', include(router.urls)),
+    path("catalogue/", CatalogueView.as_view(), name="report-catalogue"),
+    path("run/", RunReportView.as_view(), name="report-run"),
+    path("export/", ExportReportView.as_view(), name="report-export"),
+    path("", include(router.urls)),
 ]

@@ -1137,57 +1137,115 @@ export const rbacApi = {
 };
 
 // Reports API endpoints
-export const reportsApi = {
-  getAvailableFields: async (baseModel: string = 'Inmate') => {
-    return apiRequest(`/api/reports/available-fields/?base_model=${baseModel}&_t=${Date.now()}`);
-  },
-  getTemplates: async () => {
-    return apiRequest('/api/reports/templates/');
-  },
-  createTemplate: async (payload: any) => {
-    return apiRequest('/api/reports/templates/', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  },
-  updateTemplate: async (id: number, payload: any) => {
-    return apiRequest(`/api/reports/templates/${id}/`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    });
-  },
-  deleteTemplate: async (id: number) => {
-    return apiRequest(`/api/reports/templates/${id}/`, {
-      method: 'DELETE',
-    });
-  },
-  generateReport: async (templateId: number, exportFormat?: 'csv' | 'excel' | 'pdf', excludedIds?: number[]) => {
-    if (!exportFormat) {
-      return apiRequest('/api/reports/generate/', {
-        method: 'POST',
-        body: JSON.stringify({ template_id: templateId, excluded_ids: excludedIds || [] }),
-      });
-    }
-    
-    const token = localStorage.getItem('auth_token');
-    let url = `${API_BASE_URL}/reports/generate/`;
-    url = url.replace(/\/api\/api\//g, '/api/');
+export interface ReportColumnMeta {
+  key: string;
+  label: string;
+  group: string;
+  type: "text" | "number" | "date" | "choice" | "boolean";
+  operators: string[];
+  choices: { value: string; label: string }[] | null;
+}
 
+export interface ReportSourceMeta {
+  key: string;
+  label: string;
+  description: string;
+  module: string;
+  columns: ReportColumnMeta[];
+  default_columns: string[];
+  default_sort: ReportSort[];
+}
+
+export interface ReportSort {
+  key: string;
+  direction: "asc" | "desc";
+}
+
+export interface ReportRequest {
+  source: string;
+  columns: string[];
+  filters?: any;
+  sort?: ReportSort[];
+}
+
+export interface ReportResult {
+  source: string;
+  columns: { key: string; label: string; type: string }[];
+  rows: (string | number)[][];
+  total: number;
+  page: number;
+  page_size: number;
+  sort: ReportSort[];
+}
+
+export interface SavedReport {
+  id: number;
+  name: string;
+  description?: string | null;
+  base_model: string;
+  source_label: string;
+  selected_fields: string[];
+  filters: any;
+  sort: ReportSort[];
+  created_by_name: string;
+  is_owner: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Report Builder API. The server decides which sources the user's role may
+ * use and scopes every row to their station; the client only renders.
+ */
+export const reportsApi = {
+  catalogue: async () => apiRequest<{ sources: ReportSourceMeta[] }>("/api/reports/catalogue/"),
+
+  run: async (payload: ReportRequest & { page?: number; page_size?: number }) =>
+    apiRequest<ReportResult>("/api/reports/run/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+
+  /** Downloads CSV / Excel / PDF. Returns the server's error message on failure. */
+  export: async (payload: ReportRequest & { format: "csv" | "excel" | "pdf"; title?: string }) => {
+    const token = localStorage.getItem("auth_token");
+    const url = `${API_BASE_URL}/reports/export/`.replace(/\/api\/api\//g, "/api/");
     const response = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ template_id: templateId, export_format: exportFormat, excluded_ids: excludedIds || [] })
+      body: JSON.stringify(payload),
     });
-    
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to generate report');
+      return { error: (err.error as string) || "The report could not be exported.", blob: null, filename: null };
     }
-    return response.blob();
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const filename = /filename="([^"]+)"/.exec(disposition)?.[1] || null;
+    return { error: null, blob: await response.blob(), filename };
   },
+
+  getTemplates: async () => apiRequest<SavedReport[] | { results: SavedReport[] }>("/api/reports/templates/"),
+
+  createTemplate: async (payload: Partial<SavedReport>) =>
+    apiRequest<SavedReport>("/api/reports/templates/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+
+  updateTemplate: async (id: number, payload: Partial<SavedReport>) =>
+    apiRequest<SavedReport>(`/api/reports/templates/${id}/`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+
+  deleteTemplate: async (id: number) =>
+    apiRequest(`/api/reports/templates/${id}/`, { method: "DELETE" }),
 };
 
 // Helper to extract data or throw error from ApiResponse
