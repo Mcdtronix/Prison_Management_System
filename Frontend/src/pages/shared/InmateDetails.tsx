@@ -58,6 +58,16 @@ interface Inmate {
   admission_type: string;
   admission_date: string;
   current_status: string;
+  crb_number?: string | null;
+  marital_status?: string | null;
+  educational_level?: string | null;
+  is_first_time_offender?: boolean;
+  race?: string | null;
+  fathers_name?: string | null;
+  headman?: string | null;
+  chief?: string | null;
+  district?: string | null;
+  occupation?: string | null;
   admission_status?: string;
   has_discharge_assessment?: boolean;
   created_at: string;
@@ -76,6 +86,7 @@ interface Inmate {
     id: string;
     bag_number: string;
     cash_amount: number;
+    cash_holdings?: Array<{ currency: string; amount: string }>;
     items_description: string;
     date_logged: string;
   };
@@ -256,11 +267,12 @@ const InmateDetails = () => {
           inmateData.dob = inmateData.date_of_birth;
         }
         inmateData.name = `${inmateData.first_name} ${inmateData.surname}`;
+        // Prefer the inmate's own residential address; fall back to the next of kin's.
         if (inmateData.next_of_kin) {
-          inmateData.address = inmateData.next_of_kin.address;
+          inmateData.address = inmateData.address || inmateData.next_of_kin.address;
           inmateData.emergency_contact = `${inmateData.next_of_kin.full_name} (${inmateData.next_of_kin.contact})`;
         } else {
-          inmateData.address = 'N/A';
+          inmateData.address = inmateData.address || 'N/A';
           inmateData.emergency_contact = 'N/A';
         }
 
@@ -800,6 +812,62 @@ const InmateDetails = () => {
 
               <Card>
                 <CardHeader>
+                  <CardTitle>Personal Particulars &amp; Local Home History</CardTitle>
+                  <CardDescription>As recorded at reception.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <div>
+                      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        Personal Particulars
+                      </h3>
+                      <dl className="divide-y divide-gray-100 text-sm">
+                        {[
+                          ["Full Name", [inmate.first_name, inmate.other_names, inmate.surname].filter(Boolean).join(" ")],
+                          ["Date of Birth", inmate.date_of_birth ? new Date(inmate.date_of_birth).toLocaleDateString() : null],
+                          ["National ID", inmate.national_id],
+                          ["Marital Status", inmate.marital_status],
+                          ["Educational Level", inmate.educational_level],
+                          ["Residential Address", inmate.address !== "N/A" ? inmate.address : null],
+                          ["CRB Number", inmate.crb_number],
+                          [
+                            "First-time Offender",
+                            inmate.is_first_time_offender === undefined ? null : inmate.is_first_time_offender ? "Yes" : "No",
+                          ],
+                        ].map(([label, value]) => (
+                          <div key={label as string} className="flex justify-between gap-4 py-2">
+                            <dt className="font-medium text-gray-600">{label}</dt>
+                            <dd className="text-right text-gray-900">{value || <span className="text-gray-400">Not recorded</span>}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                    <div>
+                      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        Local Home History
+                      </h3>
+                      <dl className="divide-y divide-gray-100 text-sm">
+                        {[
+                          ["Father's Name", inmate.fathers_name],
+                          ["Race", inmate.race],
+                          ["District", inmate.district],
+                          ["Chief", inmate.chief],
+                          ["Headman", inmate.headman],
+                          ["Occupation", inmate.occupation],
+                        ].map(([label, value]) => (
+                          <div key={label as string} className="flex justify-between gap-4 py-2">
+                            <dt className="font-medium text-gray-600">{label}</dt>
+                            <dd className="text-right text-gray-900">{value || <span className="text-gray-400">Not recorded</span>}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
                   <CardTitle>Inmate Valuables</CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -811,19 +879,42 @@ const InmateDetails = () => {
                           {inmate.valuables.bag_number}
                         </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm font-medium">
-                          Cash Amount:
-                        </span>
-                        <span className="text-sm">
-                          ${inmate.valuables.cash_amount}
-                        </span>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-sm font-medium">Cash Held:</span>
+                        {inmate.valuables.cash_holdings && inmate.valuables.cash_holdings.length > 0 ? (
+                          <ul className="space-y-0.5 text-right">
+                            {inmate.valuables.cash_holdings.map((holding) => (
+                              <li key={holding.currency} className="text-sm tabular-nums">
+                                <span className="mr-2 font-mono text-xs font-semibold text-gray-500">
+                                  {holding.currency}
+                                </span>
+                                {Number(holding.amount).toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <span className="text-sm text-gray-400">None</span>
+                        )}
                       </div>
-                      <div className="flex justify-between">
+                      <div className="flex justify-between gap-4">
                         <span className="text-sm font-medium">Items:</span>
-                        <span className="text-sm">
-                          {inmate.valuables.items_description}
-                        </span>
+                        <ul className="flex flex-wrap justify-end gap-1.5">
+                          {inmate.valuables.items_description
+                            .split(";")
+                            .map((item) => item.trim())
+                            .filter(Boolean)
+                            .map((item) => (
+                              <li
+                                key={item}
+                                className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs text-gray-700"
+                              >
+                                {item}
+                              </li>
+                            ))}
+                        </ul>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm font-medium">

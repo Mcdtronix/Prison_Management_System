@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from Core.mixins import OrgUnitContextMixin
 
 from rest_framework.permissions import IsAuthenticated
@@ -727,6 +728,14 @@ class InmateRegistrationView(APIView):
                     'message': 'Inmate registered successfully',
                     'data': response_serializer.data
                 }, status=status.HTTP_201_CREATED)
+            except DRFValidationError as e:
+                detail = e.detail[0] if isinstance(e.detail, list) and e.detail else e.detail
+                logger.warning(f"Registration rejected: {detail}")
+                return Response({
+                    'success': False,
+                    'message': str(detail),
+                    'error': str(detail),
+                }, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 logger.error(f"Registration failed with exception: {str(e)}")
                 logger.error(f"Exception type: {type(e).__name__}")

@@ -217,6 +217,9 @@ export async function apiRequest<T>(
             .join(", ");
           if (fieldErrors) {
             errorMessage = fieldErrors;
+          } else if (typeof responseData.message === "string" && responseData.message) {
+            // Views that answer with { success: false, message } carry their reason here.
+            errorMessage = responseData.message;
           }
         }
       } else if (typeof responseData === "string") {

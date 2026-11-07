@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 from django.core.validators import RegexValidator, MinValueValidator
 from django.core.exceptions import ValidationError
@@ -42,6 +44,7 @@ class Inmate(models.Model):
     address = models.TextField(blank=True, null=True)
     educational_level = models.CharField(max_length=100, blank=True, null=True)
     race = models.CharField(max_length=50, blank=True, null=True)
+    fathers_name = models.CharField("father's name", max_length=150, blank=True, null=True)
     headman = models.CharField(max_length=100, blank=True, null=True)
     chief = models.CharField(max_length=100, blank=True, null=True)
     district = models.CharField(max_length=100, blank=True, null=True)
@@ -548,12 +551,47 @@ class InmatePropertyHistory(models.Model):
     inmate = models.ForeignKey(Inmate, on_delete=models.CASCADE, related_name="property_history")
     bag_number = models.CharField(max_length=50)
     items_description = models.TextField()
+    # Legacy single-currency total, kept for older records and reports.
+    # It mirrors the USD holding only; per-currency cash lives in InmateCashHolding.
     cash_amount = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
     date_logged = models.DateField()
     date_released = models.DateField(blank=True, null=True)
 
     class Meta:
         db_table = "inmate_property_history"
+
+
+class InmateCashHolding(models.Model):
+    """Cash taken into safekeeping at reception, one row per currency, stored in that currency."""
+
+    CURRENCY_CHOICES = [
+        ("USD", "US Dollar"),
+        ("ZWG", "Zimbabwe Gold"),
+        ("ZAR", "South African Rand"),
+        ("BWP", "Botswana Pula"),
+        ("GBP", "British Pound"),
+        ("EUR", "Euro"),
+    ]
+
+    property_record = models.ForeignKey(
+        InmatePropertyHistory, on_delete=models.CASCADE, related_name="cash_holdings"
+    )
+    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES)
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))]
+    )
+
+    class Meta:
+        db_table = "inmate_cash_holding"
+        ordering = ["currency"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["property_record", "currency"], name="unique_cash_currency_per_property"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.currency} {self.amount}"
 
 
 # -----------------------------

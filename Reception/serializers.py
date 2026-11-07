@@ -8,6 +8,7 @@ from rest_framework import serializers
 from django.db import transaction
 from django.utils import timezone
 from datetime import datetime, date
+from decimal import Decimal, InvalidOperation
 from Auth.models import Station
 from Auth.utils import get_current_station
 
@@ -19,8 +20,8 @@ from .models import (
     Offence,
     Inmate, Offence, Unconvicted, Convicted, Discharged, CourtSession, 
     SentenceGroup, ReleaseHistory, Restitution, RestitutionPayment, RestitutionExtension,
-    InmatePropertyHistory, EscapeHistory, InmateDisciplinaryHistory,
-    # InmateMedicalHistory, 
+    InmatePropertyHistory, InmateCashHolding, EscapeHistory, InmateDisciplinaryHistory,
+    # InmateMedicalHistory,
     InmateDocument,
     InmateAuditTrail,
     ReleaseWorkflow,
@@ -62,6 +63,7 @@ class InmateSerializer(serializers.ModelSerializer):
             "marital_status",
             "educational_level",
             "race",
+            "fathers_name",
             "headman",
             "chief",
             "district",
@@ -315,6 +317,9 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
             "id", "prison_number", "crb_number", "first_name", "surname", "other_names",
             "national_id", "date_of_birth", "gender", "nationality", "admission_type",
             "admission_date", "current_status", "admission_status", "created_at", "updated_at",
+            # Personal particulars and local home history
+            "address", "marital_status", "educational_level", "is_first_time_offender",
+            "race", "fathers_name", "headman", "chief", "district", "occupation",
             "next_of_kin", "classification", "valuables", "offences", "release_history", "station_history",
             "admission_health_assessment", "timeline"
         ]
@@ -327,6 +332,10 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
                 'id': valuables.id,
                 'bag_number': valuables.bag_number,
                 'cash_amount': valuables.cash_amount,
+                'cash_holdings': [
+                    {'currency': holding.currency, 'amount': str(holding.amount)}
+                    for holding in valuables.cash_holdings.all()
+                ],
                 'items_description': valuables.items_description,
                 'date_logged': valuables.date_logged,
             }
@@ -565,14 +574,48 @@ class RestitutionRegistrationSerializer(serializers.Serializer):
     restitutionReceipt = serializers.FileField(required=False, allow_null=True)
 
 
+class CashHoldingInputSerializer(serializers.Serializer):
+    """One currency of cash handed in at reception, kept in its own currency."""
+    currency = serializers.ChoiceField(choices=InmateCashHolding.CURRENCY_CHOICES)
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"))
+
+
 class InmateValuablesRegistrationSerializer(serializers.Serializer):
     """Serializer for inmate valuables during registration."""
     bagNo = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    # Legacy single amount, treated as USD. New clients send cashHoldings instead.
     cash = serializers.CharField(required=False, allow_blank=True)
+    cashHoldings = CashHoldingInputSerializer(many=True, required=False)
+
+    def validate_cashHoldings(self, holdings):
+        currencies = [holding["currency"] for holding in holdings]
+        duplicates = sorted({c for c in currencies if currencies.count(c) > 1})
+        if duplicates:
+            raise serializers.ValidationError(
+                f"Each currency can be listed once. Combine the {', '.join(duplicates)} amounts into one line."
+            )
+        return holdings
+
+    def validate(self, data):
+        legacy_cash = str(data.pop("cash", "") or "").strip()
+        holdings = list(data.get("cashHoldings") or [])
+        if legacy_cash and not any(h["currency"] == "USD" for h in holdings):
+            try:
+                amount = Decimal(legacy_cash)
+            except InvalidOperation:
+                raise serializers.ValidationError({"cash": "Enter a valid amount."})
+            if amount < 0:
+                raise serializers.ValidationError({"cash": "Amount cannot be negative."})
+            if amount > 0:
+                holdings.append({"currency": "USD", "amount": amount})
+        data["cashHoldings"] = holdings
+        return data
     tShirt = serializers.CharField(required=False, allow_blank=True)
     tShirtColor = serializers.CharField(required=False, allow_blank=True)
     shorts = serializers.CharField(required=False, allow_blank=True)
     shortsColor = serializers.CharField(required=False, allow_blank=True)
+    trousers = serializers.CharField(required=False, allow_blank=True)
+    trousersColor = serializers.CharField(required=False, allow_blank=True)
     skirt = serializers.CharField(required=False, allow_blank=True)
     skirtColor = serializers.CharField(required=False, allow_blank=True)
     dress = serializers.CharField(required=False, allow_blank=True)
@@ -681,6 +724,17 @@ class BasicInmateRegistrationSerializer(serializers.Serializer):
             if not org_unit:
                 from Auth.utils import get_current_org_unit
                 org_unit = get_current_org_unit(request.user)
+            if station is None:
+                # Accounts created in the system admin console are assigned to an
+                # org unit only; resolve the matching legacy station from it.
+                from Auth.utils import legacy_station_for_unit
+                station = legacy_station_for_unit(org_unit)
+                logger.info(f"Station resolved from org unit {org_unit}: {station}")
+            if station is None:
+                raise serializers.ValidationError(
+                    "Your account is not linked to a station, so the inmate cannot be admitted. "
+                    "Ask your station system admin to check your posting."
+                )
         else:
             # Fallback - this should not happen in production
             logger.warning("No request context, using fallback station")
@@ -732,16 +786,19 @@ class BasicInmateRegistrationSerializer(serializers.Serializer):
             logger.info(f"Classification history created with ID: {classification.id}")
 
         # Create valuables record only when the optional section has content.
-        has_valuables = any(str(value).strip() for value in valuables_data.values() if value is not None)
+        cash_holdings = valuables_data.pop('cashHoldings', [])
+        has_valuables = bool(cash_holdings) or any(
+            str(value).strip() for value in valuables_data.values() if value is not None
+        )
         if has_valuables:
             logger.info("Creating valuables record...")
 
             bag_number = valuables_data.get('bagNo', '').strip()
-            cash_str = valuables_data.get('cash', '').strip()
 
             clothing_fields = [
                 ("shorts", "shortsColor", "Short"),
                 ("tShirt", "tShirtColor", "T-shirts"),
+                ("trousers", "trousersColor", "Trousers"),
                 ("skirt", "skirtColor", "Skirt"),
                 ("dress", "dressColor", "Dress"),
                 ("cap", "capColor", "Cap"),
@@ -769,10 +826,17 @@ class BasicInmateRegistrationSerializer(serializers.Serializer):
             valuables = InmatePropertyHistory.objects.create(
                 inmate=inmate,
                 bag_number=bag_number,
-                cash_amount=float(cash_str) if cash_str else 0,
+                # Legacy column mirrors the USD holding so older reports keep working.
+                cash_amount=next(
+                    (h['amount'] for h in cash_holdings if h['currency'] == 'USD'), Decimal('0')
+                ),
                 items_description='; '.join(items) if items else 'No items',
                 date_logged=inmate.admission_date,
             )
+            InmateCashHolding.objects.bulk_create([
+                InmateCashHolding(property_record=valuables, currency=h['currency'], amount=h['amount'])
+                for h in cash_holdings
+            ])
             logger.info(f"Valuables record created with ID: {valuables.id}")
 
         # Create audit trail
