@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { receptionApi } from '@/lib/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { courtMatter } from '@/lib/court';
 
 interface ScheduleCourtSessionModalProps {
   isOpen: boolean;
@@ -183,11 +184,16 @@ const ScheduleCourtSessionModal: React.FC<ScheduleCourtSessionModalProps> = ({
                 <SelectValue placeholder="Select an offence..." />
               </SelectTrigger>
               <SelectContent>
-                {offences.map((offence) => (
-                  <SelectItem key={offence.id} value={offence.id.toString()}>
-                    {offence.offence_description} ({offence.conviction_status})
-                  </SelectItem>
-                ))}
+                {offences.map((offence) => {
+                  // Same rule as "Record Court Outcome": only offences with a pending court matter.
+                  const matter = courtMatter(offence);
+                  return (
+                    <SelectItem key={offence.id} value={offence.id.toString()} disabled={!matter.pending}>
+                      {offence.offence_description} ({offence.conviction_status})
+                      {!matter.pending && <span className="ml-1 text-gray-400">· no court matter pending</span>}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>

@@ -86,6 +86,32 @@ def set_concurrency(conviction, target=None, *, recalculate=True):
         calculate_inmate_release_dates(conviction.prison_number)
 
 
+NO_COURT_MATTER = (
+    "This offence has no court matter pending: it is sentenced with no restitution "
+    "outstanding. Use Edit Offences to correct the sentence."
+)
+
+
+def court_matter_pending(offence):
+    """
+    Same rule as the frontend (src/lib/court.ts): an offence is before the court
+    while it is on remand, or convicted with restitution not yet paid or waived.
+    """
+    from .models import Restitution
+
+    status = (offence.Offence_status or "").upper()
+    if status == "UNCONVICTED":
+        return True
+    if status == "CONVICTED":
+        return (
+            Restitution.objects.filter(offence=offence)
+            .exclude(status__iexact="paid")
+            .exclude(status__iexact="waived")
+            .exists()
+        )
+    return False
+
+
 def concurrent_offence_ids(conviction):
     """Other offences whose sentences run alongside this one."""
     if not conviction or not conviction.sentence_group_id:

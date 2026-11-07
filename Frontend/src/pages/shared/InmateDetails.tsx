@@ -44,6 +44,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Toaster } from "sonner";
 import RecordRestitutionPaymentModal from '../reception/components/RecordRestitutionPaymentModal';
+import { courtMatter } from "@/lib/court";
 
 interface Inmate {
   id: string;
@@ -494,6 +495,37 @@ const InmateDetails = () => {
             : "/health/records",
     },
   ];
+
+  const canRecordCourt =
+    user?.role === "RECEPTION_OFFICER" ||
+    user?.role === "ADMIN_OFFICER" ||
+    user?.role === "SUPER_ADMIN" ||
+    user?.role === "admin" ||
+    user?.role === "reception";
+
+  // One court action per offence: available only while a court matter is
+  // pending (remand, or restitution not yet paid/waived). See lib/court.ts.
+  const renderCourtAction = (offense: NonNullable<Inmate["offences"]>[number]) => {
+    if (!canRecordCourt) return null;
+    const matter = courtMatter(offense as any);
+    return (
+      <div className="mt-3">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!matter.pending}
+          aria-describedby={`court-matter-${offense.id}`}
+          onClick={() => navigate(`/reception/record-court-outcome/${id}/${offense.id}`)}
+        >
+          <Gavel className="w-4 h-4 mr-2" />
+          Record Court Outcome
+        </Button>
+        <p id={`court-matter-${offense.id}`} className="mt-1 text-xs text-gray-500">
+          {matter.reason}
+        </p>
+      </div>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -1034,9 +1066,9 @@ const InmateDetails = () => {
                                     Next Court Date:
                                   </p>
                                   <p className="text-sm mb-3">
-                                    {offense.restitution_date && offense.restitution_status !== 'paid'
-                                      ? `${new Date(offense.restitution_date).toLocaleDateString()} (Restitution)`
-                                      : "Closed"}
+                                    {courtMatter(offense).pending && offense.restitution_date
+                                      ? `${new Date(offense.restitution_date).toLocaleDateString()} (Restitution due)`
+                                      : "None pending"}
                                   </p>
                                 </div>
                                 <div>
@@ -1058,6 +1090,7 @@ const InmateDetails = () => {
                                         : "Runs consecutively"}
                                     </span>
                                   </p>
+                                  {renderCourtAction(offense)}
                                 </div>
                                 {offense.has_fine && (
                                   <div className="mt-3">
@@ -1081,6 +1114,22 @@ const InmateDetails = () => {
                                       </p>
                                       <p className="text-sm">
                                         Amount: ${offense.restitution_amount}
+                                        <br/>Due Date:{" "}
+                                        {offense.restitution_date ? (
+                                          <>
+                                            <span className="font-semibold">
+                                              {new Date(offense.restitution_date).toLocaleDateString()}
+                                            </span>
+                                            {courtMatter(offense).pending &&
+                                              new Date(offense.restitution_date) < new Date(new Date().toDateString()) && (
+                                                <Badge variant="outline" className="ml-2 border-red-300 bg-red-50 text-red-700">
+                                                  Overdue
+                                                </Badge>
+                                              )}
+                                          </>
+                                        ) : (
+                                          <span className="text-gray-400">Not set</span>
+                                        )}
                                         <br/>Status: <Badge variant="outline" className={offense.restitution_status === 'paid' ? 'bg-green-100 text-green-800' : ''}>{offense.restitution_status}</Badge>
                                         <br/>Balance Left: <span className="font-semibold text-red-600">${offense.restitution_balance?.toFixed(2)}</span>
                                       </p>
@@ -1185,23 +1234,7 @@ const InmateDetails = () => {
                                   <span className="text-gray-500">Not granted</span>
                                 )}
                               </p>
-                              {(user?.role === "RECEPTION_OFFICER" ||
-                                  user?.role === "ADMIN_OFFICER" ||
-                                  user?.role === "SUPER_ADMIN" ||
-                                  user?.role === "admin" ||
-                                  user?.role === "reception") && (
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="mt-3"
-                                    onClick={() =>
-                                      navigate(`/reception/record-court-outcome/${id}/${offense.id}`)
-                                    }
-                                  >
-                                    <Gavel className="w-4 h-4 mr-2" />
-                                    Record Court Outcome
-                                  </Button>
-                                )}
+                              {renderCourtAction(offense)}
                             </div>
                           )}
 

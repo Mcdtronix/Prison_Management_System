@@ -243,7 +243,11 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
             
         data = serializer.validated_data
         outcome = data['outcome']
-        
+
+        from .sentencing import NO_COURT_MATTER, court_matter_pending
+        if not court_matter_pending(offence):
+            return Response({'error': NO_COURT_MATTER}, status=status.HTTP_400_BAD_REQUEST)
+
         with transaction.atomic():
             # 1. Save CourtSession
             CourtSession.objects.create(
@@ -1017,6 +1021,10 @@ class ScheduleCourtSessionView(OrgUnitContextMixin, APIView):
                 offence = Offence.objects.get(id=offence_id)
             except Offence.DoesNotExist:
                 return Response({"error": "Offence not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            from .sentencing import NO_COURT_MATTER, court_matter_pending
+            if not court_matter_pending(offence):
+                return Response({"error": NO_COURT_MATTER}, status=status.HTTP_400_BAD_REQUEST)
 
             with transaction.atomic():
                 # Create the court session

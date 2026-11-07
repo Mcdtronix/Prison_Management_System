@@ -176,3 +176,43 @@ class CourtOutcomeTests(Base):
         response = self.convict(c2, 2, c1.id)  # count 1 is still on remand
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(Offence.objects.get(id=c2.id).Offence_status, "UNCONVICTED")
+
+
+class CourtMatterTests(CourtOutcomeTests):
+    """Record Court Outcome / scheduling only while a court matter is pending."""
+
+    def test_sentenced_count_without_restitution_is_locked(self):
+        c1 = self.counts[0]
+        self.assertIn(self.convict(c1, 3).status_code, (200, 201))
+        again = self.convict(c1, 2)
+        self.assertEqual(again.status_code, 400, again.content)
+        self.assertIn("no court matter pending", again.json()["error"])
+        self.assertEqual(Convicted.objects.get(offence=c1).sentence_years, 3)
+
+    def test_sentenced_count_with_unpaid_restitution_stays_open(self):
+        from Reception.models import Restitution
+        c1 = self.counts[0]
+        self.convict(c1, 3)
+        Restitution.objects.create(
+            inmate=self.inmate, offence=c1, restitution_amount=500,
+            restitution_date=date(2026, 11, 30), status="pending",
+        )
+        self.assertIn(self.convict(c1, 3).status_code, (200, 201))
+
+    def test_scheduling_a_session_needs_a_pending_matter(self):
+        c1, c2, _ = self.counts
+        self.convict(c1, 3)
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        def schedule(offence):
+            warrant = SimpleUploadedFile("warrant.pdf", b"%PDF-1.4 test", content_type="application/pdf")
+            return self.client.post(
+                "/api/reception/court-sessions/schedule/",
+                {"offence_id": offence.id, "next_court_date": "2026-12-01", "warrant_document": warrant},
+                format="multipart",
+            )
+
+        locked = schedule(c1)
+        self.assertEqual(locked.status_code, 400, locked.content)
+        self.assertIn("no court matter pending", locked.json()["error"])
+        self.assertLess(schedule(c2).status_code, 300)

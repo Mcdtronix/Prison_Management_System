@@ -39,6 +39,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { adminApi, inmateApi } from "@/lib/api";
 import { calendarDays, computeEffectiveSentence, formatSentence, type SentenceCount } from "@/lib/sentence";
 import { SentenceRunsField, type ConcurrentOption } from "@/components/sentence/SentenceRunsField";
+import { courtMatter } from "@/lib/court";
 
 const courtOutcomeSchema = z.object({
   session_date: z.date({
@@ -148,8 +149,16 @@ export default function RecordCourtOutcome() {
     }
   };
 
+  // Nothing to record once a count is sentenced with no restitution pending.
+  const matter = offence ? courtMatter(offence) : null;
+  const locked = Boolean(matter && !matter.pending);
+
   const onSubmit = async (data: FormValues) => {
     if (!offenceId || !inmateId) return;
+    if (locked) {
+      toast.error(matter!.reason);
+      return;
+    }
 
     // Additional validations
     if (data.outcome === "REMANDED" && !data.next_court_date) {
@@ -255,6 +264,15 @@ export default function RecordCourtOutcome() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {locked && (
+          <div role="status" className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-semibold">No court matter pending for this offence</p>
+            <p className="mt-1">
+              {matter!.reason} To correct the sentence itself, use <span className="font-medium">Edit Offences</span> on the inmate's record.
+            </p>
+          </div>
         )}
 
         <Card className="shadow-md border-t-4 border-t-emerald-600">
@@ -788,7 +806,7 @@ export default function RecordCourtOutcome() {
                 </div>
 
                 <div className="pt-6">
-                  <Button type="submit" disabled={loading} className="w-full bg-[#0b4f2a] hover:bg-[#083b1f]">
+                  <Button type="submit" disabled={loading || locked} className="w-full bg-[#0b4f2a] hover:bg-[#083b1f]">
                     {loading ? "Recording..." : "Record Court Outcome"}
                   </Button>
                 </div>
