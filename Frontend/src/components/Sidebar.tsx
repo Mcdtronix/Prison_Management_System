@@ -178,6 +178,10 @@ export const Sidebar = ({ userRole, mobileOpen = false, onMobileOpenChange }: Si
             { title: "Inmate List", href: "/reception/inmates" },
             { title: "New Admission", href: "/reception/register" },
             { title: "Reclassification", href: "/reception/reclassification" },
+            // Pages not built yet: these open "page not found" until their screens exist.
+            { title: "Daily State", href: "/reception/daily-state" },
+            { title: "Gang Book", href: "/reception/gang-book" },
+            { title: "Discharge Diary", href: "/reception/discharge-diary" },
           ]
         },
         {
