@@ -67,6 +67,11 @@ export const restitutionSchema = z.object({
   restitutionAmount: z.string().min(1, "Restitution amount is required"),
   restitutionDate: z.string().min(1, "Restitution date is required"),
   restitutionSentence: z.string().optional(),
+  // Sentence remitted if the restitution is paid in time. Listed here so the
+  // resolver keeps them; unlisted keys are stripped before submit.
+  restitutionSentenceYears: z.coerce.number().int().min(0).default(0),
+  restitutionSentenceMonths: z.coerce.number().int().min(0).default(0),
+  restitutionSentenceDays: z.coerce.number().int().min(0).default(0),
   restitutionStatus: z
     .enum(["pending", "partial", "paid", "waived"])
     .default("pending"),
@@ -319,8 +324,14 @@ const OffenceRegistrationForm = ({
               offenceIndex: 0, // Since we are editing one offence, its index is 0
               restitutionAmount: selected.restitution_amount.toString(),
               restitutionDate: selected.restitution_date ? new Date(selected.restitution_date).toISOString().split('T')[0] : "",
-              restitutionSentence: "", // This field might not be in the summary
-              restitutionStatus: "pending" as const, // Default or from summary if available
+              restitutionSentence: "",
+              // Carry the saved values: the backend replaces the restitution on update.
+              restitutionSentenceYears: Number(selected.restitution_sentence_years) || 0,
+              restitutionSentenceMonths: Number(selected.restitution_sentence_months) || 0,
+              restitutionSentenceDays: Number(selected.restitution_sentence_days) || 0,
+              restitutionStatus: (["pending", "partial", "paid", "waived"].includes(selected.restitution_status)
+                ? selected.restitution_status
+                : "pending") as "pending" | "partial" | "paid" | "waived",
             };
             setRestitutions([restitutionData]);
             form.setValue("restitutions", [restitutionData]);

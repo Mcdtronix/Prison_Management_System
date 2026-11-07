@@ -422,11 +422,15 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
                 'offence_description': offence.offence_description,
                 'court': offence.court,
                 'conviction_status': offence.Offence_status.lower(),
+                'has_bail': offence.has_bail,
+                'bail_amount': offence.bail_amount,
             }
 
             if hasattr(offence, 'conviction') and offence.conviction:
                 convicted = offence.conviction
                 offence_data.update({
+                    'has_fine': convicted.has_fine,
+                    'fine_amount': convicted.fine_amount,
                     'sentence': convicted.sentence,
                     'sentence_years': convicted.sentence_years,
                     'sentence_months': convicted.sentence_months,

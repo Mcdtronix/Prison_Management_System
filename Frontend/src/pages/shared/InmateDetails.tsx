@@ -132,6 +132,10 @@ interface Inmate {
     restitution_sentence_days?: number;
     restitution_sentence_days_total?: number;
     next_court_date?: string;
+    has_bail?: boolean;
+    bail_amount?: string | number | null;
+    has_fine?: boolean;
+    fine_amount?: string | number | null;
   }>;
   station_history?: Array<any>;
   name?: string; // Adding some fields used later
@@ -1042,6 +1046,20 @@ const InmateDetails = () => {
                                     <br/><span className="text-xs text-gray-500">Effective: {offense.effective_sentence_days} days</span>
                                   </p>
                                 </div>
+                                {offense.has_fine && (
+                                  <div className="mt-3">
+                                    <p className="text-sm font-medium mb-1">Fine:</p>
+                                    <p className="text-sm">
+                                      {offense.fine_amount != null
+                                        ? `$${Number(offense.fine_amount).toFixed(2)}`
+                                        : "Amount not recorded"}
+                                      <br />
+                                      <span className="text-xs text-gray-500">
+                                        Custodial sentence above applies as the alternative.
+                                      </span>
+                                    </p>
+                                  </div>
+                                )}
                                 {offense.restitution_amount && (
                                   <>
                                     <div>
@@ -1138,6 +1156,21 @@ const InmateDetails = () => {
                                       offense.next_court_date,
                                     ).toLocaleDateString()
                                   : "Not scheduled"}
+                              </p>
+                              <p className="text-sm font-medium mb-1 mt-3">Bail:</p>
+                              <p className="text-sm">
+                                {offense.has_bail ? (
+                                  <>
+                                    <Badge variant="outline" className="mr-2 border-amber-300 bg-amber-50 text-amber-800">
+                                      Granted
+                                    </Badge>
+                                    {offense.bail_amount != null
+                                      ? `$${Number(offense.bail_amount).toFixed(2)}`
+                                      : "Amount not recorded"}
+                                  </>
+                                ) : (
+                                  <span className="text-gray-500">Not granted</span>
+                                )}
                               </p>
                               {(user?.role === "RECEPTION_OFFICER" ||
                                   user?.role === "ADMIN_OFFICER" ||

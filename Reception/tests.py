@@ -25,7 +25,7 @@ class SentenceRemissionTest(TestCase):
         )
 
     def test_restitution_unpaid(self):
-        # 36 months sentence => 36 * 30 = 1080 days
+        # 36 calendar months from 30 Aug 2023 => 1096 days (2024 is a leap year)
         conviction = Convicted.objects.create(
             prison_number=self.inmate,
             offence=self.offence,
@@ -50,20 +50,17 @@ class SentenceRemissionTest(TestCase):
         # Re-fetch ReleaseHistory since it was created via signals
         history = ReleaseHistory.objects.get(inmate=self.inmate)
         
-        # Expected:
-        # standard sentence = 1080 days.
-        # restitution paid sentence = 1080 - 360 = 720 days.
-        # active should be standard since restitution is pending
-        self.assertEqual(history.total_sentences_days, 1080)
-        self.assertEqual(history.total_remission_days, 360) # 1/3 of 1080
-
-        # EDR should be 1080 - 360 = 720 days from sentence date. ODR = 1080 days.
-        # Let's verify active dates match standard dates
+        # Restitution is pending, so the standard computation is active:
+        # 1096 days, remission 365, 731 days to serve. The sentence date is day one.
+        self.assertEqual(history.total_sentences_days, 1096)
+        self.assertEqual(history.total_remission_days, 365)
+        self.assertEqual(history.odr_standard, date(2026, 8, 29))
+        self.assertEqual(history.edr_standard, date(2025, 8, 29))
         self.assertEqual(history.active_edr, history.edr_standard)
         self.assertEqual(history.active_odr, history.odr_standard)
 
     def test_restitution_paid(self):
-        # 36 months sentence => 1080 days
+        # 36 calendar months => 1096 days
         conviction = Convicted.objects.create(
             prison_number=self.inmate,
             offence=self.offence,
@@ -90,10 +87,9 @@ class SentenceRemissionTest(TestCase):
         
         # Expected:
         # active should be restitution paid since it is paid and has receipt
-        # effective sentence = 24 months = 720 days
-        # remission = 1/3 of 720 = 240 days
-        self.assertEqual(history.total_sentences_days, 720)
-        self.assertEqual(history.total_remission_days, 240)
+        # paid: 1096 - 360 restitution days = 736, remission 245
+        self.assertEqual(history.total_sentences_days, 736)
+        self.assertEqual(history.total_remission_days, 245)
         
         self.assertEqual(history.active_edr, history.edr_restitution_paid)
         self.assertEqual(history.active_odr, history.odr_restitution_paid)

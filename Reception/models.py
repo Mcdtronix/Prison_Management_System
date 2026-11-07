@@ -392,9 +392,10 @@ class Convicted(models.Model):
             base_date = self.prison_number.admission_date
             
         if base_date:
+            # Sentence length in calendar days: 60 days is 60, 18 months from
+            # 07 Nov 2026 is 547. The sentence date itself counts as day one.
             target_date = base_date + relativedelta(years=self.sentence_years, months=self.sentence_months, days=self.sentence_days)
-            calendar_days = (target_date - base_date).days
-            self.effective_sentence_days = max(0, calendar_days - 1)
+            self.effective_sentence_days = max(0, (target_date - base_date).days)
         else:
             self.effective_sentence_days = 0
             
@@ -753,15 +754,19 @@ def calculate_inmate_release_dates(inmate):
 
     from dateutil.relativedelta import relativedelta
     
-    raw_odr = date_of_sentence + relativedelta(years=total_years, months=total_months, days=total_days)
-    total_calendar_days = (raw_odr - date_of_sentence).days
-    total_sentences_days = max(0, total_calendar_days - 1)
+    # Full sentence length in calendar days. The sentence date is day one, so a
+    # release date is the last day in custody: start + (days - 1).
+    sentence_end = date_of_sentence + relativedelta(years=total_years, months=total_months, days=total_days)
+    total_sentences_days = max(0, (sentence_end - date_of_sentence).days)
 
     total_remission_days = total_sentences_days // 3
     days_to_serve = total_sentences_days - total_remission_days
 
-    odr_standard = date_of_sentence + timedelta(days=total_sentences_days) if total_sentences_days > 0 else date_of_sentence
-    edr_standard = date_of_sentence + timedelta(days=max(0, days_to_serve - 1)) if days_to_serve > 0 else date_of_sentence
+    def last_day_of(days):
+        return date_of_sentence + timedelta(days=days - 1) if days > 0 else date_of_sentence
+
+    odr_standard = last_day_of(total_sentences_days)
+    edr_standard = last_day_of(days_to_serve)
 
     offences = [c.offence for c in convictions]
     restitutions = Restitution.objects.filter(offence__in=offences)
@@ -773,8 +778,8 @@ def calculate_inmate_release_dates(inmate):
         net_remission_days = net_sentences_days // 3
         net_days_to_serve = net_sentences_days - net_remission_days
         
-        odr_restitution_paid = date_of_sentence + timedelta(days=net_sentences_days) if net_sentences_days > 0 else date_of_sentence
-        edr_restitution_paid = date_of_sentence + timedelta(days=max(0, net_days_to_serve - 1)) if net_days_to_serve > 0 else date_of_sentence
+        odr_restitution_paid = last_day_of(net_sentences_days)
+        edr_restitution_paid = last_day_of(net_days_to_serve)
     else:
         odr_restitution_paid = None
         edr_restitution_paid = None

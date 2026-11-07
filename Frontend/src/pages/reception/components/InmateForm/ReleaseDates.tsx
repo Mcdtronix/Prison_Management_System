@@ -9,6 +9,24 @@ interface ReleaseDatesProps {
     form: UseFormReturn<any>;
 }
 
+/**
+ * Sentence length in calendar days, matching the backend (dateutil relativedelta):
+ * add years and months (clamping to month end, e.g. 31 Jan + 1 month = 28/29 Feb),
+ * then days, and count the days between. Falls back to 365/30-day units when no
+ * sentence date has been entered yet.
+ */
+const calendarDays = (start: string | undefined, years: number, months: number, days: number) => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(start || "");
+    if (!match) return years * 365 + months * 30 + days;
+    const [y, m, d] = [Number(match[1]), Number(match[2]) - 1, Number(match[3])];
+    const totalMonths = m + years * 12 + months;
+    const endYear = y + Math.floor(totalMonths / 12);
+    const endMonth = ((totalMonths % 12) + 12) % 12;
+    const lastDayOfMonth = new Date(Date.UTC(endYear, endMonth + 1, 0)).getUTCDate();
+    const end = Date.UTC(endYear, endMonth, Math.min(d, lastDayOfMonth) + days);
+    return Math.round((end - Date.UTC(y, m, d)) / 86_400_000);
+};
+
 const ReleaseDates: React.FC<ReleaseDatesProps> = ({ form }) => {
     const offences = form.watch("offences") || [];
     const restitutions = form.watch("restitutions") || [];
@@ -17,20 +35,23 @@ const ReleaseDates: React.FC<ReleaseDatesProps> = ({ form }) => {
     const summary = useMemo(() => {
         let totalDays = 0;
 
-        // Simplistic frontend calculation just for summary purposes
         if (sentenceGroup?.isGrouped && sentenceGroup?.duration) {
-            totalDays = parseInt(sentenceGroup.duration) * 30; // Assuming duration is in months
+            // Grouped sentence: duration is in months, from the group's sentence date.
+            totalDays = calendarDays(sentenceGroup.date, 0, parseInt(sentenceGroup.duration) || 0, 0);
         } else {
-            let consecutiveDays = 0;
+            // Consecutive sentences: the backend adds up years, months and days,
+            // then counts them from the earliest sentence date.
+            let years = 0, months = 0, days = 0;
+            let earliest: string | undefined;
             offences.forEach((o: any) => {
                 if (o.convictionStatus === 'convicted') {
-                    const days = (parseInt(o.sentenceYears) || 0) * 365 +
-                        (parseInt(o.sentenceMonths) || 0) * 30 +
-                        (parseInt(o.sentenceDays) || 0);
-                    consecutiveDays += days;
+                    years += parseInt(o.sentenceYears) || 0;
+                    months += parseInt(o.sentenceMonths) || 0;
+                    days += parseInt(o.sentenceDays) || 0;
+                    if (o.sentenceDate && (!earliest || o.sentenceDate < earliest)) earliest = o.sentenceDate;
                 }
             });
-            totalDays = consecutiveDays;
+            totalDays = calendarDays(earliest, years, months, days);
         }
 
         const standardRemission = Math.floor(totalDays / 3);
