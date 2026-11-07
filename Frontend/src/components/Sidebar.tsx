@@ -32,6 +32,7 @@ import {
   ChevronDown,
   Landmark,
   Database,
+  Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { messagingApi } from '@/lib/api'
@@ -342,6 +343,17 @@ export const Sidebar = ({ userRole, mobileOpen = false, onMobileOpenChange }: Si
       break;
     default:
       navItems = [];
+  }
+
+  // PMS AI for every account: directly under Report Builder, or before Settings
+  // where a role has no Report Builder (system admin consoles). No page yet, so
+  // /pms-ai shows "page not found" until the assistant is built.
+  if (navItems.length) {
+    const pmsAi: NavItem = { title: "PMS AI", href: "/pms-ai", icon: <Sparkles size={18} /> };
+    const reportIndex = navItems.findIndex((item) => item.title === "Report Builder");
+    const settingsIndex = navItems.findIndex((item) => item.title === "Settings");
+    const at = reportIndex >= 0 ? reportIndex + 1 : settingsIndex >= 0 ? settingsIndex : navItems.length;
+    navItems = [...navItems.slice(0, at), pmsAi, ...navItems.slice(at)];
   }
 
   const sidebarClasses = cn(
