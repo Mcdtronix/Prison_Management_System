@@ -657,6 +657,70 @@ class InmateDocument(models.Model):
 # -----------------------------
 # AUDIT TRAIL
 # -----------------------------
+class SentenceConfirmation(models.Model):
+    """
+    Confirmation of sentence received from the court after conviction.
+
+    ENDORSED closes immediately. REDUCED / INCREASED schedule a court session;
+    the sentence on record changes only when that session's outcome is recorded
+    (Record Court Outcome), and the revised length still runs from the original
+    date of sentence. The before/after figures are kept here as the trail.
+    """
+
+    ENDORSED = "ENDORSED"
+    REDUCED = "REDUCED"
+    INCREASED = "INCREASED"
+    OUTCOME_CHOICES = [
+        (ENDORSED, "Sentence endorsed"),
+        (REDUCED, "Sentence reduced"),
+        (INCREASED, "Sentence increased"),
+    ]
+
+    COMPLETED = "COMPLETED"
+    AWAITING_COURT = "AWAITING_COURT"
+    APPLIED = "APPLIED"
+    STATUS_CHOICES = [
+        (COMPLETED, "Completed (endorsed)"),
+        (AWAITING_COURT, "Awaiting court session"),
+        (APPLIED, "Revised sentence applied"),
+    ]
+
+    offence = models.ForeignKey(Offence, on_delete=models.CASCADE, related_name="sentence_confirmations")
+    outcome = models.CharField(max_length=10, choices=OUTCOME_CHOICES)
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES)
+    confirmation_date = models.DateField(help_text="Date on / received of the confirmation document")
+    document = models.FileField(upload_to="sentence_confirmations/")
+    remarks = models.TextField(blank=True, null=True)
+
+    # Sentence as it stood when the confirmation was received.
+    previous_date_of_sentence = models.DateField(null=True, blank=True)
+    previous_sentence_years = models.PositiveIntegerField(default=0)
+    previous_sentence_months = models.PositiveIntegerField(default=0)
+    previous_sentence_days = models.PositiveIntegerField(default=0)
+
+    # Court session scheduled for a reduction / increase.
+    court_session = models.ForeignKey(
+        CourtSession, on_delete=models.SET_NULL, null=True, blank=True, related_name="sentence_confirmations"
+    )
+
+    # Revised sentence, filled when the court session outcome is recorded.
+    revised_sentence_years = models.PositiveIntegerField(null=True, blank=True)
+    revised_sentence_months = models.PositiveIntegerField(null=True, blank=True)
+    revised_sentence_days = models.PositiveIntegerField(null=True, blank=True)
+
+    recorded_by = models.CharField(max_length=100)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+    applied_by = models.CharField(max_length=100, blank=True, null=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "sentence_confirmation"
+        ordering = ["-recorded_at"]
+
+    def __str__(self):
+        return f"{self.get_outcome_display()} - {self.offence}"
+
+
 class InmateAuditTrail(models.Model):
     inmate = models.ForeignKey(Inmate, on_delete=models.CASCADE, related_name="audit_trail")
     action = models.CharField(max_length=200)
@@ -683,7 +747,10 @@ def update_restitution_date(sender, instance, created, **kwargs):
 @receiver(post_save, sender=CourtSession)
 def update_next_court_date(sender, instance, created, **kwargs):
     """Automatically update the Unconvicted record when a new court date is set."""
-    if created and hasattr(instance.offence, 'unconviction') and instance.offence.unconviction:
+    # Only while the count is on remand; sessions for sentenced counts (e.g. after a
+    # confirmation of sentence) must not rewrite the closed remand record.
+    if (created and instance.offence.Offence_status == 'UNCONVICTED'
+            and hasattr(instance.offence, 'unconviction') and instance.offence.unconviction):
         unconvicted = instance.offence.unconviction
         unconvicted.next_court_date = instance.next_court_date
         unconvicted.save()

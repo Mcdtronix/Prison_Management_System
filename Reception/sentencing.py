@@ -95,7 +95,8 @@ NO_COURT_MATTER = (
 def court_matter_pending(offence):
     """
     Same rule as the frontend (src/lib/court.ts): an offence is before the court
-    while it is on remand, or convicted with restitution not yet paid or waived.
+    while it is on remand, convicted with restitution not yet paid or waived, or
+    convicted with a confirmation of sentence (reduction / increase) awaiting court.
     """
     from .models import Restitution
 
@@ -103,6 +104,8 @@ def court_matter_pending(offence):
     if status == "UNCONVICTED":
         return True
     if status == "CONVICTED":
+        if pending_confirmation(offence):
+            return True  # a reduction / increase awaits its court session
         return (
             Restitution.objects.filter(offence=offence)
             .exclude(status__iexact="paid")
@@ -121,3 +124,187 @@ def concurrent_offence_ids(conviction):
         .exclude(pk=conviction.pk)
         .values_list("offence_id", flat=True)
     )
+
+
+# ---------------------------------------------------------------------------
+# Confirmation of sentence
+# ---------------------------------------------------------------------------
+
+def describe_sentence(years=0, months=0, days=0):
+    return f"{years}y {months}m {days}d"
+
+
+def _sentence_days(start, years, months, days):
+    from dateutil.relativedelta import relativedelta
+
+    if not start:
+        return years * 365 + months * 30 + days
+    return ((start + relativedelta(years=years, months=months, days=days)) - start).days
+
+
+def pending_confirmation(offence):
+    """The confirmation of sentence still waiting on a court session, if any."""
+    from .models import SentenceConfirmation
+
+    return (
+        SentenceConfirmation.objects.select_related("court_session")
+        .filter(offence=offence, status=SentenceConfirmation.AWAITING_COURT)
+        .first()
+    )
+
+
+def _audit(inmate, action, user, remarks=None):
+    from .models import InmateAuditTrail
+
+    InmateAuditTrail.objects.create(
+        inmate=inmate,
+        action=action[:200],
+        performed_by=getattr(user, "username", None) or "System",
+        remarks=remarks,
+    )
+
+
+@transaction.atomic
+def record_confirmation(offence, *, outcome, confirmation_date, document, user, remarks=None, court_date=None):
+    """
+    Store a confirmation of sentence with its document. Endorsed: closed at once.
+    Reduced / increased: schedules the court session that will re-sentence.
+    """
+    from .models import CourtSession, SentenceConfirmation
+
+    conviction = getattr(offence, "conviction", None)
+    if offence.Offence_status != "CONVICTED" or conviction is None:
+        raise serializers.ValidationError({"offence": "Only a convicted offence can have its sentence confirmed."})
+    if pending_confirmation(offence):
+        raise serializers.ValidationError(
+            {"offence": "A confirmation of sentence for this offence is already awaiting its court session."}
+        )
+    revising = outcome in (SentenceConfirmation.REDUCED, SentenceConfirmation.INCREASED)
+    if revising and not court_date:
+        raise serializers.ValidationError(
+            {"court_date": "A court date is required when the sentence is reduced or increased."}
+        )
+
+    confirmation = SentenceConfirmation.objects.create(
+        offence=offence,
+        outcome=outcome,
+        status=SentenceConfirmation.AWAITING_COURT if revising else SentenceConfirmation.COMPLETED,
+        confirmation_date=confirmation_date,
+        document=document,
+        remarks=remarks or None,
+        previous_date_of_sentence=conviction.date_of_sentence,
+        previous_sentence_years=conviction.sentence_years,
+        previous_sentence_months=conviction.sentence_months,
+        previous_sentence_days=conviction.sentence_days,
+        recorded_by=getattr(user, "username", None) or "System",
+    )
+    current = describe_sentence(conviction.sentence_years, conviction.sentence_months, conviction.sentence_days)
+    label = confirmation.get_outcome_display().lower()
+    _audit(
+        offence.inmate,
+        f"Confirmation of sentence recorded for '{offence.offence_description[:40]}': {label}",
+        user,
+        remarks=f"Document dated {confirmation_date:%d %b %Y}. Sentence on record: {current}. {remarks or ''}".strip(),
+    )
+
+    if revising:
+        session = CourtSession.objects.create(
+            offence=offence,
+            session_date=court_date,
+            next_court_date=court_date,
+            outcome="SCHEDULED",
+            remarks=f"Confirmation of sentence: {label}. Revised sentence to be passed.",
+            warrant_document=confirmation.document.name,
+        )
+        confirmation.court_session = session
+        confirmation.save(update_fields=["court_session"])
+        _audit(
+            offence.inmate,
+            f"Court session scheduled for {court_date:%d %b %Y} following confirmation of sentence ({label})",
+            user,
+        )
+    return confirmation
+
+
+def check_revision_direction(confirmation, years, months, days):
+    """A reduction must shorten the sentence and an increase must lengthen it."""
+    from .models import SentenceConfirmation
+
+    start = confirmation.previous_date_of_sentence
+    before = _sentence_days(start, confirmation.previous_sentence_years,
+                            confirmation.previous_sentence_months, confirmation.previous_sentence_days)
+    after = _sentence_days(start, years, months, days)
+    previous = describe_sentence(confirmation.previous_sentence_years, confirmation.previous_sentence_months,
+                                 confirmation.previous_sentence_days)
+    if confirmation.outcome == SentenceConfirmation.REDUCED and not after < before:
+        raise serializers.ValidationError(
+            {"sentence": f"The confirmation reduces the sentence: the revised sentence must be shorter than {previous}."}
+        )
+    if confirmation.outcome == SentenceConfirmation.INCREASED and not after > before:
+        raise serializers.ValidationError(
+            {"sentence": f"The confirmation increases the sentence: the revised sentence must be longer than {previous}."}
+        )
+
+
+def apply_confirmation(confirmation, conviction, user, session_date):
+    """Close a confirmation once the court has passed the revised sentence."""
+    from django.utils import timezone
+    from .models import SentenceConfirmation
+
+    confirmation.status = SentenceConfirmation.APPLIED
+    confirmation.revised_sentence_years = conviction.sentence_years
+    confirmation.revised_sentence_months = conviction.sentence_months
+    confirmation.revised_sentence_days = conviction.sentence_days
+    confirmation.applied_by = getattr(user, "username", None) or "System"
+    confirmation.applied_at = timezone.now()
+    confirmation.save()
+
+    before = describe_sentence(confirmation.previous_sentence_years, confirmation.previous_sentence_months,
+                               confirmation.previous_sentence_days)
+    after = describe_sentence(conviction.sentence_years, conviction.sentence_months, conviction.sentence_days)
+    verb = "reduced" if confirmation.outcome == SentenceConfirmation.REDUCED else "increased"
+    remarks = f"Passed at court session {session_date:%d %b %Y} following confirmation of sentence dated {confirmation.confirmation_date:%d %b %Y}."
+    if confirmation.previous_date_of_sentence:
+        remarks += f" Sentence date kept at {confirmation.previous_date_of_sentence:%d %b %Y} for remission."
+    _audit(
+        conviction.prison_number,
+        f"Sentence {verb} from {before} to {after} for '{conviction.offence.offence_description[:40]}'",
+        user,
+        remarks=remarks,
+    )
+
+
+def confirmation_payload(confirmation, request=None):
+    """Serialised confirmation for the inmate details API."""
+    doc_url = confirmation.document.url if confirmation.document else None
+    if doc_url and request is not None:
+        doc_url = request.build_absolute_uri(doc_url)
+    revised = None
+    if confirmation.revised_sentence_years is not None:
+        revised = {
+            "years": confirmation.revised_sentence_years,
+            "months": confirmation.revised_sentence_months or 0,
+            "days": confirmation.revised_sentence_days or 0,
+        }
+    return {
+        "id": confirmation.id,
+        "outcome": confirmation.outcome,
+        "outcome_display": confirmation.get_outcome_display(),
+        "status": confirmation.status,
+        "status_display": confirmation.get_status_display(),
+        "confirmation_date": confirmation.confirmation_date,
+        "document": doc_url,
+        "remarks": confirmation.remarks,
+        "previous": {
+            "years": confirmation.previous_sentence_years,
+            "months": confirmation.previous_sentence_months,
+            "days": confirmation.previous_sentence_days,
+            "date_of_sentence": confirmation.previous_date_of_sentence,
+        },
+        "revised": revised,
+        "court_date": confirmation.court_session.session_date if confirmation.court_session else None,
+        "recorded_by": confirmation.recorded_by,
+        "recorded_at": confirmation.recorded_at,
+        "applied_by": confirmation.applied_by,
+        "applied_at": confirmation.applied_at,
+    }

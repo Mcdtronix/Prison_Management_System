@@ -210,16 +210,20 @@ export async function apiRequest<T>(
         ) {
           errorMessage = `Password: ${responseData.password[0]}`;
         } else {
-          // Generic field errors
+          // Generic field errors: DRF sends lists, but service-level checks may send
+          // a plain string per field (e.g. { sentence: "..." }). Envelope keys are skipped.
+          const envelope = new Set(["message", "error", "detail", "success", "error_code", "resolution", "details"]);
           const fieldErrors = Object.entries(responseData)
-            .filter(([key, value]) => Array.isArray(value))
-            .map(([key, value]) => `${key}: ${(value as string[])[0]}`)
-            .join(", ");
+            .filter(([key, value]) => !envelope.has(key) && (Array.isArray(value) || typeof value === "string"))
+            .map(([, value]) => (Array.isArray(value) ? String(value[0]) : String(value)))
+            .join(" ");
           if (fieldErrors) {
             errorMessage = fieldErrors;
           } else if (typeof responseData.message === "string" && responseData.message) {
             // Views that answer with { success: false, message } carry their reason here.
             errorMessage = responseData.message;
+          } else if (typeof responseData.error === "string" && responseData.error) {
+            errorMessage = responseData.error;
           }
         }
       } else if (typeof responseData === "string") {
@@ -944,7 +948,7 @@ export const receptionApi = {
       });
       const responseData = await res.json().catch(() => ({}));
       if (!res.ok) {
-        return { data: null, error: responseData.detail || "Error scheduling court session" };
+        return { data: null, error: responseData.error || responseData.detail || "Error scheduling court session" };
       }
       return { data: responseData, error: null };
     } else {
@@ -1063,6 +1067,32 @@ export const inmateApi = {
 
   getInmateTimeline: async (id: string) => {
     return fetchApi(`/reception/inmates/${id}/timeline/`);
+  },
+
+  /**
+   * Confirmation of sentence (multipart: outcome, confirmation_date, document,
+   * court_date for a reduction/increase, remarks). Returns field errors as text.
+   */
+  confirmSentence: async (offenceId: string | number, data: FormData) => {
+    const token = localStorage.getItem("auth_token");
+    const res = await fetch(`${API_BASE_URL}/reception/offences/${offenceId}/confirm_sentence/`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: data,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const message =
+        body.error ||
+        body.detail ||
+        Object.values(body)
+          .flat()
+          .filter((v) => typeof v === "string")
+          .join(" ") ||
+        "Could not record the confirmation of sentence.";
+      return { data: null, error: message as string };
+    }
+    return { data: body, error: null };
   },
 
   recordCourtSession: async (offenceId: string | number, data: any) => {

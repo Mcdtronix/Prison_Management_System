@@ -5,6 +5,8 @@
  *
  * Pending when:
  *   - the offence is on remand (unconvicted), or
+ *   - it is convicted with a confirmation of sentence (reduction / increase)
+ *     awaiting its court session, or
  *   - it is convicted with restitution that is neither paid nor waived
  *     (the restitution due date is a court date).
  */
@@ -22,10 +24,18 @@ export const courtMatter = (offence: {
   restitution_amount?: number | string | null;
   restitution_status?: string | null;
   restitution_date?: string | null;
+  pending_confirmation?: { outcome: string; court_date?: string | null } | null;
 }): CourtMatter => {
   const status = (offence.conviction_status || "").toLowerCase();
   if (status === "unconvicted") {
     return { pending: true, reason: "On remand" };
+  }
+  if (status === "convicted" && offence.pending_confirmation) {
+    const kind = offence.pending_confirmation.outcome === "INCREASED" ? "increase" : "reduction";
+    const when = offence.pending_confirmation.court_date
+      ? ` on ${formatDate(offence.pending_confirmation.court_date)}`
+      : "";
+    return { pending: true, reason: `Confirmation of sentence (${kind}): re-sentencing in court${when}` };
   }
   if (status === "convicted") {
     const restitutionStatus = (offence.restitution_status || "").toLowerCase();

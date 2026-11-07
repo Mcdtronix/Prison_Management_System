@@ -140,6 +140,22 @@ export default function RecordCourtOutcome() {
         if (matchedOffence.concurrent_with?.length) {
           form.setValue("concurrent_with", String(matchedOffence.concurrent_with[0]));
         }
+        const confirmation = matchedOffence.pending_confirmation;
+        if (confirmation) {
+          // Re-sentencing after a confirmation of sentence: outcome is the revised
+          // sentence, counted from the original sentence date.
+          form.setValue("outcome", "CONVICTED");
+          if (confirmation.previous?.date_of_sentence) {
+            form.setValue("sentence_date", new Date(`${confirmation.previous.date_of_sentence}T12:00:00`));
+          }
+          form.setValue("sentence_years", matchedOffence.sentence_years || 0);
+          form.setValue("sentence_months", matchedOffence.sentence_months || 0);
+          form.setValue("sentence_days", matchedOffence.sentence_days || 0);
+          if (matchedOffence.has_fine) {
+            form.setValue("has_fine", true);
+            if (matchedOffence.fine_amount != null) form.setValue("fine_amount", String(matchedOffence.fine_amount));
+          }
+        }
       } else {
         toast.error("Offence not found.");
       }
@@ -152,6 +168,7 @@ export default function RecordCourtOutcome() {
   // Nothing to record once a count is sentenced with no restitution pending.
   const matter = offence ? courtMatter(offence) : null;
   const locked = Boolean(matter && !matter.pending);
+  const pendingConfirmation = offence?.pending_confirmation || null;
 
   const onSubmit = async (data: FormValues) => {
     if (!offenceId || !inmateId) return;
@@ -213,7 +230,11 @@ export default function RecordCourtOutcome() {
         payload.discharge_reason = data.discharge_reason;
       }
 
-      await inmateApi.recordCourtSession(offenceId, payload);
+      const result: any = await inmateApi.recordCourtSession(offenceId, payload);
+      if (result?.error) {
+        // e.g. a revised sentence that does not match a reduction / increase
+        throw new Error(result.error);
+      }
       toast.success("Court session recorded successfully");
       navigate(`/inmates/${inmateId}`);
     } catch (error: any) {
@@ -264,6 +285,21 @@ export default function RecordCourtOutcome() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {pendingConfirmation && (
+          <div role="status" className="mb-6 rounded-lg border border-sky-300 bg-sky-50 p-4 text-sm text-sky-900">
+            <p className="font-semibold">
+              Re-sentencing after confirmation of sentence ({pendingConfirmation.outcome === "INCREASED" ? "increase" : "reduction"})
+            </p>
+            <p className="mt-1">
+              Sentence on record: {pendingConfirmation.previous.years}Y {pendingConfirmation.previous.months}M {pendingConfirmation.previous.days}D
+              {pendingConfirmation.previous.date_of_sentence &&
+                ` from ${new Date(pendingConfirmation.previous.date_of_sentence).toLocaleDateString()}`}
+              . Enter the {pendingConfirmation.outcome === "INCREASED" ? "longer" : "shorter"} sentence passed in court.
+              The sentence date stays the original date, so remission is calculated from it.
+            </p>
+          </div>
         )}
 
         {locked && (
@@ -332,7 +368,7 @@ export default function RecordCourtOutcome() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Outcome <span className="text-red-500">*</span></FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={Boolean(pendingConfirmation)}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select outcome" />
@@ -481,6 +517,7 @@ export default function RecordCourtOutcome() {
                                 <FormControl>
                                   <Button
                                     variant={"outline"}
+                                    disabled={Boolean(pendingConfirmation)}
                                     className={cn(
                                       "w-full pl-3 text-left font-normal bg-white",
                                       !field.value && "text-muted-foreground"

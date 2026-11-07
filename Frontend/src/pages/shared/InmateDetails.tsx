@@ -45,6 +45,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Toaster } from "sonner";
 import RecordRestitutionPaymentModal from '../reception/components/RecordRestitutionPaymentModal';
 import { courtMatter } from "@/lib/court";
+import { SentenceConfirmationDialog, type ConfirmableOffence } from "@/components/sentence/SentenceConfirmationDialog";
 
 interface Inmate {
   id: string;
@@ -139,6 +140,8 @@ interface Inmate {
     fine_amount?: string | number | null;
     /** Offence ids whose sentences run concurrently with this one. */
     concurrent_with?: number[];
+    confirmations?: SentenceConfirmationRecord[];
+    pending_confirmation?: SentenceConfirmationRecord | null;
   }>;
   station_history?: Array<any>;
   name?: string; // Adding some fields used later
@@ -162,6 +165,24 @@ interface Inmate {
     assessed_by: string;
   };
   timeline?: TimelineEvent[];
+}
+
+interface SentenceConfirmationRecord {
+  id: number;
+  outcome: "ENDORSED" | "REDUCED" | "INCREASED";
+  outcome_display: string;
+  status: "COMPLETED" | "AWAITING_COURT" | "APPLIED";
+  status_display: string;
+  confirmation_date: string;
+  document: string | null;
+  remarks: string | null;
+  previous: { years: number; months: number; days: number; date_of_sentence: string | null };
+  revised: { years: number; months: number; days: number } | null;
+  court_date: string | null;
+  recorded_by: string;
+  recorded_at: string;
+  applied_by: string | null;
+  applied_at: string | null;
 }
 
 interface Offense {
@@ -236,6 +257,7 @@ const InmateDetails = () => {
   const [errorState, setErrorState] = useState<{code?: string, message?: string, details?: string, resolution?: string} | null>(null);
 
   const [restitutionModalOpen, setRestitutionModalOpen] = useState(false);
+  const [confirmingOffence, setConfirmingOffence] = useState<ConfirmableOffence | null>(null);
   const [selectedRestitutionId, setSelectedRestitutionId] = useState<string | null>(null);
   const [selectedRestitutionBalance, setSelectedRestitutionBalance] = useState<number>(0);
 
@@ -523,6 +545,82 @@ const InmateDetails = () => {
         <p id={`court-matter-${offense.id}`} className="mt-1 text-xs text-gray-500">
           {matter.reason}
         </p>
+      </div>
+    );
+  };
+
+  // Confirmation of sentence: record button + history (trail) per convicted count.
+  const confirmationTone: Record<string, string> = {
+    ENDORSED: "border-emerald-300 bg-emerald-50 text-emerald-800",
+    REDUCED: "border-sky-300 bg-sky-50 text-sky-800",
+    INCREASED: "border-red-300 bg-red-50 text-red-800",
+  };
+  const renderConfirmations = (offense: NonNullable<Inmate["offences"]>[number]) => {
+    const history = offense.confirmations || [];
+    const pending = offense.pending_confirmation;
+    const fmt = (s: { years: number; months: number; days: number }) => `${s.years}Y ${s.months}M ${s.days}D`;
+    return (
+      <div className="mt-4 rounded-md border border-gray-200 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium">Confirmation of Sentence</p>
+          {canRecordCourt && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={Boolean(pending)}
+              onClick={() => setConfirmingOffence(offense as any)}
+            >
+              <Gavel className="mr-2 h-4 w-4" />
+              Record Confirmation
+            </Button>
+          )}
+        </div>
+        {pending && (
+          <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+            {pending.outcome_display}: awaiting court session
+            {pending.court_date ? ` on ${new Date(pending.court_date).toLocaleDateString()}` : ""}. Record the
+            revised sentence with Record Court Outcome; it will count from the original sentence date.
+          </p>
+        )}
+        {history.length === 0 ? (
+          <p className="mt-2 text-xs text-gray-500">No confirmation received yet.</p>
+        ) : (
+          <ul className="mt-2 space-y-2">
+            {history.map((c) => (
+              <li key={c.id} className="rounded bg-gray-50 p-2 text-xs text-gray-700">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className={confirmationTone[c.outcome]}>
+                    {c.outcome_display}
+                  </Badge>
+                  <span>Dated {new Date(c.confirmation_date).toLocaleDateString()}</span>
+                  <span className="text-gray-400">·</span>
+                  <span>{c.status_display}</span>
+                  {c.document && (
+                    <a
+                      href={c.document}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto font-medium text-[#0b4f2a] underline-offset-2 hover:underline"
+                    >
+                      View document
+                    </a>
+                  )}
+                </div>
+                <p className="mt-1">
+                  Sentence {fmt(c.previous)}
+                  {c.previous.date_of_sentence && ` from ${new Date(c.previous.date_of_sentence).toLocaleDateString()}`}
+                  {c.revised && <> → <span className="font-semibold">{fmt(c.revised)}</span> (same sentence date)</>}
+                  {c.court_date && `. Court session ${new Date(c.court_date).toLocaleDateString()}`}
+                </p>
+                {c.remarks && <p className="mt-0.5 text-gray-500">{c.remarks}</p>}
+                <p className="mt-0.5 text-gray-400">
+                  Recorded by {c.recorded_by} on {new Date(c.recorded_at).toLocaleString()}
+                  {c.applied_by && c.applied_at && ` · Applied by ${c.applied_by} on ${new Date(c.applied_at).toLocaleString()}`}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     );
   };
@@ -1091,6 +1189,7 @@ const InmateDetails = () => {
                                     </span>
                                   </p>
                                   {renderCourtAction(offense)}
+                                  {renderConfirmations(offense)}
                                 </div>
                                 {offense.has_fine && (
                                   <div className="mt-3">
@@ -1532,6 +1631,15 @@ const InmateDetails = () => {
         </div>
       </div>
 
+      <SentenceConfirmationDialog
+        open={Boolean(confirmingOffence)}
+        onOpenChange={(open) => !open && setConfirmingOffence(null)}
+        offence={confirmingOffence}
+        onRecorded={(message) => {
+          toast({ title: "Confirmation of sentence", description: message });
+          if (id) fetchInmateData(id);
+        }}
+      />
       <RecordRestitutionPaymentModal 
         isOpen={restitutionModalOpen}
         onClose={() => setRestitutionModalOpen(false)}

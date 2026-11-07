@@ -234,6 +234,30 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsStationDataOwner]
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def confirm_sentence(self, request, pk=None):
+        """
+        Record a confirmation of sentence (document required). Endorsed closes at
+        once; reduced / increased schedule the court session that re-sentences.
+        """
+        from .serializers import SentenceConfirmationCreateSerializer
+        from .sentencing import confirmation_payload, record_confirmation
+
+        offence = self.get_object()
+        serializer = SentenceConfirmationCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        confirmation = record_confirmation(
+            offence,
+            outcome=data["outcome"],
+            confirmation_date=data["confirmation_date"],
+            document=data["document"],
+            court_date=data.get("court_date"),
+            remarks=data.get("remarks"),
+            user=request.user,
+        )
+        return Response(confirmation_payload(confirmation, request), status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def record_court_session(self, request, pk=None):
         offence = self.get_object()
         serializer = CourtSessionCreateSerializer(data=request.data)
@@ -244,20 +268,41 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
         data = serializer.validated_data
         outcome = data['outcome']
 
-        from .sentencing import NO_COURT_MATTER, court_matter_pending
+        from .sentencing import (
+            NO_COURT_MATTER, apply_confirmation, check_revision_direction,
+            court_matter_pending, pending_confirmation,
+        )
         if not court_matter_pending(offence):
             return Response({'error': NO_COURT_MATTER}, status=status.HTTP_400_BAD_REQUEST)
 
-        with transaction.atomic():
-            # 1. Save CourtSession
-            CourtSession.objects.create(
-                offence=offence,
-                session_date=data['session_date'],
-                outcome=outcome,
-                next_court_date=data.get('next_court_date'),
-                remarks=data.get('remarks')
+        # A confirmation of sentence (reduction / increase) awaiting this session:
+        # the court passes the revised sentence, counted from the original sentence date.
+        confirmation = pending_confirmation(offence)
+        if confirmation and outcome != 'CONVICTED':
+            return Response(
+                {'error': "This session follows a confirmation of sentence: record the revised sentence "
+                          "with the outcome 'Convicted & Sentenced'."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-            
+
+        with transaction.atomic():
+            # 1. Save CourtSession (the session scheduled by the confirmation, if any)
+            if confirmation and confirmation.court_session:
+                session = confirmation.court_session
+                session.session_date = data['session_date']
+                session.outcome = outcome
+                session.next_court_date = None
+                session.remarks = "; ".join(filter(None, [session.remarks, data.get('remarks')]))
+                session.save()
+            else:
+                CourtSession.objects.create(
+                    offence=offence,
+                    session_date=data['session_date'],
+                    outcome=outcome,
+                    next_court_date=data.get('next_court_date'),
+                    remarks=data.get('remarks')
+                )
+
             inmate = offence.inmate
             
             if outcome == 'REMANDED':
@@ -272,6 +317,17 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
                         offence.unconviction.remand_end_date = data.get('sentence_date') or data['session_date']
                         offence.unconviction.save()
                 
+                sentence_date = data.get('sentence_date')
+                if confirmation:
+                    check_revision_direction(
+                        confirmation,
+                        data.get('sentence_years') or 0,
+                        data.get('sentence_months') or 0,
+                        data.get('sentence_days') or 0,
+                    )
+                    # Remission runs from the date the sentence was first passed.
+                    sentence_date = confirmation.previous_date_of_sentence or sentence_date
+
                 convicted, created = Convicted.objects.update_or_create(
                     offence=offence,
                     defaults={
@@ -279,7 +335,7 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
                         'sentence_years': data.get('sentence_years', 0),
                         'sentence_months': data.get('sentence_months', 0),
                         'sentence_days': data.get('sentence_days', 0),
-                        'date_of_sentence': data.get('sentence_date'),
+                        'date_of_sentence': sentence_date,
                         'has_fine': data.get('has_fine', False),
                         'fine_amount': data.get('fine_amount')
                     }
@@ -291,6 +347,9 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
                     inmate, data.get('concurrent_with_offence_id'), exclude_offence_id=offence.id
                 )
                 set_concurrency(convicted, target)
+
+                if confirmation:
+                    apply_confirmation(confirmation, convicted, request.user, data['session_date'])
 
                 if data.get('has_restitution'):
                     Restitution.objects.update_or_create(

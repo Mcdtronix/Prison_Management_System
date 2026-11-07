@@ -243,6 +243,35 @@ class ArchivedDischargeSerializer(serializers.ModelSerializer):
         model = ArchivedDischarge
         fields = "__all__"
 
+class SentenceConfirmationCreateSerializer(serializers.Serializer):
+    """Confirmation of sentence received from the court (document mandatory)."""
+    outcome = serializers.ChoiceField(choices=["ENDORSED", "REDUCED", "INCREASED"])
+    confirmation_date = serializers.DateField()
+    document = serializers.FileField()
+    court_date = serializers.DateField(required=False, allow_null=True)
+    remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def validate_confirmation_date(self, value):
+        if value > timezone.now().date():
+            raise serializers.ValidationError("The confirmation date cannot be in the future.")
+        return value
+
+    def validate(self, data):
+        if data["outcome"] in ("REDUCED", "INCREASED"):
+            court_date = data.get("court_date")
+            if not court_date:
+                raise serializers.ValidationError(
+                    {"court_date": "A court date is required when the sentence is reduced or increased."}
+                )
+            if court_date < data["confirmation_date"]:
+                raise serializers.ValidationError(
+                    {"court_date": "The court date cannot be before the confirmation date."}
+                )
+        else:
+            data["court_date"] = None
+        return data
+
+
 class CourtSessionCreateSerializer(serializers.Serializer):
     session_date = serializers.DateField()
     outcome = serializers.ChoiceField(choices=CourtSession.OUTCOME_CHOICES)
@@ -378,8 +407,30 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
                 'description': f'Admission health assessment completed by {assessment.assessed_by}.',
                 'recorded_by': assessment.assessed_by
             })
-            
-        events.sort(key=lambda x: x['date'], reverse=True)
+
+        # Sentencing and court trail: confirmations of sentence, re-sentencing,
+        # court sessions and scheduled appearances, as written to the audit trail.
+        sentencing_markers = ('Confirmation of sentence', 'Sentence reduced', 'Sentence increased',
+                              'Court session scheduled', 'Recorded Court Session')
+        for entry in obj.audit_trail.all():
+            if not entry.action.startswith(sentencing_markers):
+                continue
+            events.append({
+                'id': f"audit_{entry.id}",
+                'date': entry.timestamp,
+                'event_type': 'Sentence & Court',
+                'description': f"{entry.action}. {entry.remarks}" if entry.remarks else entry.action,
+                'recorded_by': entry.performed_by,
+            })
+
+        # Mixed dates and datetimes: sort on a common datetime key.
+        def sort_key(event):
+            value = event['date']
+            if isinstance(value, datetime):
+                return value.replace(tzinfo=None)
+            return datetime.combine(value, datetime.min.time()) if value else datetime.min
+
+        events.sort(key=sort_key, reverse=True)
         return events
 
     def get_next_of_kin(self, obj):
@@ -430,10 +481,20 @@ class ComprehensiveInmateSerializer(serializers.ModelSerializer):
 
             if hasattr(offence, 'conviction') and offence.conviction:
                 convicted = offence.conviction
-                from .sentencing import concurrent_offence_ids
+                from .sentencing import concurrent_offence_ids, confirmation_payload
+                request = self.context.get('request')
+                confirmations = [
+                    confirmation_payload(c, request)
+                    for c in offence.sentence_confirmations.select_related('court_session').all()
+                ]
                 offence_data.update({
                     # Offence ids whose sentences run alongside this one (empty = consecutive).
                     'concurrent_with': concurrent_offence_ids(convicted),
+                    # Confirmation of sentence history (newest first) and any awaiting court.
+                    'confirmations': confirmations,
+                    'pending_confirmation': next(
+                        (c for c in confirmations if c['status'] == 'AWAITING_COURT'), None
+                    ),
                     'has_fine': convicted.has_fine,
                     'fine_amount': convicted.fine_amount,
                     'sentence': convicted.sentence,
