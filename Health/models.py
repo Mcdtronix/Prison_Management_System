@@ -1,6 +1,6 @@
 from django.db import models
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator, RegexValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.utils import timezone
 from datetime import date
 
@@ -377,7 +377,7 @@ class OutPatientVisit(models.Model):
     temperature = models.DecimalField(
         max_digits=4,
         decimal_places=1,
-        validators=[MinValueValidator(30), MinValueValidator(45)],
+        validators=[MinValueValidator(30), MaxValueValidator(45)],
         help_text="Body temperature in Celsius"
     )
     blood_pressure = models.CharField(

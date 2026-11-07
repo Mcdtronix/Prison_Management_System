@@ -54,3 +54,29 @@ export const courtMatter = (offence: {
   }
   return { pending: false, reason: "No court matter pending." };
 };
+
+/** Label and badge colour for an offence's status, so every screen shows the same badge. */
+export const offenceStatusBadge = (status?: string | null): { label: string; className: string } => {
+  switch ((status || "").toLowerCase()) {
+    case "convicted":
+      return { label: "Convicted", className: "bg-red-500 hover:bg-red-500 text-white" };
+    case "discharged":
+      return { label: "Discharged", className: "bg-slate-500 hover:bg-slate-500 text-white" };
+    default:
+      return { label: "Unconvicted", className: "bg-orange-500 hover:bg-orange-500 text-white" };
+  }
+};
+
+/**
+ * The earliest date a court session can be recorded for an offence: the
+ * remand start for a remand matter, otherwise the date of sentence.
+ */
+export const earliestCourtDate = (offence: {
+  remand_start_date?: string | null;
+  sentence_date?: string | null;
+}): Date | null => {
+  const value = offence.remand_start_date || offence.sentence_date;
+  if (!value) return null;
+  const [y, m, d] = value.slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d);
+};

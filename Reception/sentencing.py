@@ -115,6 +115,43 @@ def court_matter_pending(offence):
     return False
 
 
+def earliest_court_date(offence):
+    """
+    The earliest date a court session can be recorded for `offence`: the remand
+    start for a remand matter, otherwise the date of sentence. None if unknown.
+    """
+    unconviction = getattr(offence, "unconviction", None)
+    if unconviction is not None and unconviction.remand_start_date:
+        return unconviction.remand_start_date
+    try:
+        return offence.conviction.date_of_sentence
+    except Convicted.DoesNotExist:
+        return None
+
+
+def close_scheduled_sessions(offence, recorded):
+    """
+    Settle the offence's scheduled sessions once a court outcome is recorded:
+    those on or before the session just recorded were answered by it, and once
+    no court matter is left, later ones are cancelled. Returns how many closed.
+    """
+    from .models import CourtSession
+
+    open_sessions = CourtSession.objects.filter(offence=offence, outcome="SCHEDULED").exclude(pk=recorded.pk)
+    answered = open_sessions.filter(session_date__lte=recorded.session_date)
+    if not court_matter_pending(offence):
+        answered = open_sessions
+    note = f"Closed: outcome {recorded.get_outcome_display()} recorded on {recorded.session_date:%d/%m/%Y}."
+    closed = 0
+    for session in answered:
+        session.outcome = "CANCELLED"
+        session.next_court_date = None
+        session.remarks = "; ".join(filter(None, [session.remarks, note]))
+        session.save(update_fields=["outcome", "next_court_date", "remarks"])
+        closed += 1
+    return closed
+
+
 def concurrent_offence_ids(conviction):
     """Other offences whose sentences run alongside this one."""
     if not conviction or not conviction.sentence_group_id:

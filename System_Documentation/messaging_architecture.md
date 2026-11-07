@@ -16,17 +16,20 @@ The PMS Organizational Messaging System is a secure, internal communications bac
 
 The fundamental innovation of the messaging module is its **Domain-Based Mailbox Addressing Scheme**. 
 
-Every entity in the system is assigned an address formatted as:
-`[DEPARTMENT]@[STATION_CODE].pms.local`
+Every department at every unit is assigned an address when the department is added to the unit (`OrgUnitDepartment.mailbox_address`):
 
-**Examples:**
-- `RECEPTION@chv-stn.pms.local` (Reception Department at Chikurubi Maximum Prison)
-- `HEALTH@nat-hq.pms.local` (Health Directorate at National Headquarters)
+| Unit | Format | Example |
+|---|---|---|
+| Station | `{station_short_code}{department}@pms.co.zw` | `chivhureception@pms.co.zw`, `chivhuhealth@pms.co.zw` |
+| Provincial HQ | `{province_short_code}{department}@pms.co.zw` | `masheastHR@pms.co.zw` |
+| National HQ | `{short_code}@pms.co.zw` | `NHQ@pms.co.zw` |
+
+Department codes of four letters or fewer keep their capitals (e.g. `HR`); longer ones are lower-case.
 
 **Why this approach?**
 1. **Instant Recognition:** A receiver immediately knows the authoritative origin of a message.
 2. **Staff Turnover Immunity:** If Officer A is off-duty and Officer B logs into the Reception role, Officer B immediately inherits the Reception mailbox and can continue critical operational threads.
-3. **Closed-Loop Security:** The `.pms.local` domain is isolated. The system is physically incapable of receiving spoofed emails from the public internet (like Gmail), completely neutralizing external phishing threats.
+3. **Closed-Loop Security:** The `@pms.co.zw` mailboxes exist only inside PMS; messages are stored in the PMS database and are never sent through, or received from, external email. The system is physically incapable of receiving spoofed emails from the public internet (like Gmail), completely neutralizing external phishing threats.
 
 ---
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { offenceStatusBadge } from "@/lib/court";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -640,9 +641,8 @@ const OffenceRegistrationForm = ({
                   <div className="flex items-center justify-between">
                     <span className="font-semibold">Offence #{i + 1}</span>
                     <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded text-white text-xs"
-                        style={{ backgroundColor: (o.conviction_status === "convicted" ? '#ef4444' : '#f97316') }}>
-                        {o.conviction_status === "convicted" ? "Convicted" : "Unconvicted"}
+                      <span className={`px-2 py-0.5 rounded text-xs ${offenceStatusBadge(o.conviction_status).className}`}>
+                        {offenceStatusBadge(o.conviction_status).label}
                       </span>
                       <Button
                         variant="outline"

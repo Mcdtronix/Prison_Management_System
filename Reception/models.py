@@ -254,7 +254,8 @@ class CourtSession(models.Model):
         ("REMANDED", "Remanded (Next Court Date Set)"),
         ("CONVICTED", "Convicted / Sentenced"),
         ("DISCHARGED", "Discharged"),
-        ("RESTITUTION_SETTLED", "Restitution Settled (Closed)")
+        ("RESTITUTION_SETTLED", "Restitution Settled (Closed)"),
+        ("CANCELLED", "Cancelled (No Longer Required)"),
     ]
     outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, default="SCHEDULED", help_text="Outcome of the session")
     next_court_date = models.DateField(null=True, blank=True, help_text="The new court date set during this session (required if remanded or scheduled)")
@@ -407,6 +408,12 @@ class Convicted(models.Model):
             self.effective_sentence_days = 0
             
         self.remission_days = self.effective_sentence_days // 3
+
+        # update_or_create() (Django 4.2+) saves only the fields it was given, so a
+        # changed sentence would leave these derived figures stale. Always write them.
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {"effective_sentence_days", "remission_days"}
         super().save(*args, **kwargs)
 
 

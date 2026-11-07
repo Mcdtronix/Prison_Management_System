@@ -44,7 +44,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Toaster } from "sonner";
 import RecordRestitutionPaymentModal from '../reception/components/RecordRestitutionPaymentModal';
-import { courtMatter } from "@/lib/court";
+import { courtMatter, offenceStatusBadge } from "@/lib/court";
 import { SentenceConfirmationDialog, type ConfirmableOffence } from "@/components/sentence/SentenceConfirmationDialog";
 
 interface Inmate {
@@ -191,7 +191,7 @@ interface Offense {
   id: string;
   description: string;
   court: string;
-  conviction_status: "convicted" | "unconvicted";
+  conviction_status: "convicted" | "unconvicted" | "discharged";
   sentence?: string;
   edr_with_restitution?: string;
   edr_without_restitution?: string;
@@ -1148,16 +1148,8 @@ const InmateDetails = () => {
                         >
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center">
-                            <Badge
-                              className={
-                                offense.conviction_status === "convicted"
-                                  ? "bg-red-500"
-                                  : "bg-orange-500"
-                              }
-                            >
-                              {offense.conviction_status === "convicted"
-                                ? "Convicted"
-                                : "Unconvicted"}
+                            <Badge className={offenceStatusBadge(offense.conviction_status).className}>
+                              {offenceStatusBadge(offense.conviction_status).label}
                             </Badge>
                             <span className="ml-2 text-sm font-semibold">
                               Offense #{index + 1}

@@ -179,3 +179,10 @@ class SentenceConfirmationTests(TestCase):
         self.assertTrue(any(t.startswith("Confirmation of sentence recorded") for t in trail))
         self.assertTrue(any(t.startswith("Court session scheduled") for t in trail))
         self.assertTrue(any(t.startswith("Sentence reduced from 3y 0m 0d to 2y 0m 0d") for t in trail))
+
+    def test_resentencing_updates_the_counts_own_figures(self):
+        self.confirm("REDUCED", "2026-12-10")
+        self.resentence(2)
+        conviction = Convicted.objects.get(offence=self.offence)
+        # 2 years from 07 Nov 2026 = 731 days; remission 243 (not the old 3-year figures).
+        self.assertEqual((conviction.effective_sentence_days, conviction.remission_days), (731, 243))

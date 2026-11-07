@@ -39,7 +39,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { adminApi, inmateApi } from "@/lib/api";
 import { calendarDays, computeEffectiveSentence, formatSentence, type SentenceCount } from "@/lib/sentence";
 import { SentenceRunsField, type ConcurrentOption } from "@/components/sentence/SentenceRunsField";
-import { courtMatter } from "@/lib/court";
+import { courtMatter, earliestCourtDate } from "@/lib/court";
 
 const courtOutcomeSchema = z.object({
   session_date: z.date({
@@ -350,9 +350,10 @@ export default function RecordCourtOutcome() {
                               mode="single"
                               selected={field.value}
                               onSelect={field.onChange}
-                              disabled={(date) =>
-                                date > new Date() || date < new Date("1900-01-01")
-                              }
+                              disabled={(date) => {
+                                const earliest = offence ? earliestCourtDate(offence) : null;
+                                return date > new Date() || date < (earliest ?? new Date("1900-01-01"));
+                              }}
                               initialFocus
                             />
                           </PopoverContent>

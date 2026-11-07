@@ -274,7 +274,8 @@ class SentenceConfirmationCreateSerializer(serializers.Serializer):
 
 class CourtSessionCreateSerializer(serializers.Serializer):
     session_date = serializers.DateField()
-    outcome = serializers.ChoiceField(choices=CourtSession.OUTCOME_CHOICES)
+    # "Cancelled" is set by the system when a scheduled session is no longer needed.
+    outcome = serializers.ChoiceField(choices=[c for c in CourtSession.OUTCOME_CHOICES if c[0] != "CANCELLED"])
     next_court_date = serializers.DateField(required=False, allow_null=True)
     remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     

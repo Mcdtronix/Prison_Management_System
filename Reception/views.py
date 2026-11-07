@@ -1,3 +1,4 @@
+from django.db.models import Exists, OuterRef
 from rest_framework import viewsets, status
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from Core.mixins import OrgUnitContextMixin
@@ -269,10 +270,21 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 
         from .sentencing import (
             NO_COURT_MATTER, apply_confirmation, check_revision_direction,
-            court_matter_pending, pending_confirmation,
+            close_scheduled_sessions, court_matter_pending, earliest_court_date, pending_confirmation,
         )
         if not court_matter_pending(offence):
             return Response({'error': NO_COURT_MATTER}, status=status.HTTP_400_BAD_REQUEST)
+
+        # A court cannot sit on a matter before the inmate was remanded or sentenced on it.
+        earliest = earliest_court_date(offence)
+        for field, label in (('session_date', 'Session date'), ('sentence_date', 'Sentence date')):
+            value = data.get(field)
+            if earliest and value and value < earliest:
+                return Response(
+                    {field: [f"{label} cannot be before {earliest:%d/%m/%Y}, "
+                             f"when this matter began (remand or sentence)."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         # A confirmation of sentence (reduction / increase) awaiting this session:
         # the court passes the revised sentence, counted from the original sentence date.
@@ -294,13 +306,23 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
                 session.remarks = "; ".join(filter(None, [session.remarks, data.get('remarks')]))
                 session.save()
             else:
-                CourtSession.objects.create(
-                    offence=offence,
-                    session_date=data['session_date'],
-                    outcome=outcome,
-                    next_court_date=data.get('next_court_date'),
-                    remarks=data.get('remarks')
-                )
+                # The session scheduled for this day, if any, is the one being answered.
+                session = (CourtSession.objects
+                           .filter(offence=offence, outcome='SCHEDULED', session_date=data['session_date'])
+                           .order_by('id').first())
+                if session:
+                    session.outcome = outcome
+                    session.next_court_date = data.get('next_court_date')
+                    session.remarks = "; ".join(filter(None, [session.remarks, data.get('remarks')]))
+                    session.save()
+                else:
+                    session = CourtSession.objects.create(
+                        offence=offence,
+                        session_date=data['session_date'],
+                        outcome=outcome,
+                        next_court_date=data.get('next_court_date'),
+                        remarks=data.get('remarks')
+                    )
 
             inmate = offence.inmate
             
@@ -411,6 +433,9 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
                         performed_by=request.user.username if request.user else 'System'
                     )
             
+            # Scheduled sessions this outcome answered (or made redundant) leave the calendar.
+            close_scheduled_sessions(offence, session)
+
             # Audit trail for the court session outcome
             InmateAuditTrail.objects.create(
                 inmate=inmate,
@@ -1050,10 +1075,15 @@ class UpcomingCourtSessionsView(OrgUnitContextMixin, APIView):
 
     def get(self, request):
         # Only scheduled and remanded sessions typically have upcoming court dates
+        # Upcoming = the offence's latest word from court: drop sessions a later
+        # recorded outcome has superseded, and offences no longer before the court.
+        superseded = CourtSession.objects.filter(
+            offence=OuterRef("offence"), id__gt=OuterRef("id"),
+        ).exclude(outcome__in=["SCHEDULED", "CANCELLED"])
         queryset = CourtSession.objects.filter(
             outcome__in=["SCHEDULED", "REMANDED"],
             next_court_date__isnull=False
-        ).select_related("offence__inmate").prefetch_related("offence__restitutions").order_by("next_court_date")
+        ).exclude(offence__Offence_status="DISCHARGED").exclude(Exists(superseded)).select_related("offence__inmate").prefetch_related("offence__restitutions").order_by("next_court_date")
         
         # Apply org unit filtering if needed
         org_unit = getattr(request, 'org_unit', None)
