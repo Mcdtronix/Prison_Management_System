@@ -1112,7 +1112,12 @@ class LoginEvent(models.Model):
     class Meta:
         db_table = "auth_login_event"
         ordering = ['-at']
-        indexes = [models.Index(fields=['user', '-at']), models.Index(fields=['success', '-at'])]
+        indexes = [
+            models.Index(fields=['user', '-at']), models.Index(fields=['success', '-at']),
+            # Sign-in throttle lookups (Auth/lockout.py)
+            models.Index(fields=['username_attempted', '-at'], name='login_event_name_at'),
+            models.Index(fields=['ip_address', '-at'], name='login_event_ip_at'),
+        ]
 
     def __str__(self):
         return f"{self.username_attempted} {'ok' if self.success else 'fail'} {self.at:%Y-%m-%d %H:%M}"

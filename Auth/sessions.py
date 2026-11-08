@@ -16,11 +16,29 @@ TOUCH_INTERVAL = timedelta(seconds=60)
 
 
 def client_ip(request):
+    """The caller's IP address, or None.
+
+    Read from settings.CLIENT_IP_HEADER when set. In production that is
+    `HTTP_X_REAL_IP`, which nginx overwrites with the real peer address on
+    every request, so a client cannot choose it. `X-Forwarded-For` is never
+    trusted: its first entry is whatever the client sent. Anything that is
+    not a valid IP address is ignored.
+    """
+    import ipaddress
+    from django.conf import settings
+
     if request is None:
         return None
-    forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
-    ip = forwarded.split(',')[0].strip() if forwarded else request.META.get('REMOTE_ADDR')
-    return ip or None
+    header = getattr(settings, 'CLIENT_IP_HEADER', '')
+    for raw in ((request.META.get(header) if header else None), request.META.get('REMOTE_ADDR')):
+        candidate = (raw or '').strip()
+        if not candidate:
+            continue
+        try:
+            return str(ipaddress.ip_address(candidate))
+        except ValueError:
+            continue
+    return None
 
 
 def user_agent(request):
@@ -61,7 +79,7 @@ def record_login(request, username, user=None, success=False, reason=''):
         user=user, username_attempted=(username or '')[:150], success=success, reason=reason[:100],
         ip_address=client_ip(request), user_agent=user_agent(request),
     )
-    if user is None:
+    if user is None or reason == 'locked':  # a refused attempt is not a new failure
         return
     security = UserSecurity.for_user(user)
     if success:

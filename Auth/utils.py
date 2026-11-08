@@ -250,13 +250,9 @@ def get_officer_current_station(officer):
 
 
 def _get_client_ip(request):
-    """Extract client IP address from request"""
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0]
-    else:
-        ip = request.META.get('REMOTE_ADDR')
-    return ip
+    """Client IP, from the one trusted source (see Auth.sessions.client_ip)."""
+    from .sessions import client_ip
+    return client_ip(request)
 
 
 

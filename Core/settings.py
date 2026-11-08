@@ -177,6 +177,26 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
+# Sign-in throttling (Auth/lockout.py), applied to every password check by
+# the backend below: the API login, the Django admin and the password change.
+AUTHENTICATION_BACKENDS = ['Auth.backends.LockoutModelBackend']
+
+LOGIN_LOCKOUT = {
+    # One account name: this many failures within the window pauses sign-in.
+    'ACCOUNT_MAX_FAILURES': config('LOGIN_ACCOUNT_MAX_FAILURES', default=5, cast=int),
+    'ACCOUNT_WINDOW_MINUTES': config('LOGIN_ACCOUNT_WINDOW_MINUTES', default=15, cast=int),
+    # One IP address, any names: stops a single machine spraying many accounts.
+    # Generous, because a whole station may sign in from behind one address.
+    'ADDRESS_MAX_FAILURES': config('LOGIN_ADDRESS_MAX_FAILURES', default=20, cast=int),
+    'ADDRESS_WINDOW_MINUTES': config('LOGIN_ADDRESS_WINDOW_MINUTES', default=15, cast=int),
+}
+
+# Request header holding the real client address. nginx sets X-Real-IP to the
+# peer address on every request, so it cannot be forged through the proxy.
+# Empty = use REMOTE_ADDR (development, no proxy). X-Forwarded-For is never used.
+CLIENT_IP_HEADER = config('CLIENT_IP_HEADER', default='' if DEBUG else 'HTTP_X_REAL_IP')
+
+
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 

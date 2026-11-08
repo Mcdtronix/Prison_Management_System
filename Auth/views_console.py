@@ -240,7 +240,15 @@ def password_info(user, security=None):
         'must_change': bool(security and security.must_change_password),
         'failed_attempts': security.failed_login_count if security else 0,
         'last_failed_at': security.last_failed_login_at if security else None,
+        # Sign-in paused after repeated failures (Auth/lockout.py); a password reset lifts it.
+        'locked_for_seconds': _locked_for(user),
     }
+
+
+def _locked_for(user):
+    from .lockout import account_lock
+    lock = account_lock(user)
+    return lock.retry_after if lock else 0
 
 
 def _assignment_row(a):

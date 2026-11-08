@@ -37,14 +37,28 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
-        from .sessions import record_login
+        from . import lockout
+        from .sessions import client_ip, record_login
 
-        attempted = (request.data.get('username') or '').strip().upper()
+        attempted = lockout.normalize(request.data.get('username'))
+        request.login_recorded = True  # this view logs its own attempts (see Auth/signals_login.py)
+
+        # Paused after repeated failures: refuse before checking the password.
+        lock = lockout.check(attempted, client_ip(request))
+        if lock is not None:
+            known = User.objects.filter(username=attempted).first()
+            record_login(request, attempted, user=known, success=False, reason=lockout.LOCKED_REASON)
+            return lockout.locked_response(lock)
+
         serializer = self.get_serializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
         except Exception:
             known = User.objects.filter(username=attempted).first()
+            lock = getattr(request, 'login_lock', None)  # set by Auth.backends when it refused
+            if lock is not None:
+                record_login(request, attempted, user=known, success=False, reason=lockout.LOCKED_REASON)
+                return lockout.locked_response(lock)
             reason = 'inactive' if known is not None and not known.is_active else 'bad_credentials'
             record_login(request, attempted, user=known, success=False, reason=reason)
             raise
@@ -424,10 +438,21 @@ def change_password_view(request):
     from .models import UserSecurity
     from .sessions import revoke_sessions, start_session
 
+    from . import lockout
+    from .sessions import client_ip, record_login
+
     current = request.data.get('current_password') or ''
     new = request.data.get('new_password') or ''
     user = request.user
+
+    # Guessing the current password here is password guessing too (e.g. with a
+    # stolen token), so it shares the sign-in throttle.
+    name = lockout.normalize(user.username)
+    lock = lockout.check(name, client_ip(request))
+    if lock is not None:
+        return lockout.locked_response(lock)
     if not user.check_password(current):
+        record_login(request, name, user=user, success=False, reason='bad_current_password')
         return Response({'current_password': ['Your current password is incorrect.']},
                         status=status.HTTP_400_BAD_REQUEST)
     if current == new:
