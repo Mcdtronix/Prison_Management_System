@@ -9,6 +9,8 @@ Mounted at /api/auth/console/.
 """
 import re
 import secrets
+
+from django.conf import settings
 import string
 from collections import defaultdict
 from datetime import timedelta
@@ -242,7 +244,19 @@ def password_info(user, security=None):
         'last_failed_at': security.last_failed_login_at if security else None,
         # Sign-in paused after repeated failures (Auth/lockout.py); a password reset lifts it.
         'locked_for_seconds': _locked_for(user),
+        # A pending one-time password stops working at this time (Auth/one_time.py).
+        'temporary_expires_at': one_time_expires_at(security),
     }
+
+
+def one_time_expires_at(security):
+    from .one_time import expires_at
+    return expires_at(security)
+
+
+def _one_time_deadline(user):
+    from .models import UserSecurity
+    return one_time_expires_at(UserSecurity.objects.filter(user=user).first())
 
 
 def _locked_for(user):
@@ -554,8 +568,10 @@ class ConsoleViewSet(viewsets.ViewSet):
         _audit(request, 'CREATE_ACCOUNT', user, f'{username} as {role.code} at {unit.code} ({source})')
         return Response({
             'id': user.id, 'username': user.username, 'temporary_password': password,
+            'temporary_password_expires_at': _one_time_deadline(user),
             'officer_registered': registered,
-            'message': 'Give this one-time password to the officer in person. They must change it at first sign-in.',
+            'message': f'Give this one-time password to the officer in person. It works for '
+                       f'{settings.TEMP_PASSWORD_TTL_MINUTES} minutes; they must change it at first sign-in.',
         }, status=status.HTTP_201_CREATED)
 
     @staticmethod
@@ -717,8 +733,10 @@ class ConsoleViewSet(viewsets.ViewSet):
         _audit(request, 'RESET_PASSWORD', target, reason)
         return Response({
             'temporary_password': password,
-            'message': 'All of this user\'s sessions were ended. Give them this one-time password in person; '
-                       'they must choose a new one at next sign-in.',
+            'temporary_password_expires_at': _one_time_deadline(target),
+            'message': f'All of this user\'s sessions were ended. Give them this one-time password in person. '
+                       f'It works for {settings.TEMP_PASSWORD_TTL_MINUTES} minutes; '
+                       f'they must choose a new one at next sign-in.',
         })
 
     @action(detail=False, methods=['post'], url_path=r'users/(?P<user_id>\d+)/force-logout')
@@ -856,7 +874,9 @@ class ConsoleViewSet(viewsets.ViewSet):
         return Response({
             'id': user.id, 'username': user.username, 'role_code': role.code, 'org_unit_id': unit.pk,
             'used': used, 'limit': limit,
-            'message': f'{username} can sign in with the password you set and must change it at first sign-in.',
+            'temporary_password_expires_at': _one_time_deadline(user),
+            'message': f'{username} can sign in with the password you set within '
+                       f'{settings.TEMP_PASSWORD_TTL_MINUTES} minutes, and must change it at first sign-in.',
         }, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='grantable-roles')

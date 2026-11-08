@@ -121,7 +121,8 @@ class AddressLockoutTests(LockoutTestBase):
 
 
 # The admin page needs collected static files; plain storage avoids the manifest in tests.
-@override_settings(STORAGES={
+# The admin is off by default when DEBUG=False (CI); these tests switch it on.
+@override_settings(ROOT_URLCONF='Core.urls_admin_on', STORAGES={
     'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
     'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
 })

@@ -7,7 +7,7 @@ Putting the lock here means none of them can skip it.
 from django.contrib.auth.backends import ModelBackend
 from django.core.exceptions import PermissionDenied
 
-from . import lockout
+from . import lockout, one_time
 from .sessions import client_ip
 
 
@@ -28,7 +28,13 @@ class LockoutModelBackend(ModelBackend):
             if request is not None:
                 request.login_lock = lock
             raise PermissionDenied(lock.message())
-        return super().authenticate(request, username=username, password=password, **kwargs)
+        user = super().authenticate(request, username=username, password=password, **kwargs)
+        # A correct but expired one-time password (Auth/one_time.py) is refused.
+        if user is not None and one_time.expired_for(user):
+            if request is not None:
+                request.temp_password_expired = True
+            return None
+        return user
 
     @staticmethod
     def _username_field():

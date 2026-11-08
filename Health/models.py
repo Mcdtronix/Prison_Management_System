@@ -1,4 +1,5 @@
 from django.db import models
+from Core.uploads import UploadValidator
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.utils import timezone
@@ -661,6 +662,7 @@ class StockCardEntry(models.Model):
 
     # Documentation
     issue_voucher = models.FileField(
+        validators=[UploadValidator('document')],
         upload_to="health/stock_vouchers/",
         blank=True,
         null=True,

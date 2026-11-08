@@ -34,12 +34,22 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-#SECRET_KEY = 'django-insecure-&@j7sauie)^w-$0#jjr%j6e$k^3@2#!*!mbs1_10ykbva+bewt'
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-pms-local-dev-key-change-in-production')
+# Debug is OFF unless .env says DEBUG=True. A missing or lost setting must
+# never leave production showing stack traces and settings to the public.
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=True, cast=bool)
+# The secret key signs every login token (SIMPLE_JWT below): anyone who knows
+# it can sign in as anyone. Development may fall back to a local key;
+# production refuses to start without a real one.
+_DEV_SECRET_KEY = 'django-insecure-pms-local-dev-key-never-use-in-production'
+SECRET_KEY = config('SECRET_KEY', default=_DEV_SECRET_KEY if DEBUG else '')
+if not DEBUG and (len(SECRET_KEY) < 50 or SECRET_KEY.startswith('django-insecure')
+                  or len(set(SECRET_KEY)) < 5):
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(
+        'SECRET_KEY is missing, a placeholder, or too weak (need 50+ random characters). '
+        'Generate one with: python3 -c "import secrets; print(secrets.token_urlsafe(64))"'
+    )
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,127.0.0.1:8000', cast=Csv())
 
@@ -74,6 +84,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'Core.middleware.admin_access.AdminAccessMiddleware',  # ADMIN_ALLOWED_IPS (M3)
     'corsheaders.middleware.CorsMiddleware',  # CORS middleware (should be early)
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -190,6 +201,10 @@ LOGIN_LOCKOUT = {
     'ADDRESS_MAX_FAILURES': config('LOGIN_ADDRESS_MAX_FAILURES', default=20, cast=int),
     'ADDRESS_WINDOW_MINUTES': config('LOGIN_ADDRESS_WINDOW_MINUTES', default=15, cast=int),
 }
+
+# One-time passwords from an administrator (new account or reset) are valid
+# for this long after they are issued (Auth/one_time.py).
+TEMP_PASSWORD_TTL_MINUTES = config('TEMP_PASSWORD_TTL_MINUTES', default=30, cast=int)
 
 # Request header holding the real client address. nginx sets X-Real-IP to the
 # peer address on every request, so it cannot be forged through the proxy.
@@ -344,6 +359,17 @@ if not DEBUG:
     # so this header cannot be spoofed by clients.
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+# ── Back-office pages (Core/urls.py, Core/middleware/admin_access.py) ──
+# The application has its own administration console; the raw Django admin
+# and the API documentation are developer tools. In production they are off
+# unless switched on here, and the Django admin can be limited to addresses.
+ADMIN_ENABLED = config('ADMIN_ENABLED', default=DEBUG, cast=bool)
+# Comma-separated IPs or networks, e.g. 41.57.10.20,196.4.80.0/24. Empty = any address.
+ADMIN_ALLOWED_IPS = config('ADMIN_ALLOWED_IPS', default='', cast=Csv())
+# Swagger / ReDoc: always available in development; in production only when
+# enabled, and then only to signed-in staff.
+API_DOCS_ENABLED = config('API_DOCS_ENABLED', default=DEBUG, cast=bool)
+
 # Origins allowed to submit CSRF-protected forms (e.g. Django admin over HTTPS)
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
@@ -485,9 +511,13 @@ MESSAGE_RETENTION_DAYS = config('MESSAGE_RETENTION_DAYS', default=365, cast=int)
 # Maximum thread participants for messaging
 MAX_THREAD_RECIPIENTS = config('MAX_THREAD_RECIPIENTS', default=50, cast=int)
 
-# File upload configuration
-FILE_UPLOAD_MAX_MEMORY_SIZE = config('FILE_UPLOAD_MAX_MEMORY_SIZE', default=104857600, cast=int)  # 100MB
+# File uploads (checked by Core/uploads.py: type allow-list, size, real contents)
+# Uploads above this size are streamed to a temporary file instead of held in
+# memory, so a few large uploads at once cannot exhaust the server's RAM.
+FILE_UPLOAD_MAX_MEMORY_SIZE = config('FILE_UPLOAD_MAX_MEMORY_SIZE', default=2621440, cast=int)  # 2.5MB
 ALLOWED_UPLOAD_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx', 'xls', 'xlsx']
+UPLOAD_MAX_DOCUMENT_BYTES = config('UPLOAD_MAX_DOCUMENT_BYTES', default=10 * 1024 * 1024, cast=int)  # 10MB
+UPLOAD_MAX_PHOTO_BYTES = config('UPLOAD_MAX_PHOTO_BYTES', default=5 * 1024 * 1024, cast=int)  # 5MB
 
 # Messaging attachments (types come from ALLOWED_UPLOAD_EXTENSIONS)
 MESSAGING_MAX_ATTACHMENT_BYTES = config('MESSAGING_MAX_ATTACHMENT_BYTES', default=10 * 1024 * 1024, cast=int)  # 10MB each

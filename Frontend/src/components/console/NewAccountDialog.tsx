@@ -106,7 +106,7 @@ export function NewAccountDialog({
   open: boolean;
   onOpenChange: (o: boolean) => void;
   units: UnitOption[];
-  onCreated: (pw: string, username: string) => void;
+  onCreated: (pw: string, username: string, expiresAt?: string | null) => void;
   /** Open straight on "Existing officer" with this officer chosen (from the Officers page). */
   initialOfficer?: ConsoleOfficer | null;
 }) {
@@ -161,7 +161,7 @@ export function NewAccountDialog({
       toast({ title: 'Officer registered', description: `${res.data.username} was added to the officer database.` });
     }
     onOpenChange(false);
-    onCreated(res.data.temporary_password, res.data.username);
+    onCreated(res.data.temporary_password, res.data.username, res.data.temporary_password_expires_at ?? null);
   };
 
   const setP = (k: keyof typeof EMPTY_NEW) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {

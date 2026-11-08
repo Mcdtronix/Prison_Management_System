@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.db import models
+from Core.uploads import UploadValidator
 from django.core.validators import RegexValidator, MinValueValidator
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -50,7 +51,7 @@ class Inmate(models.Model):
     district = models.CharField(max_length=100, blank=True, null=True)
     occupation = models.CharField(max_length=100, blank=True, null=True)
     is_first_time_offender = models.BooleanField(default=True)
-    inmate_image = models.ImageField(upload_to="inmate/photos/", blank=True, null=True)
+    inmate_image = models.ImageField(validators=[UploadValidator('photo')], upload_to="inmate/photos/", blank=True, null=True)
     admission_date = models.DateField(default=timezone.now)
     ADMISSION_STATUS_CHOICES = [
         ("PENDING_HEALTH_ASSESSMENT", "Pending Health Assessment"),
@@ -260,7 +261,7 @@ class CourtSession(models.Model):
     outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, default="SCHEDULED", help_text="Outcome of the session")
     next_court_date = models.DateField(null=True, blank=True, help_text="The new court date set during this session (required if remanded or scheduled)")
     remarks = models.TextField(blank=True, null=True)
-    warrant_document = models.FileField(upload_to="court_warrants/", blank=True, null=True, help_text="Document/Warrant requesting the inmate to attend court")
+    warrant_document = models.FileField(validators=[UploadValidator('document')], upload_to="court_warrants/", blank=True, null=True, help_text="Document/Warrant requesting the inmate to attend court")
 
     class Meta:
         db_table = "court_session"
@@ -287,7 +288,7 @@ class Restitution(models.Model):
         choices=[('pending', 'Pending'), ('partial', 'Partial'), ('paid', 'Paid'), ('waived', 'Waived')],
         default='pending'
     )
-    receipt = models.FileField(upload_to='inmate/restitution_receipts/', blank=True, null=True)
+    receipt = models.FileField(validators=[UploadValidator('document')], upload_to='inmate/restitution_receipts/', blank=True, null=True)
 
     restitution_sentence_years = models.PositiveIntegerField(default=0)
     restitution_sentence_months = models.PositiveIntegerField(default=0)
@@ -313,7 +314,7 @@ class RestitutionPayment(models.Model):
     restitution = models.ForeignKey(Restitution, on_delete=models.CASCADE, related_name="payments")
     amount_paid = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
     receipt_number = models.CharField(max_length=100)
-    receipt_file = models.FileField(upload_to='inmate/restitution_receipts/', blank=True, null=True)
+    receipt_file = models.FileField(validators=[UploadValidator('document')], upload_to='inmate/restitution_receipts/', blank=True, null=True)
     payment_date = models.DateTimeField(auto_now_add=True)
     recorded_by = models.CharField(max_length=100)
 
@@ -532,7 +533,7 @@ class ReleaseWorkflow(models.Model):
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="PROPOSED_BY_RECEPTION")
     proposed_date = models.DateTimeField(auto_now_add=True)
     reception_reason = models.TextField(null=True, blank=True)
-    reception_receipt = models.FileField(upload_to="discharge_receipts/", null=True, blank=True)
+    reception_receipt = models.FileField(validators=[UploadValidator('document')], upload_to="discharge_receipts/", null=True, blank=True)
     health_assessment_date = models.DateTimeField(null=True, blank=True)
     health_remarks = models.TextField(null=True, blank=True)
     approved_date = models.DateTimeField(null=True, blank=True)
@@ -661,7 +662,7 @@ class InmateDisciplinaryHistory(models.Model):
 class InmateDocument(models.Model):
     inmate = models.ForeignKey(Inmate, on_delete=models.CASCADE, related_name="documents")
     document_type = models.CharField(max_length=100)
-    file = models.FileField(upload_to="inmate/documents/")
+    file = models.FileField(validators=[UploadValidator('document')], upload_to="inmate/documents/")
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -703,7 +704,7 @@ class SentenceConfirmation(models.Model):
     outcome = models.CharField(max_length=10, choices=OUTCOME_CHOICES)
     status = models.CharField(max_length=15, choices=STATUS_CHOICES)
     confirmation_date = models.DateField(help_text="Date on / received of the confirmation document")
-    document = models.FileField(upload_to="sentence_confirmations/")
+    document = models.FileField(validators=[UploadValidator('document')], upload_to="sentence_confirmations/")
     remarks = models.TextField(blank=True, null=True)
 
     # Sentence as it stood when the confirmation was received.

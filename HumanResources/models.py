@@ -1,4 +1,5 @@
 from django.db import models
+from Core.uploads import UploadValidator
 from django.core.validators import RegexValidator, MinValueValidator
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -175,7 +176,7 @@ class OfficerQualification(models.Model):
     qualification_type = models.ForeignKey(QualificationType, on_delete=models.PROTECT)
     institution = models.CharField(max_length=200)
     date_awarded = models.DateField()
-    certificate = models.FileField(upload_to="officers/qualifications/")
+    certificate = models.FileField(validators=[UploadValidator('document')], upload_to="officers/qualifications/")
 
     class Meta:
         db_table = "officer_qualification"
@@ -191,7 +192,7 @@ class OfficerCourseHistory(models.Model):
     start_date = models.DateField()
     end_date = models.DateField()
     result = models.CharField(max_length=50)
-    certificate = models.FileField(upload_to="officers/courses/", blank=True, null=True)
+    certificate = models.FileField(validators=[UploadValidator('document')], upload_to="officers/courses/", blank=True, null=True)
 
     class Meta:
         db_table = "officer_course_history"
@@ -224,7 +225,7 @@ class ChargeSheet(models.Model):
         max_length=20,
         choices=[("PENDING", "Pending"), ("CONCLUDED", "Concluded"), ("WITHDRAWN", "Withdrawn")],
     )
-    document = models.FileField(upload_to="officers/charges/")
+    document = models.FileField(validators=[UploadValidator('document')], upload_to="officers/charges/")
 
     class Meta:
         db_table = "charge_sheet"
@@ -258,7 +259,7 @@ class Dependant(models.Model):
     relationship = models.CharField(max_length=50)
     date_of_birth = models.DateField()
     national_id = models.CharField(max_length=20, blank=True, null=True)
-    birth_certificate = models.FileField(upload_to="officers/dependants/")
+    birth_certificate = models.FileField(validators=[UploadValidator('document')], upload_to="officers/dependants/")
 
     class Meta:
         db_table = "dependant"
@@ -274,7 +275,7 @@ class Dependant(models.Model):
 class OfficerDocument(models.Model):
     officer = models.ForeignKey(Officer, on_delete=models.CASCADE, related_name="documents")
     document_type = models.CharField(max_length=100)
-    file = models.FileField(upload_to="officers/documents/")
+    file = models.FileField(validators=[UploadValidator('document')], upload_to="officers/documents/")
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

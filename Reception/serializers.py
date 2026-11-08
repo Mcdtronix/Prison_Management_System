@@ -5,6 +5,7 @@ Professional DRF serializers for the inmate reception domain.
 """
 
 from rest_framework import serializers
+from Core.uploads import UploadValidator
 from django.db import transaction
 from django.utils import timezone
 from datetime import datetime, date
@@ -247,7 +248,7 @@ class SentenceConfirmationCreateSerializer(serializers.Serializer):
     """Confirmation of sentence received from the court (document mandatory)."""
     outcome = serializers.ChoiceField(choices=["ENDORSED", "REDUCED", "INCREASED"])
     confirmation_date = serializers.DateField()
-    document = serializers.FileField()
+    document = serializers.FileField(validators=[UploadValidator('document')])
     court_date = serializers.DateField(required=False, allow_null=True)
     remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
@@ -325,7 +326,7 @@ class ScheduleCourtSessionSerializer(serializers.Serializer):
     offence_id = serializers.IntegerField()
     next_court_date = serializers.DateField()
     remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    warrant_document = serializers.FileField(required=True, allow_null=False, error_messages={
+    warrant_document = serializers.FileField(required=True, allow_null=False, validators=[UploadValidator('document')], error_messages={
         'required': "Uploading a court warrant/request document is mandatory.",
         'null': "Court warrant/request document cannot be null."
     })
@@ -645,7 +646,7 @@ class RestitutionRegistrationSerializer(serializers.Serializer):
     restitutionSentenceDays = serializers.IntegerField(default=0, required=False)
     restitutionStatus = serializers.ChoiceField(choices=['pending', 'partial', 'paid', 'waived'], default='pending')
     earliestDateOfReleaseWithRestitution = FlexibleDateField(required=False, allow_null=True)
-    restitutionReceipt = serializers.FileField(required=False, allow_null=True)
+    restitutionReceipt = serializers.FileField(required=False, allow_null=True, validators=[UploadValidator('document')])
 
 
 class CashHoldingInputSerializer(serializers.Serializer):
@@ -1494,7 +1495,7 @@ class ProposeDischargeSerializer(serializers.Serializer):
         'required': "A reason for discharge must be stated.",
         'blank': "A reason for discharge must be stated."
     })
-    reception_receipt = serializers.FileField(required=False, allow_null=True)
+    reception_receipt = serializers.FileField(required=False, allow_null=True, validators=[UploadValidator('document')])
 
     def validate(self, data):
         from .models import Inmate

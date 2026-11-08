@@ -153,6 +153,7 @@ const HqUserDetail = () => {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending>(null);
   const [temp, setTemp] = useState<string | null>(null);
+  const [tempExpires, setTempExpires] = useState<string | null>(null);
   const [addingRole, setAddingRole] = useState(false);
   const [editing, setEditing] = useState(false);
 
@@ -181,7 +182,7 @@ const HqUserDetail = () => {
       run: async (reason) => {
         const res = await consoleApi.resetPassword(user.id, reason);
         if (fail('Reset failed', res)) return;
-        setPending(null); setTemp(res.data.temporary_password); load();
+        setPending(null); setTemp(res.data.temporary_password); setTempExpires(res.data.temporary_password_expires_at ?? null); load();
       },
     },
     logout: {
@@ -423,7 +424,7 @@ const HqUserDetail = () => {
           description={active.description} confirmLabel={active.confirm} destructive={active.destructive}
           onConfirm={active.run} />
       )}
-      <TempPasswordDialog password={temp} username={user.full_name || user.username} onClose={() => setTemp(null)} />
+      <TempPasswordDialog password={temp} username={user.full_name || user.username} expiresAt={tempExpires} onClose={() => setTemp(null)} />
       <AddRoleDialog open={addingRole} onOpenChange={setAddingRole} user={user} onDone={load} />
       <EditProfileDialog open={editing} onOpenChange={setEditing} user={user} onDone={load} />
     </div>

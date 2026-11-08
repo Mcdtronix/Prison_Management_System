@@ -42,7 +42,7 @@ const HqOfficers = () => {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState(params.get('q') || '');
   const [creatingFor, setCreatingFor] = useState<ConsoleOfficer | null>(null);
-  const [temp, setTemp] = useState<{ pw: string; user: string } | null>(null);
+  const [temp, setTemp] = useState<{ pw: string; user: string; expiresAt?: string | null } | null>(null);
 
   const filters = {
     org_unit: params.get('org_unit') || '',
@@ -151,8 +151,8 @@ const HqOfficers = () => {
 
       <NewAccountDialog open={creatingFor !== null} onOpenChange={(o) => { if (!o) setCreatingFor(null); }}
         units={units} initialOfficer={creatingFor}
-        onCreated={(pw, user) => { setTemp({ pw, user }); load(); }} />
-      <TempPasswordDialog password={temp?.pw || null} username={temp?.user} onClose={() => setTemp(null)} />
+        onCreated={(pw, user, expiresAt) => { setTemp({ pw, user, expiresAt }); load(); }} />
+      <TempPasswordDialog password={temp?.pw || null} username={temp?.user} expiresAt={temp?.expiresAt} onClose={() => setTemp(null)} />
     </div>
   );
 };

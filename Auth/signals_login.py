@@ -22,6 +22,8 @@ def record_failed_sign_in(sender, credentials, request=None, **kwargs):
     known = User.objects.filter(username__iexact=name).first() if name else None
     if getattr(request, 'login_lock', None) is not None:
         reason = lockout.LOCKED_REASON
+    elif getattr(request, 'temp_password_expired', False):
+        reason = 'temp_password_expired'
     elif known is not None and not known.is_active:
         reason = 'inactive'
     else:

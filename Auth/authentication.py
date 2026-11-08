@@ -25,6 +25,7 @@ class SessionJWTAuthentication(JWTAuthentication):
     """Standard JWT checks, plus:
 
     * the token's session (`sid`) must still be open, so force-logout works at once;
+    * a session opened with a one-time password ends when that password expires;
     * an account flagged `must_change_password` can only reach the change-password flow.
     """
 
@@ -40,8 +41,19 @@ class SessionJWTAuthentication(JWTAuthentication):
                 raise AuthenticationFailed('Your session has ended. Please sign in again.', code='session_revoked')
             touch(sid)
 
-        if not request.path.startswith(PASSWORD_CHANGE_ALLOWED):
-            if UserSecurity.objects.filter(user=user, must_change_password=True).exists():
+        # One lookup answers both checks below; most accounts have nothing pending.
+        pending = UserSecurity.objects.filter(user=user, must_change_password=True).first()
+        if pending is not None:
+            # Signed in with a one-time password that has since expired, without
+            # choosing a new one: the session ends (Auth/one_time.py).
+            from django.utils import timezone
+            from . import one_time
+            deadline = one_time.expires_at(pending)
+            if deadline is not None and timezone.now() >= deadline:
+                raise AuthenticationFailed({'error_code': one_time.EXPIRED_CODE,
+                                            'message': one_time.expired_message()})
+
+            if not request.path.startswith(PASSWORD_CHANGE_ALLOWED):
                 raise PermissionDenied({
                     'error_code': 'PASSWORD_CHANGE_REQUIRED',
                     'message': 'You must set a new password before continuing.',

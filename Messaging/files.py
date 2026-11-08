@@ -39,6 +39,12 @@ def check_attachments(files):
             raise ValidationError({'attachments': f'{f.name}: file type not allowed. Use {", ".join(sorted(allowed))}.'})
         if f.size > settings.MESSAGING_MAX_ATTACHMENT_BYTES:
             raise ValidationError({'attachments': f'{f.name} is larger than {limit_mb} MB.'})
+        if not f.size:
+            raise ValidationError({'attachments': f'{f.name} is empty.'})
+        # The bytes must really be that type: a renamed program is refused (Core/uploads.py).
+        from Core.uploads import content_matches
+        if not content_matches(f, ext):
+            raise ValidationError({'attachments': f'{f.name} is not a genuine .{ext} file.'})
     return files
 
 

@@ -59,6 +59,11 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             if lock is not None:
                 record_login(request, attempted, user=known, success=False, reason=lockout.LOCKED_REASON)
                 return lockout.locked_response(lock)
+            if getattr(request, 'temp_password_expired', False):  # set by Auth.backends
+                from . import one_time
+                record_login(request, attempted, user=known, success=False, reason='temp_password_expired')
+                return Response({'error_code': one_time.EXPIRED_CODE, 'message': one_time.expired_message()},
+                                status=status.HTTP_403_FORBIDDEN)
             reason = 'inactive' if known is not None and not known.is_active else 'bad_credentials'
             record_login(request, attempted, user=known, success=False, reason=reason)
             raise

@@ -103,7 +103,8 @@ PLAIN_STATIC = {
 }
 
 
-@override_settings(STORAGES=PLAIN_STATIC)
+# The admin is off by default when DEBUG=False (CI); these tests switch it on.
+@override_settings(STORAGES=PLAIN_STATIC, ROOT_URLCONF='Core.urls_admin_on')
 class AdminPageTests(OrgBase):
     def setUp(self):
         super().setUp()

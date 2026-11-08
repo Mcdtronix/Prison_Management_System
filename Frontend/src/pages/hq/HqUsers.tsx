@@ -40,7 +40,7 @@ const HqUsers = () => {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState(params.get('q') || '');
   const [creating, setCreating] = useState(false);
-  const [temp, setTemp] = useState<{ pw: string; user: string } | null>(null);
+  const [temp, setTemp] = useState<{ pw: string; user: string; expiresAt?: string | null } | null>(null);
 
   const filters = {
     org_unit: params.get('org_unit') || '',
@@ -165,8 +165,8 @@ const HqUsers = () => {
       </SectionCard>
 
       <NewAccountDialog open={creating} onOpenChange={setCreating} units={units}
-        onCreated={(pw, user) => { setTemp({ pw, user }); load(); }} />
-      <TempPasswordDialog password={temp?.pw || null} username={temp?.user} onClose={() => setTemp(null)} />
+        onCreated={(pw, user, expiresAt) => { setTemp({ pw, user, expiresAt }); load(); }} />
+      <TempPasswordDialog password={temp?.pw || null} username={temp?.user} expiresAt={temp?.expiresAt} onClose={() => setTemp(null)} />
     </div>
   );
 };

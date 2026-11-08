@@ -233,9 +233,12 @@ export function ReasonDialog({
 
 /** Shows a one-time password exactly once. */
 export function TempPasswordDialog({
-  password, username, onClose,
-}: { password: string | null; username?: string; onClose: () => void }) {
+  password, username, expiresAt, onClose,
+}: { password: string | null; username?: string; expiresAt?: string | null; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  // The server decides how long a one-time password works (TEMP_PASSWORD_TTL_MINUTES).
+  const deadline = expiresAt ? new Date(expiresAt) : null;
+  const minutesLeft = deadline ? Math.max(0, Math.round((deadline.getTime() - Date.now()) / 60000)) : null;
   return (
     <Dialog open={!!password} onOpenChange={(o) => { if (!o) { setCopied(false); onClose(); } }}>
       <DialogContent>
@@ -247,6 +250,12 @@ export function TempPasswordDialog({
             Give this to {username || 'the officer'} in person. It is shown only once and they must replace it at
             their next sign-in. It is not stored anywhere readable.
           </DialogDescription>
+          {deadline && (
+            <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+              It works for {minutesLeft} minutes, until{' '}
+              {deadline.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. After that, issue a new one.
+            </p>
+          )}
         </DialogHeader>
         <div className="flex items-center justify-between rounded-md border-2 border-dashed border-[#d7a928] bg-[#d7a928]/10 px-4 py-3">
           <code className="select-all font-mono text-xl tracking-wider text-[#063f20] dark:text-[#d7a928]">{password}</code>

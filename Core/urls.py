@@ -49,20 +49,9 @@ def health_check(request):
             "error": str(e),
         }, status=503)
 
-schema_view = get_schema_view(
-    openapi.Info(
-        title="Prison Management System API",
-        default_version='v1',
-        description="API documentation for Prison Management System",
-    ),
-    public=True,
-    permission_classes=[permissions.AllowAny],
-)
-
 urlpatterns = [
     path('api/ping/', health_check, name='health-check'),
-    path('admin/', admin.site.urls),
-    
+
     # API endpoints
     path('api/auth/', include('Auth.urls')),
     path('api/reception/', include('Reception.urls')),
@@ -73,12 +62,36 @@ urlpatterns = [
     path('api/cases/', include('Cases.urls')),
     path('api/messaging/', include('Messaging.urls')),
     path('api/reports/', include('Reports.urls')),
-
-    # Swagger / OpenAPI docs
-    re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),
-    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
-    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 ]
+
+# Django admin: a developer tool beside the application's own console. Off in
+# production unless ADMIN_ENABLED; when on, ADMIN_ALLOWED_IPS can limit who
+# reaches it (Core/middleware/admin_access.py). When off, /admin/ is a plain 404.
+if settings.ADMIN_ENABLED:
+    urlpatterns.append(path('admin/', admin.site.urls))
+
+# Swagger / ReDoc: a full map of every endpoint and field. Open in development;
+# in production only when API_DOCS_ENABLED, and then only to signed-in staff
+# (who sign in through the Django admin, hence session authentication).
+if settings.API_DOCS_ENABLED:
+    from rest_framework.authentication import SessionAuthentication
+    from Auth.authentication import SessionJWTAuthentication
+
+    schema_view = get_schema_view(
+        openapi.Info(
+            title="Prison Management System API",
+            default_version='v1',
+            description="API documentation for Prison Management System",
+        ),
+        public=settings.DEBUG,
+        permission_classes=[permissions.AllowAny if settings.DEBUG else permissions.IsAdminUser],
+        authentication_classes=[SessionAuthentication, SessionJWTAuthentication],
+    )
+    urlpatterns += [
+        re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),
+        path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+        path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+    ]
 
 # Serve media files in development
 if settings.DEBUG:

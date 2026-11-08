@@ -789,7 +789,7 @@ const BasicInmateForm = () => {
                   <FormControl>
                     <Input
                       type="file"
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/webp"
                       className="text-xs"
                       onChange={(event) => {
                         const file = event.target.files?.[0] || null;

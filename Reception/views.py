@@ -671,6 +671,9 @@ class RestitutionViewSet(InmateRecordViewSet):
         amount_paid = request.data.get('amount')
         receipt_number = request.data.get('receipt_number')
         receipt_file = request.FILES.get('receipt')
+        if receipt_file is not None:
+            from Core.uploads import check_upload
+            check_upload(receipt_file, 'document', field='receipt')
 
         if not amount_paid or not receipt_number:
             return Response({"error": "Amount and Receipt Number are required."}, status=status.HTTP_400_BAD_REQUEST)

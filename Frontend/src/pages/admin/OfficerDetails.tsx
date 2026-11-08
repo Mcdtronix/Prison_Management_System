@@ -367,7 +367,7 @@ function QualificationsTab({ records, officerId, types, reload }: { records: any
               </div>
               <div className="space-y-2"><Label>Institution</Label><Input onChange={(e) => setFormData({...formData, institution: e.target.value})} /></div>
               <div className="space-y-2"><Label>Date Awarded</Label><Input type="date" onChange={(e) => setFormData({...formData, date_awarded: e.target.value})} /></div>
-              <div className="space-y-2"><Label>Certificate (File)</Label><Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} /></div>
+              <div className="space-y-2"><Label>Certificate (File)</Label><Input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] || null)} /></div>
             </div>
             <DialogFooter><Button onClick={handleSubmit}>Save</Button></DialogFooter>
           </DialogContent>
@@ -431,7 +431,7 @@ function CoursesTab({ records, officerId, availableCourses, reload }: { records:
                 <div className="space-y-2"><Label>End Date</Label><Input type="date" onChange={(e) => setFormData({...formData, end_date: e.target.value})} /></div>
               </div>
               <div className="space-y-2"><Label>Result</Label><Input onChange={(e) => setFormData({...formData, result: e.target.value})} /></div>
-              <div className="space-y-2"><Label>Certificate (File)</Label><Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} /></div>
+              <div className="space-y-2"><Label>Certificate (File)</Label><Input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] || null)} /></div>
             </div>
             <DialogFooter><Button onClick={handleSubmit}>Save</Button></DialogFooter>
           </DialogContent>
@@ -487,7 +487,7 @@ function DependantsTab({ records, officerId, reload }: { records: any[]; officer
               <div className="space-y-2"><Label>Relationship</Label><Input onChange={(e) => setFormData({...formData, relationship: e.target.value})} /></div>
               <div className="space-y-2"><Label>National ID (Optional)</Label><Input onChange={(e) => setFormData({...formData, national_id: e.target.value})} /></div>
               <div className="space-y-2"><Label>Date of Birth</Label><Input type="date" onChange={(e) => setFormData({...formData, date_of_birth: e.target.value})} /></div>
-              <div className="space-y-2"><Label>Birth Certificate (File)</Label><Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} /></div>
+              <div className="space-y-2"><Label>Birth Certificate (File)</Label><Input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] || null)} /></div>
             </div>
             <DialogFooter><Button onClick={handleSubmit}>Save</Button></DialogFooter>
           </DialogContent>
@@ -559,7 +559,7 @@ function DisciplinaryTab({ records, officerId, offences, reload }: { records: an
                 </Select>
               </div>
               <div className="space-y-2"><Label>Description</Label><Textarea onChange={(e) => setFormData({...formData, description: e.target.value})} /></div>
-              <div className="space-y-2"><Label>Document</Label><Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} /></div>
+              <div className="space-y-2"><Label>Document</Label><Input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] || null)} /></div>
             </div>
             <DialogFooter><Button onClick={handleSubmit}>Save</Button></DialogFooter>
           </DialogContent>
@@ -613,7 +613,7 @@ function DocumentsTab({ records, officerId, reload }: { records: any[]; officerI
             <DialogHeader><DialogTitle>Upload Document</DialogTitle></DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="space-y-2"><Label>Document Type</Label><Input placeholder="e.g. Appointment Letter" onChange={(e) => setFormData({ document_type: e.target.value })} /></div>
-              <div className="space-y-2"><Label>File</Label><Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} /></div>
+              <div className="space-y-2"><Label>File</Label><Input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] || null)} /></div>
             </div>
             <DialogFooter><Button onClick={handleSubmit}>Upload</Button></DialogFooter>
           </DialogContent>

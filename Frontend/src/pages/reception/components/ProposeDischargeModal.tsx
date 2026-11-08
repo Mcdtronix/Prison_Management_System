@@ -158,6 +158,7 @@ const ProposeDischargeModal: React.FC<ProposeDischargeModalProps> = ({
               <Input
                 id="receipt"
                 type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
                 onChange={handleFileChange}
               />
             </div>
