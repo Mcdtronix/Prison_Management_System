@@ -111,36 +111,50 @@ class OfficerViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
         from Auth.scoping import officers_in_scope, people_scope
         return officers_in_scope(super().get_queryset(), people_scope(self.request.user))
 
+    def _posting_for_creator(self):
+        """(org unit, old station) where a new officer is posted: the creator's own station.
+
+        An officer's station comes only from their open posting, so an officer
+        saved without one belongs to no station and shows in nobody's list.
+        """
+        from Auth.scoping import units_for_legacy_station
+        from Auth.utils import get_primary_assignment, legacy_station_for_unit
+
+        user = self.request.user
+        assignment = get_primary_assignment(user)
+        if assignment and assignment.org_unit and assignment.org_unit.unit_type == "STATION":
+            unit = assignment.org_unit
+            # Stations made in the console may have no old row yet: create it.
+            return unit, legacy_station_for_unit(unit, create=True)
+
+        profile = getattr(user, 'userprofile', None)  # older accounts: their profile's station
+        if profile is not None and profile.station_id:
+            unit_ids = units_for_legacy_station(profile.station)
+            from Auth.models import OrgUnit
+            unit = OrgUnit.objects.filter(pk__in=unit_ids).first() if unit_ids else None
+            return unit, profile.station
+        return None, None
+
     def perform_create(self, serializer):
-        officer = serializer.save()
-        try:
-            # Try to get the admin's station to post the officer there initially
-            station = None
-            posting_unit = None
+        from django.db import transaction
+        from rest_framework.exceptions import ValidationError
+        from .models import OfficerStationHistory
 
-            # 1. Try to get station from primary assignment
-            from Auth.utils import get_primary_assignment, legacy_station_for_unit
-            assignment = get_primary_assignment(self.request.user)
-            if assignment and assignment.org_unit and assignment.org_unit.unit_type == "STATION":
-                posting_unit = assignment.org_unit
-                station = legacy_station_for_unit(posting_unit)
-
-            # 2. Fallback to userprofile
-            if not station and hasattr(self.request.user, 'userprofile') and self.request.user.userprofile.station:
-                station = self.request.user.userprofile.station
-            
-            if station:
-                from .models import OfficerStationHistory
-                OfficerStationHistory.objects.create(
-                    officer=officer,
-                    station=station,
-                    posting_org_unit=posting_unit,
-                    date_posted=officer.date_of_attestation,
-                    posted_by=self.request.user.username
-                )
-        except Exception as e:
-            import logging
-            logging.error(f"Failed to create station history for new officer: {e}")
+        posting_unit, station = self._posting_for_creator()
+        if station is None:
+            # Refuse rather than save an officer no station can see.
+            raise ValidationError({'detail': 'New officers are posted to the station of the account adding them, '
+                                             'and this account is not at a station. Add the officer from the '
+                                             'console, choosing their station.'})
+        with transaction.atomic():  # officer and posting are saved together, or not at all
+            officer = serializer.save()
+            OfficerStationHistory.objects.create(
+                officer=officer,
+                station=station,
+                posting_org_unit=posting_unit,
+                date_posted=officer.date_of_attestation,
+                posted_by=self.request.user.username,
+            )
 
 
 class MaritalStatusViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):

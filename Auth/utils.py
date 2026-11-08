@@ -211,21 +211,34 @@ def get_current_station(user):
         return None
 
 
-def legacy_station_for_unit(unit):
+def legacy_station_for_unit(unit, create=False):
     """The old auth_station row matching a STATION org unit, or None.
 
     The two tables have no link column yet, so match on code (any case),
     short code, then name. Remove once data moves off auth_station.
+
+    With `create=True`, a STATION unit that has no old row gets one, so records
+    that still require an old station (officer postings) can be saved. Stations
+    created through the console have no old row until then.
     """
     if unit is None:
         return None
+    from django.db import IntegrityError, transaction
     from django.db.models import Q
     from .models import Station
     by_code = Q(code__iexact=unit.code)
     if unit.code_short:
         by_code |= Q(code__iexact=unit.code_short)
-    return (Station.objects.filter(by_code).first()
-            or Station.objects.filter(name__iexact=unit.name).first())
+    found = (Station.objects.filter(by_code).first()
+             or Station.objects.filter(name__iexact=unit.name).first())
+    if found is not None or not create or unit.unit_type != 'STATION':
+        return found
+    try:
+        with transaction.atomic():
+            return Station.objects.create(code=unit.code[:20], name=unit.name[:150], location=unit.name[:200])
+    except IntegrityError:  # created at the same moment by another request
+        return (Station.objects.filter(by_code).first()
+                or Station.objects.filter(name__iexact=unit.name).first())
 
 
 def get_officer_current_station(officer):
