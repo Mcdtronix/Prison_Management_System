@@ -67,9 +67,8 @@ class DischargeTests(TestCase):
 
     # -- inmate list ---------------------------------------------------------
     def test_discharged_inmates_leave_the_inmate_list(self):
-        # Owner-less legacy rows, so the list's middleware scope includes them in tests.
-        staying = self.inmate("0102/26")
-        leaving = self.inmate("0103/26")
+        staying = self.inmate("0102/26", self.chivhu)
+        leaving = self.inmate("0103/26", self.chivhu)
         discharge_inmate(leaving, self.admin)
         numbers = [r["prison_number"] for r in self.client_for(self.reception).get("/api/reception/inmate-list/").json()]
         self.assertIn(staying.prison_number, numbers)

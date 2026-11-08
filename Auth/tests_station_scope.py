@@ -125,4 +125,7 @@ class StationScopeTests(TestCase):
 
     def test_unassigned_user_sees_nobody(self):
         stranger = User.objects.create_user(username='stranger', password='x')
-        self.assertEqual(self.officer_numbers(stranger), set())
+        # Refused outright: officer records need an HR or account-administration capability.
+        client = APIClient()
+        client.force_authenticate(stranger)
+        self.assertEqual(client.get(OFFICERS_URL).status_code, 403)

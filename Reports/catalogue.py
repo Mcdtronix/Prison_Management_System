@@ -69,19 +69,13 @@ class Source:
 # --------------------------------------------------------------------------- scoping
 
 def _inmate_scope(prefix=""):
-    """Inmates owned by a unit in scope; legacy rows with no owner fall back to station history."""
+    """Inmates owned by a unit in scope; legacy rows with no owner fall back to station history.
+
+    The rule lives in Auth.scoping so reports and API screens always agree.
+    """
     def apply(qs, scope):
-        if scope.everywhere:
-            return qs
-        InmateStationHistory = apps.get_model("Reception", "InmateStationHistory")
-        legacy = Exists(InmateStationHistory.objects.filter(
-            inmate_id=OuterRef(f"{prefix}pk" if not prefix else f"{prefix}id"),
-            station_id__in=scope.station_ids,
-        ))
-        return qs.filter(
-            Q(**{f"{prefix}owner_org_unit_id__in": scope.unit_ids})
-            | (Q(**{f"{prefix}owner_org_unit__isnull": True}) & legacy)
-        )
+        from Auth.scoping import inmates_in_scope
+        return inmates_in_scope(qs, scope, prefix)
     return apply
 
 

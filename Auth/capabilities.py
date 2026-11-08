@@ -86,6 +86,8 @@ DEFAULT_ROLE_CAPABILITIES = {
         'reception.access', 'reception.view', 'reception.approve',
         'health.access', 'stores.access', 'farms.access', 'security.access', 'rehabilitation.access',
         'users.view',
+        # Keeps officer service records (postings, qualifications, dependants…).
+        'hr.create', 'hr.change',
     ],
 
     'RECEPTION_OFFICER': ['reception.access', 'reception.create', 'reception.view', 'cases.create', 'cases.view'],

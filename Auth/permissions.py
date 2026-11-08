@@ -66,12 +66,65 @@ IsAdminOrHealth = IsHealthOfficer
 IsReceptionOrHealthOrAdmin = Capability.of('reception.access', 'health.access')
 
 
+class ModuleAccess(BasePermission):
+    """Reading needs one of `read`; changing needs one of `write`.
+
+    Use `ModuleAccess.of(read=(...), write=(...))` in `permission_classes`.
+    """
+    read = ()
+    write = ()
+
+    @classmethod
+    def of(cls, *, read, write):
+        name = f"ModuleAccess_{'_'.join(c.replace('.', '_') for c in write)}"
+        return type(name, (cls,), {'read': tuple(read), 'write': tuple(write)})
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        needed = self.read if request.method in SAFE_METHODS else self.write
+        return any(can(user, c) for c in needed)
+
+
+# Inmate records hanging off an inmate (offences, next of kin, court sessions…).
+# Health officers read them for the shared inmate page; only Reception changes them.
+ReceptionRecords = ModuleAccess.of(
+    read=('reception.access', 'reception.view', 'health.access'),
+    write=('reception.access',),
+)
+# Officer service records (postings, qualifications, dependants, documents…).
+# Account administrators read them on the officer pages.
+HRRecords = ModuleAccess.of(
+    read=('hr.view', 'hr.create', 'hr.change', 'hr.delete', 'users.view', 'users.manage'),
+    write=('hr.create', 'hr.change', 'hr.delete', 'users.manage'),
+)
+StoresRecords = ModuleAccess.of(read=('stores.access', 'stores.view'), write=('stores.access',))
+FarmsRecords = ModuleAccess.of(read=('farms.access', 'farms.view'), write=('farms.access',))
+
+
+class ReadOnlyOr(BasePermission):
+    """Reference lists (ranks, item categories…): anyone signed in reads; `write` changes."""
+    write = ()
+
+    @classmethod
+    def of(cls, *write):
+        return type(f"ReadOnlyOr_{'_'.join(c.replace('.', '_') for c in write)}", (cls,), {'write': write})
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        return request.method in SAFE_METHODS or any(can(user, c) for c in self.write)
+
+
 class IsStationDataOwner(BasePermission):
     """Object-level check: the record must belong to the user's org unit or one below it.
 
-    Compares org units with org units (`owner_org_unit`) and legacy stations
-    with legacy stations (`station`). Records with neither are allowed for
-    now; Phase 1b gives every record an owner.
+    Views built on `Core.mixins.StationScopedMixin` answer this with their own
+    station rule. Otherwise compares org units with org units
+    (`owner_org_unit`) and legacy stations with legacy stations (`station`).
+    A record whose owner cannot be worked out is refused.
     """
 
     def has_object_permission(self, request, view, obj):
@@ -80,6 +133,10 @@ class IsStationDataOwner(BasePermission):
             return False
         if user.is_superuser:
             return True
+
+        in_scope = getattr(view, 'record_in_scope', None)
+        if in_scope is not None:
+            return True if in_scope(obj) else self._deny(request)
 
         owner = getattr(obj, 'owner_org_unit', None)
         if owner is None and self._station_is_org_unit(obj):
@@ -99,7 +156,7 @@ class IsStationDataOwner(BasePermission):
                 return True
             return self._deny(request)
 
-        return True
+        return self._deny(request)
 
     @staticmethod
     def _station_is_org_unit(obj):

@@ -59,12 +59,29 @@ from .serializers import (
 )
 
 
-from Auth.permissions import IsReceptionOrHealthOrAdmin, IsAdminOfficer, IsStationDataOwner
+from Auth.permissions import IsReceptionOrHealthOrAdmin, IsAdminOfficer, IsStationDataOwner, ReceptionRecords
+from Core.mixins import StationScopedMixin, by_inmate
 
-class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+
+def scoped_inmates(request, queryset, prefix=''):
+    """`queryset` narrowed to rows whose inmate (via `prefix`) is held where the user works."""
+    from Auth.scoping import inmates_in_scope, people_scope
+    if not hasattr(request, '_people_scope'):
+        request._people_scope = people_scope(request.user)
+    return inmates_in_scope(queryset, request._people_scope, prefix)
+
+
+class InmateRecordViewSet(StationScopedMixin, OrgUnitContextMixin, viewsets.ModelViewSet):
+    """Records that hang off an inmate: station-scoped through the inmate, Reception-only to change."""
+    permission_classes = [IsAuthenticated, ReceptionRecords, IsStationDataOwner]
+    scope_rule = by_inmate('inmate__')
+
+
+class InmateViewSet(StationScopedMixin, OrgUnitContextMixin, viewsets.ModelViewSet):
     queryset = Inmate.objects.all()
     serializer_class = InmateSerializer
     permission_classes = [IsAuthenticated, IsReceptionOrHealthOrAdmin, IsStationDataOwner]
+    scope_rule = by_inmate()
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -83,13 +100,7 @@ class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
             )
         else:
             qs = Inmate.objects.all()
-            
-        visible_org_units = getattr(self.request, 'visible_org_units', None)
-        if visible_org_units is not None:
-            from django.db.models import Q
-            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
-            
-        return qs
+        return type(self).scope_rule(qs, self.get_scope())
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def validate_unique(self, request):
@@ -210,30 +221,26 @@ class InmateViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
         return Response({"status": "Discharge approved successfully."})
 
 
-class NextOfKinViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class NextOfKinViewSet(InmateRecordViewSet):
     queryset = NextOfKin.objects.all()
     serializer_class = NextOfKinSerializer
-    permission_classes = [IsAuthenticated, IsStationDataOwner]
 
 
-class InmateStationHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class InmateStationHistoryViewSet(InmateRecordViewSet):
     queryset = InmateStationHistory.objects.select_related("station", "inmate")
     serializer_class = InmateStationHistorySerializer
-    permission_classes = [IsAuthenticated, IsStationDataOwner]
 
 
-class InmateClassificationHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class InmateClassificationHistoryViewSet(InmateRecordViewSet):
     queryset = InmateClassificationHistory.objects.select_related("inmate")
     serializer_class = InmateClassificationHistorySerializer
-    permission_classes = [IsAuthenticated, IsStationDataOwner]
 
 
-class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class OffenceViewSet(InmateRecordViewSet):
     queryset = Offence.objects.select_related("inmate")
     serializer_class = OffenceSerializer
-    permission_classes = [IsAuthenticated, IsStationDataOwner]
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    @action(detail=True, methods=['post'])
     def confirm_sentence(self, request, pk=None):
         """
         Record a confirmation of sentence (document required). Endorsed closes at
@@ -257,7 +264,7 @@ class OffenceViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
         )
         return Response(confirmation_payload(confirmation, request), status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    @action(detail=True, methods=['post'])
     def record_court_session(self, request, pk=None):
         offence = self.get_object()
         serializer = CourtSessionCreateSerializer(data=request.data)
@@ -639,22 +646,21 @@ class UnlockHistoryViewSet(viewsets.ReadOnlyModelViewSet):
         return UnlockRecord.objects.filter(station=org_unit).prefetch_related('cell_counts')
 
 
-class ConvictedViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class ConvictedViewSet(InmateRecordViewSet):
     queryset = Convicted.objects.select_related("offence")
     serializer_class = ConvictedSerializer
-    permission_classes = [IsAuthenticated]
+    scope_rule = by_inmate('prison_number__')
 
 
-class UnconvictedViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class UnconvictedViewSet(InmateRecordViewSet):
     queryset = Unconvicted.objects.select_related("inmate", "offence")
     serializer_class = UnconvictedSerializer
-    permission_classes = [IsAuthenticated]
+    scope_rule = by_inmate('prison_number__')
 
 
-class RestitutionViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class RestitutionViewSet(InmateRecordViewSet):
     queryset = Restitution.objects.select_related("inmate", "offence")
     serializer_class = RestitutionSerializer
-    permission_classes = [IsAuthenticated]
 
     @action(detail=True, methods=['post'])
     def record_payment(self, request, pk=None):
@@ -724,16 +730,16 @@ class RestitutionViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
         return Response({"message": f"Payment recorded successfully. Restitution is now {status_update}."}, status=status.HTTP_200_OK)
 
 
-class CourtSessionViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class CourtSessionViewSet(InmateRecordViewSet):
     queryset = CourtSession.objects.select_related("offence")
     serializer_class = CourtSessionSerializer
-    permission_classes = [IsAuthenticated]
+    scope_rule = by_inmate('offence__inmate__')
 
 
-class RestitutionExtensionViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class RestitutionExtensionViewSet(InmateRecordViewSet):
     queryset = RestitutionExtension.objects.select_related("restitution")
     serializer_class = RestitutionExtensionSerializer
-    permission_classes = [IsAuthenticated]
+    scope_rule = by_inmate('restitution__inmate__')
 
 
 # class ReleaseHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
@@ -742,22 +748,19 @@ class RestitutionExtensionViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
 #     permission_classes = [IsAuthenticated]
 
 
-class InmatePropertyHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class InmatePropertyHistoryViewSet(InmateRecordViewSet):
     queryset = InmatePropertyHistory.objects.select_related("inmate")
     serializer_class = InmatePropertyHistorySerializer
-    permission_classes = [IsAuthenticated]
 
 
-class EscapeHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class EscapeHistoryViewSet(InmateRecordViewSet):
     queryset = EscapeHistory.objects.select_related("inmate")
     serializer_class = EscapeHistorySerializer
-    permission_classes = [IsAuthenticated]
 
 
-class InmateDisciplinaryHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class InmateDisciplinaryHistoryViewSet(InmateRecordViewSet):
     queryset = InmateDisciplinaryHistory.objects.select_related("inmate")
     serializer_class = InmateDisciplinaryHistorySerializer
-    permission_classes = [IsAuthenticated]
 
 
 # class InmateMedicalHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
@@ -766,16 +769,17 @@ class InmateDisciplinaryHistoryViewSet(OrgUnitContextMixin, viewsets.ModelViewSe
 #     permission_classes = [IsAuthenticated]
 
 
-class InmateDocumentViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class InmateDocumentViewSet(InmateRecordViewSet):
     queryset = InmateDocument.objects.select_related("inmate")
     serializer_class = InmateDocumentSerializer
-    permission_classes = [IsAuthenticated]
 
 
-class InmateAuditTrailViewSet(OrgUnitContextMixin, viewsets.ModelViewSet):
+class InmateAuditTrailViewSet(StationScopedMixin, viewsets.ReadOnlyModelViewSet):
+    """Read-only: audit entries are written by the system, never through the API."""
     queryset = InmateAuditTrail.objects.select_related("inmate")
     serializer_class = InmateAuditTrailSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReceptionRecords]
+    scope_rule = by_inmate('inmate__')
 
 
 # ==================================================
@@ -787,7 +791,7 @@ class InmateRegistrationView(APIView):
     Comprehensive inmate registration endpoint.
     Handles complete inmate registration with all related data in a single atomic transaction.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReceptionRecords]
 
     def post(self, request):
         """Register a new inmate with all related information."""
@@ -858,11 +862,10 @@ class PendingAdminApprovalView(APIView):
     """
     View for inmates pending admin approval (have offences registered).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReceptionRecords]
 
     def get(self, request):
         """Get inmates pending admin approval."""
-        visible_org_units = getattr(request, 'visible_org_units', None)
         
         # Get inmates who have offences registered and are ready for admin approval
         inmates_with_offences = Inmate.objects.exclude(
@@ -871,11 +874,7 @@ class PendingAdminApprovalView(APIView):
             admission_status="PENDING_ADMIN_APPROVAL"
         )
         
-        if visible_org_units is not None:
-            from django.db.models import Q
-            inmates_with_offences = inmates_with_offences.filter(
-                Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True)
-            )
+        inmates_with_offences = scoped_inmates(request, inmates_with_offences)
             
         inmates_with_offences = inmates_with_offences.order_by('-admission_date').distinct()
 
@@ -897,20 +896,15 @@ class PendingOffenceRegistrationView(APIView):
     """
     View for inmates who have completed basic registration but haven't registered offences yet.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReceptionRecords]
 
     def get(self, request):
         """Get inmates pending offence registration."""
-        visible_org_units = getattr(request, 'visible_org_units', None)
         
         # Get inmates who have no offences registered
         inmates_without_offences = Inmate.objects.filter(offences__isnull=True)
         
-        if visible_org_units is not None:
-            from django.db.models import Q
-            inmates_without_offences = inmates_without_offences.filter(
-                Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True)
-            )
+        inmates_without_offences = scoped_inmates(request, inmates_without_offences)
             
         inmates_without_offences = inmates_without_offences.order_by('-admission_date')
 
@@ -936,7 +930,7 @@ class OffenceRegistrationView(APIView):
     Offence registration endpoint for existing inmates.
     Handles offence details, conviction status, and related records.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReceptionRecords]
 
     def post(self, request):
         """Register offences for an existing inmate."""
@@ -1006,7 +1000,7 @@ class InmateListView(APIView):
     """
     Provides a list of inmates with search and filtering capabilities.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReceptionRecords]
 
     def get(self, request):
         """
@@ -1014,16 +1008,12 @@ class InmateListView(APIView):
         """
         from django.db.models import Q
 
-        visible_org_units = getattr(request, 'visible_org_units', None)
         
         queryset = Inmate.objects.prefetch_related(
             'offences', 'classification_history'
         )
         
-        if visible_org_units is not None:
-            queryset = queryset.filter(
-                Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True)
-            )
+        queryset = scoped_inmates(request, queryset)
 
         # Discharged inmates are no longer in custody: they live in the Discharge Diary.
         queryset = queryset.exclude(current_status='DISCHARGED')
@@ -1071,7 +1061,7 @@ class UpcomingCourtSessionsView(OrgUnitContextMixin, APIView):
     """
     Returns a list of upcoming court sessions.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReceptionRecords]
 
     def get(self, request):
         # Only scheduled and remanded sessions typically have upcoming court dates
@@ -1085,10 +1075,7 @@ class UpcomingCourtSessionsView(OrgUnitContextMixin, APIView):
             next_court_date__isnull=False
         ).exclude(offence__Offence_status="DISCHARGED").exclude(Exists(superseded)).select_related("offence__inmate").prefetch_related("offence__restitutions").order_by("next_court_date")
         
-        # Apply org unit filtering if needed
-        org_unit = getattr(request, 'org_unit', None)
-        if org_unit:
-            queryset = queryset.filter(offence__inmate__owner_org_unit=org_unit)
+        queryset = scoped_inmates(request, queryset, 'offence__inmate__')
 
         serializer = UpcomingCourtSessionSerializer(queryset, many=True)
         return Response(serializer.data)
@@ -1098,7 +1085,7 @@ class ScheduleCourtSessionView(OrgUnitContextMixin, APIView):
     """
     Endpoint for scheduling a new court session and uploading a warrant.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReceptionRecords]
 
     def post(self, request):
         serializer = ScheduleCourtSessionSerializer(data=request.data)
@@ -1109,7 +1096,7 @@ class ScheduleCourtSessionView(OrgUnitContextMixin, APIView):
             warrant_document = serializer.validated_data.get('warrant_document')
 
             try:
-                offence = Offence.objects.get(id=offence_id)
+                offence = scoped_inmates(request, Offence.objects.all(), 'inmate__').get(id=offence_id)
             except Offence.DoesNotExist:
                 return Response({"error": "Offence not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1137,7 +1124,7 @@ class ScheduleCourtSessionView(OrgUnitContextMixin, APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class ReceptionAnalyticsView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReceptionRecords]
 
     def get(self, request):
         from django.db.models import Count, Q
@@ -1151,10 +1138,8 @@ class ReceptionAnalyticsView(APIView):
         seven_days_ahead = today + datetime.timedelta(days=7)
 
         # Base Inmate Queryset
-        visible_org_units = getattr(request, 'visible_org_units', None)
         qs = Inmate.objects.all()
-        if visible_org_units is not None:
-            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
+        qs = scoped_inmates(request, qs)
 
         # KPIs
         total_in_custody = qs.filter(current_status="IN_CUSTODY").count()
@@ -1163,11 +1148,7 @@ class ReceptionAnalyticsView(APIView):
 
         # Court Sessions next 7 days
         court_qs = CourtSession.objects.all()
-        if visible_org_units is not None:
-            court_qs = court_qs.filter(
-                Q(offence__inmate__owner_org_unit__in=visible_org_units) | 
-                Q(offence__inmate__owner_org_unit__isnull=True)
-            )
+        court_qs = scoped_inmates(request, court_qs, 'offence__inmate__')
         upcoming_courts = court_qs.filter(next_court_date__gte=today, next_court_date__lte=seven_days_ahead).count()
 
         # Status Distribution
@@ -1256,7 +1237,7 @@ class UpcomingDischargesView(OrgUnitContextMixin, APIView):
     """
     Returns a list of upcoming discharges based on ReleaseHistory active_edr and active_odr.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReceptionRecords]
 
     def get(self, request):
         from .serializers import UpcomingDischargeSerializer
@@ -1268,10 +1249,7 @@ class UpcomingDischargesView(OrgUnitContextMixin, APIView):
             active_edr__isnull=False
         ).select_related("inmate").prefetch_related("inmate__offences").order_by("active_edr")
 
-        # Apply org unit filtering if needed
-        org_unit = getattr(request, 'org_unit', None)
-        if org_unit:
-            queryset = queryset.filter(inmate__owner_org_unit=org_unit)
+        queryset = scoped_inmates(request, queryset, 'inmate__')
 
         serializer = UpcomingDischargeSerializer(queryset, many=True)
         return Response(serializer.data)
@@ -1281,16 +1259,13 @@ from rest_framework.response import Response
 from Reception.models import Inmate, InmateClassificationHistory
 
 class ReclassificationViewSet(viewsets.ViewSet):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReceptionRecords]
 
     @action(detail=False, methods=['get'])
     def due(self, request):
-        visible_org_units = getattr(request, 'visible_org_units', None)
         qs = Inmate.objects.filter(current_status="IN_CUSTODY")
         
-        if visible_org_units is not None:
-            from django.db.models import Q
-            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
+        qs = scoped_inmates(request, qs)
 
         due_inmates = []
         for inmate in qs:
@@ -1321,12 +1296,9 @@ class ReclassificationViewSet(viewsets.ViewSet):
         
     @action(detail=False, methods=['get'])
     def pending_approvals(self, request):
-        visible_org_units = getattr(request, 'visible_org_units', None)
         qs = Inmate.objects.filter(current_status="IN_CUSTODY", classification_history__approval_status="PENDING").distinct()
         
-        if visible_org_units is not None:
-            from django.db.models import Q
-            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
+        qs = scoped_inmates(request, qs)
 
         pending = []
         for inmate in qs:
@@ -1353,7 +1325,7 @@ class ReclassificationViewSet(viewsets.ViewSet):
     def propose(self, request, pk=None):
         from django.utils import timezone
         try:
-            inmate = Inmate.objects.get(pk=pk)
+            inmate = scoped_inmates(request, Inmate.objects.all()).get(pk=pk)
         except Inmate.DoesNotExist:
             return Response({"error": "Inmate not found"}, status=status.HTTP_404_NOT_FOUND)
             
@@ -1377,7 +1349,7 @@ class ReclassificationViewSet(viewsets.ViewSet):
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         try:
-            inmate = Inmate.objects.get(pk=pk)
+            inmate = scoped_inmates(request, Inmate.objects.all()).get(pk=pk)
         except Inmate.DoesNotExist:
             return Response({"error": "Inmate not found"}, status=status.HTTP_404_NOT_FOUND)
             
@@ -1393,12 +1365,9 @@ class ReclassificationViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'])
     def categories(self, request):
-        visible_org_units = getattr(request, 'visible_org_units', None)
         qs = Inmate.objects.filter(current_status="IN_CUSTODY")
         
-        if visible_org_units is not None:
-            from django.db.models import Q
-            qs = qs.filter(Q(owner_org_unit__in=visible_org_units) | Q(owner_org_unit__isnull=True))
+        qs = scoped_inmates(request, qs)
             
         categories = {"A": [], "B": [], "C": [], "D": [], "COND": [], "PUSOD": []}
         
@@ -1420,7 +1389,7 @@ class ProposeDischargeView(OrgUnitContextMixin, APIView):
     """
     Endpoint for Reception to propose an inmate's discharge.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReceptionRecords]
 
     def post(self, request):
         from .serializers import ProposeDischargeSerializer
@@ -1433,7 +1402,7 @@ class ProposeDischargeView(OrgUnitContextMixin, APIView):
             reception_receipt = request.FILES.get('reception_receipt')
 
             try:
-                inmate = Inmate.objects.get(id=inmate_id)
+                inmate = scoped_inmates(request, Inmate.objects.all()).get(id=inmate_id)
             except Inmate.DoesNotExist:
                 return Response({"error": "Inmate not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1466,9 +1435,7 @@ class DischargeApprovalViewSet(OrgUnitContextMixin, viewsets.ViewSet):
         
         workflows = ReleaseWorkflow.objects.filter(status='PROPOSED_BY_RECEPTION')
         
-        visible_org_units = getattr(request, 'visible_org_units', None)
-        if visible_org_units is not None:
-            workflows = workflows.filter(inmate__owner_org_unit__in=visible_org_units)
+        workflows = scoped_inmates(request, workflows, 'inmate__')
             
         serializer = ReleaseWorkflowSerializer(workflows, many=True)
         return Response(serializer.data)
@@ -1476,7 +1443,8 @@ class DischargeApprovalViewSet(OrgUnitContextMixin, viewsets.ViewSet):
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         try:
-            workflow = ReleaseWorkflow.objects.get(pk=pk, status='PROPOSED_BY_RECEPTION')
+            workflow = scoped_inmates(request, ReleaseWorkflow.objects.all(), 'inmate__').get(
+                pk=pk, status='PROPOSED_BY_RECEPTION')
         except ReleaseWorkflow.DoesNotExist:
             return Response({"error": "Pending proposal not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1497,7 +1465,8 @@ class DischargeApprovalViewSet(OrgUnitContextMixin, viewsets.ViewSet):
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         try:
-            workflow = ReleaseWorkflow.objects.get(pk=pk, status='PROPOSED_BY_RECEPTION')
+            workflow = scoped_inmates(request, ReleaseWorkflow.objects.all(), 'inmate__').get(
+                pk=pk, status='PROPOSED_BY_RECEPTION')
         except ReleaseWorkflow.DoesNotExist:
             return Response({"error": "Pending proposal not found."}, status=status.HTTP_404_NOT_FOUND)
 

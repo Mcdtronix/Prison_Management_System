@@ -981,21 +981,20 @@ class OffenceRegistrationSerializer(serializers.Serializer):
         except Inmate.DoesNotExist:
             raise serializers.ValidationError({"inmate_id": "Inmate not found."})
             
+        # Offences may only be added to inmates held where the user works.
         request = self.context.get('request')
-        if request and hasattr(request, 'user'):
-            from Auth.utils import get_current_org_unit
-            user_org_unit = getattr(request, 'org_unit', None)
-            if not user_org_unit:
-                user_org_unit = get_current_org_unit(request.user)
-                
-            if inmate.owner_org_unit and user_org_unit and inmate.owner_org_unit.id != user_org_unit.id:
-                from rest_framework.exceptions import PermissionDenied
-                raise PermissionDenied({
-                    "error_code": "STATION_MISMATCH",
-                    "message": "You do not have permission to modify this record.",
-                    "details": f"This inmate belongs to {inmate.owner_org_unit.name}. Your session is locked to {user_org_unit.name}.",
-                    "resolution": "If you require access, please contact the administrators."
-                })
+        from Auth.scoping import inmates_in_scope, people_scope
+        user = getattr(request, 'user', None)
+        if request is not None and not inmates_in_scope(
+                Inmate.objects.filter(pk=inmate.pk), people_scope(user)).exists():
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied({
+                "error_code": "STATION_MISMATCH",
+                "message": "You do not have permission to modify this record.",
+                "details": f"This inmate belongs to "
+                           f"{inmate.owner_org_unit.name if inmate.owner_org_unit else 'another station'}.",
+                "resolution": "If you require access, please contact the administrators."
+            })
 
         offences_data = data.get('offences', [])
         restitutions_data = data.get('restitutions', [])

@@ -114,3 +114,6 @@ System_Documentation/.folio/
 # the ENV/ rule above matches it on case-insensitive filesystems)
 !deploy/env/
 !deploy/env/production.env.example
+
+# Security audit reports (repo is public; never commit)
+SECURITY_AUDIT_REPORT*.md

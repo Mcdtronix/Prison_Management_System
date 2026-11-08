@@ -81,10 +81,68 @@ def people_scope(user) -> PeopleScope:
     if roots:
         return scope_for_units(descendant_ids(roots))
 
-    # Old-style accounts with no assignments: their profile's station only.
+    # Old-style accounts with no assignments: their profile's station only,
+    # plus the org unit that stands for that station.
     if profile is not None:
-        return PeopleScope(frozenset(), frozenset({profile.station_id}))
+        return PeopleScope(units_for_legacy_station(profile.station), frozenset({profile.station_id}))
     return NOWHERE
+
+
+def units_for_legacy_station(station) -> FrozenSet[int]:
+    """STATION org units matching an old auth_station row (the reverse of `legacy_station_for_unit`)."""
+    if station is None:
+        return frozenset()
+    match = Q(code__iexact=station.code) | Q(code_short__iexact=station.code) | Q(name__iexact=station.name)
+    return frozenset(OrgUnit.objects.filter(match, unit_type='STATION').values_list('pk', flat=True))
+
+
+# ----------------------------------------------------------------- records
+#
+# Rules that narrow any queryset to the records a scope covers. Each takes the
+# path from the queryset's model to the record that carries ownership, so one
+# rule serves a model and everything hanging off it. A record whose owner
+# cannot be worked out is hidden (only "everywhere" scopes see it).
+
+def inmates_in_scope(queryset, scope: PeopleScope, prefix: str = ''):
+    """Rows whose inmate (reached through `prefix`, e.g. 'offence__inmate__') is held in scope.
+
+    An inmate belongs to the unit in `owner_org_unit`; older inmates with no
+    owner belong to the legacy stations in their station history.
+    """
+    if scope.everywhere:
+        return queryset
+    from django.apps import apps
+    from django.db.models import Exists, OuterRef
+
+    InmateStationHistory = apps.get_model('Reception', 'InmateStationHistory')
+    legacy = Exists(InmateStationHistory.objects.filter(
+        inmate_id=OuterRef(f'{prefix}id' if prefix else 'pk'),
+        station_id__in=scope.station_ids,
+    ))
+    return queryset.filter(
+        Q(**{f'{prefix}owner_org_unit_id__in': scope.unit_ids})
+        | (Q(**{f'{prefix}owner_org_unit__isnull': True}) & legacy)
+    )
+
+
+def officer_records_in_scope(queryset, scope: PeopleScope, officer_path: str = 'officer'):
+    """Rows about an officer (reached through `officer_path`) who is currently in scope."""
+    if scope.everywhere:
+        return queryset
+    from HumanResources.models import Officer
+
+    officers = officers_in_scope(Officer.objects.all(), scope).values('pk')
+    return queryset.filter(**{f'{officer_path}__in': officers})
+
+
+def units_in_scope(queryset, scope: PeopleScope, *unit_paths: str):
+    """Rows where any of `unit_paths` (org-unit foreign keys) points at a unit in scope."""
+    if scope.everywhere:
+        return queryset
+    condition = Q()
+    for path in unit_paths:
+        condition |= Q(**{f'{path}__in': scope.unit_ids})
+    return queryset.filter(condition)
 
 
 def _accounts_q(scope: PeopleScope) -> Q:
