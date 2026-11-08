@@ -282,13 +282,24 @@ code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H "Host: $DOMAIN" 
 [[ "$code" =~ ^(400|401|403)$ ]] || rollback "Login endpoint returned HTTP $code (expected 400/401/403)"
 ok "Auth endpoint rejects bad credentials (HTTP $code)"
 
-code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H "Host: $DOMAIN" "$base/admin/login/")"
-[[ "$code" == "200" ]] || rollback "Admin login page returned HTTP $code"
-ok "Admin + static manifest render (HTTP 200)"
+# The admin page and /swagger.json used to be probed here; both are off in
+# production (audit M3), so the API schema and static manifest are checked
+# in-process instead (Auth/management/commands/release_checks.py).
+checks="$(manage release_checks 2>&1)" \
+    || rollback "Release checks failed: $(grep -m1 -E 'CommandError|Error' <<<"$checks" || tail -n 1 <<<"$checks")"
+ok "$(grep -m1 '^API schema builds' <<<"$checks")"
+ok "$(grep -m1 '^Static manifest resolves' <<<"$checks")"
 
-code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 -H "Host: $DOMAIN" "$base/swagger.json")"
-[[ "$code" == "200" ]] || rollback "API schema returned HTTP $code (a view or serializer is broken)"
-ok "API schema builds (every endpoint imported)"
+# The Django admin must match its setting: reachable only when switched on.
+admin_enabled="$(sed -n 's/^admin_enabled=\([A-Za-z]*\).*/\1/p' <<<"$checks")"
+code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H "Host: $DOMAIN" "$base/admin/login/")"
+if [[ "$admin_enabled" == "True" ]]; then
+    [[ "$code" == "200" ]] || rollback "Admin is enabled but its login page returned HTTP $code"
+    ok "Django admin enabled and rendering (HTTP 200)"
+else
+    [[ "$code" == "404" ]] || rollback "Admin is disabled but /admin/login/ returned HTTP $code (expected 404)"
+    ok "Django admin disabled in production (HTTP 404)"
+fi
 
 missing=0
 while read -r asset; do

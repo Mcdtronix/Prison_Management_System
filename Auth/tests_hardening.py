@@ -108,6 +108,22 @@ class AdminAddressTests(TestCase):
             self.assertEqual(self.client.get('/api/ping/', REMOTE_ADDR='196.4.80.9').status_code, 200)
 
 
+@override_settings(STORAGES=PLAIN_STATIC)
+class ReleaseChecksTests(TestCase):
+    """scripts/deploy/deploy.sh runs this before a release receives traffic."""
+
+    def test_reports_schema_static_and_back_office_settings(self):
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        with override_settings(ADMIN_ENABLED=False, API_DOCS_ENABLED=False):
+            call_command('release_checks', stdout=out)
+        text = out.getvalue()
+        self.assertRegex(text, r'API schema builds \(\d+ paths\)')
+        self.assertIn('Static manifest resolves', text)
+        self.assertIn('admin_enabled=False', text)
+
+
 # --------------------------------------------------------------------- M4
 
 class OneTimePasswordExpiryTests(TestCase):
